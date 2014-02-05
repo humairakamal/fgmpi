@@ -779,6 +779,34 @@ static HYD_status np_fn(char *arg, char ***argv)
     goto fn_exit;
 }
 
+#if defined(FINEGRAIN_MPI)
+static void nfg_help_fn(void)
+{
+    printf("\n");
+    printf("-nfg: Number of co-located MPI processes inside an OS process\n\n");
+}
+
+static HYD_status nfg_fn(char *arg, char ***argv)
+{
+    struct HYD_exec *exec;
+    HYD_status status = HYD_SUCCESS;
+
+    status = get_current_exec(&exec);
+    HYDU_ERR_POP(status, "get_current_exec returned error\n");
+
+    status = HYDU_set_int_nfg(arg, &exec->nfg, atoi(**argv));
+    HYDU_ERR_POP(status, "error getting executable nfg value\n");
+
+  fn_exit:
+    (*argv)++;
+    return status;
+
+  fn_fail:
+    goto fn_exit;
+}
+
+#endif
+
 static void launcher_help_fn(void)
 {
     printf("\n");
@@ -1799,6 +1827,10 @@ static struct HYD_arg_match_table match_table[] = {
     /* Other local options */
     {"n", np_fn, np_help_fn},
     {"np", np_fn, np_help_fn},
+#if defined(FINEGRAIN_MPI)
+    {"nfg", nfg_fn, nfg_help_fn},
+#endif
+
 
     /* Hydra specific options */
 

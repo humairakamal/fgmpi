@@ -471,13 +471,26 @@ static HYD_status launch_procs(void)
     struct HYD_pmcd_hdr hdr;
     int sent, closed, pmi_fds[2] = { HYD_FD_UNSET, HYD_FD_UNSET };
     char ftb_event_payload[HYDT_FTB_MAX_PAYLOAD_DATA];
+#if defined (FINEGRAIN_MPI)
+    int tot_procs = 0;
+    int *nfg;
+    int *fgstart_rank;
+    int prev_nfg = 0;
+#endif
     HYD_status status = HYD_SUCCESS;
 
     HYDU_FUNC_ENTER();
 
     HYD_pmcd_pmip.local.proxy_process_count = 0;
+#if defined (FINEGRAIN_MPI)
+    for (exec = HYD_pmcd_pmip.exec_list; exec; exec = exec->next) {
+        HYD_pmcd_pmip.local.proxy_process_count += exec->proc_count;
+        tot_procs += (exec->nfg * exec->proc_count);
+    }
+#else
     for (exec = HYD_pmcd_pmip.exec_list; exec; exec = exec->next)
         HYD_pmcd_pmip.local.proxy_process_count += exec->proc_count;
+#endif
 
     HYDU_MALLOC(HYD_pmcd_pmip.downstream.out, int *,
                 HYD_pmcd_pmip.local.proxy_process_count * sizeof(int), status);
@@ -493,6 +506,27 @@ static HYD_status launch_procs(void)
                 HYD_pmcd_pmip.local.proxy_process_count * sizeof(int), status);
     HYDU_MALLOC(HYD_pmcd_pmip.downstream.pmi_fd_active, int *,
                 HYD_pmcd_pmip.local.proxy_process_count * sizeof(int), status);
+
+#if defined (FINEGRAIN_MPI)
+    /* Not storing nfg and fgstart_rank as fields in HYD_pmcd_pmip.downstream
+       since they are not required later by hydra.
+     */
+    HYDU_MALLOC(nfg, int *,
+                HYD_pmcd_pmip.local.proxy_process_count * sizeof(int), status);
+    HYDU_MALLOC(fgstart_rank, int *,
+                HYD_pmcd_pmip.local.proxy_process_count * sizeof(int), status);
+
+    for (exec = HYD_pmcd_pmip.exec_list, i = 0;
+         (i < HYD_pmcd_pmip.local.proxy_process_count) && exec; )
+        {
+            for (j=0; j<exec->proc_count; j++, i++) {
+                fgstart_rank[i] = prev_nfg;
+                nfg[i] = exec->nfg;
+                prev_nfg += exec->nfg;
+            }
+            exec = exec->next;
+        }
+#endif
 
     /* Initialize the PMI_FD and PMI FD active state, and exit status */
     for (i = 0; i < HYD_pmcd_pmip.local.proxy_process_count; i++) {
@@ -661,6 +695,26 @@ static HYD_status launch_procs(void)
                 HYDU_ERR_POP(status, "unable to add env to list\n");
                 HYDU_FREE(str);
 
+#if defined(FINEGRAIN_MPI)
+                /* PMI_TOTPROCS */
+                str = HYDU_int_to_str(tot_procs);
+                status = HYDU_append_env_to_list("PMI_TOTPROCS", str, &force_env);
+                HYDU_ERR_POP(status, "unable to add env to list\n");
+                HYDU_FREE(str);
+
+                /* PMI_NUMFGP */
+                str = HYDU_int_to_str(nfg[process_id]);
+                status = HYDU_append_env_to_list("PMI_NUMFGP", str, &force_env);
+                HYDU_ERR_POP(status, "unable to add env to list\n");
+                HYDU_FREE(str);
+
+                /* PMI_FGSTARTRANK */
+                str = HYDU_int_to_str(fgstart_rank[process_id]);
+                status = HYDU_append_env_to_list("PMI_FGSTARTRANK", str, &force_env);
+                HYDU_ERR_POP(status, "unable to add env to list\n");
+                HYDU_FREE(str);
+#endif
+
                 if (socketpair(AF_UNIX, SOCK_STREAM, 0, pmi_fds) < 0)
                     HYDU_ERR_SETANDJUMP(status, HYD_INTERNAL_ERROR, "pipe error\n");
 
@@ -723,6 +777,13 @@ static HYD_status launch_procs(void)
         HYDU_env_free_list(force_env);
         force_env = NULL;
     }
+
+#if defined(FINEGRAIN_MPI)
+    if (nfg)
+        HYDU_FREE(nfg);
+    if (fgstart_rank)
+        HYDU_FREE(fgstart_rank);
+#endif
 
     /* Send the PID list upstream */
     HYD_pmcd_init_header(&hdr);

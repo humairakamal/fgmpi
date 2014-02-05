@@ -453,6 +453,10 @@ HYD_status HYD_pmcd_pmi_fill_in_exec_launch_info(struct HYD_pg *pg)
 
             HYD_STRING_STASH(exec_stash, HYDU_strdup("--exec-proc-count"), status);
             HYD_STRING_STASH(exec_stash, HYDU_int_to_str(exec->proc_count), status);
+#if defined(FINEGRAIN_MPI)
+            HYD_STRING_STASH(exec_stash, HYDU_strdup("--exec-nfg"), status);
+            HYD_STRING_STASH(exec_stash, HYDU_int_to_str(exec->nfg), status);
+#endif
 
             HYD_STRING_STASH(exec_stash, HYDU_strdup("--exec-local-env"), status);
             for (i = 0, env = exec->user_env; env; env = env->next, i++);

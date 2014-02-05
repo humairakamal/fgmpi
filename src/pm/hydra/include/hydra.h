@@ -298,6 +298,9 @@ struct HYD_exec {
     char *exec[HYD_NUM_TMP_STRINGS];
     char *wdir;
 
+#if defined(FINEGRAIN_MPI)
+    int nfg;
+#endif
     int proc_count;
     struct HYD_env *user_env;
     char *env_prop;

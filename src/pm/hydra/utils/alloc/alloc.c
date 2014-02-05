@@ -257,6 +257,9 @@ HYD_status HYDU_alloc_exec(struct HYD_exec **exec)
     (*exec)->exec[0] = NULL;
     (*exec)->wdir = NULL;
     (*exec)->proc_count = -1;
+#if defined(FINEGRAIN_MPI)
+    (*exec)->nfg = 1;
+#endif
     (*exec)->env_prop = NULL;
     (*exec)->user_env = NULL;
     (*exec)->appnum = -1;
@@ -313,6 +316,9 @@ static HYD_status add_exec_to_proxy(struct HYD_exec *exec, struct HYD_proxy *pro
 
         proxy->exec_list->wdir = HYDU_strdup(exec->wdir);
         proxy->exec_list->proc_count = num_procs;
+#if defined(FINEGRAIN_MPI)
+        proxy->exec_list->nfg = exec->nfg;
+#endif
         proxy->exec_list->env_prop = exec->env_prop ? HYDU_strdup(exec->env_prop) : NULL;
         proxy->exec_list->user_env = HYDU_env_list_dup(exec->user_env);
         proxy->exec_list->appnum = exec->appnum;
@@ -330,6 +336,9 @@ static HYD_status add_exec_to_proxy(struct HYD_exec *exec, struct HYD_proxy *pro
 
         texec->wdir = HYDU_strdup(exec->wdir);
         texec->proc_count = num_procs;
+#if defined(FINEGRAIN_MPI)
+        texec->nfg = exec->nfg;
+#endif
         texec->env_prop = exec->env_prop ? HYDU_strdup(exec->env_prop) : NULL;
         texec->user_env = HYDU_env_list_dup(exec->user_env);
         texec->appnum = exec->appnum;

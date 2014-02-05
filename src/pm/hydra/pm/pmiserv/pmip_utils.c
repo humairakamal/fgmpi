@@ -543,6 +543,21 @@ static HYD_status exec_proc_count_fn(char *arg, char ***argv)
     return status;
 }
 
+#if defined(FINEGRAIN_MPI)
+static HYD_status exec_nfg_fn(char *arg, char ***argv)
+{
+    struct HYD_exec *exec = NULL;
+    HYD_status status = HYD_SUCCESS;
+
+    for (exec = HYD_pmcd_pmip.exec_list; exec->next; exec = exec->next);
+    status = HYDU_set_int_nfg(arg, &exec->nfg, atoi(**argv));
+
+    (*argv)++;
+
+    return status;
+}
+#endif
+
 static HYD_status exec_local_env_fn(char *arg, char ***argv)
 {
     struct HYD_exec *exec = NULL;
@@ -672,6 +687,9 @@ struct HYD_arg_match_table HYD_pmcd_pmip_match_table[] = {
     {"exec", exec_fn, NULL},
     {"exec-appnum", exec_appnum_fn, NULL},
     {"exec-proc-count", exec_proc_count_fn, NULL},
+#if defined(FINEGRAIN_MPI)
+    {"exec-nfg", exec_nfg_fn, NULL},
+#endif
     {"exec-local-env", exec_local_env_fn, NULL},
     {"exec-env-prop", exec_env_prop_fn, NULL},
     {"exec-wdir", exec_wdir_fn, NULL},
