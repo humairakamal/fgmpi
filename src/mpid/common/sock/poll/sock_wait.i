@@ -583,7 +583,7 @@ static int MPIDU_Socki_handle_read(struct pollfd * const pollfd, struct pollinfo
 	if (pollinfo->read_iov_flag)
 	{ 
 	    MPIDI_FUNC_ENTER(MPID_STATE_READV);
-	    nb = readv(pollinfo->fd, pollinfo->read.iov.ptr + pollinfo->read.iov.offset,
+	    nb = MPL_large_readv(pollinfo->fd, pollinfo->read.iov.ptr + pollinfo->read.iov.offset,
 		       pollinfo->read.iov.count - pollinfo->read.iov.offset);
 	    MPIDI_FUNC_EXIT(MPID_STATE_READV);
 	}
@@ -702,7 +702,7 @@ static int MPIDU_Socki_handle_write(struct pollfd * const pollfd, struct pollinf
 	if (pollinfo->write_iov_flag)
 	{ 
 	    MPIDI_FUNC_ENTER(MPID_STATE_WRITEV);
-	    nb = writev(pollinfo->fd, pollinfo->write.iov.ptr + pollinfo->write.iov.offset,
+	    nb = MPL_large_writev(pollinfo->fd, pollinfo->write.iov.ptr + pollinfo->write.iov.offset,
 			pollinfo->write.iov.count - pollinfo->write.iov.offset);
 	    MPIDI_FUNC_EXIT(MPID_STATE_WRITEV);
 	}
