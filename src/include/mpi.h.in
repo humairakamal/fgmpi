@@ -2158,6 +2158,10 @@ int PMPI_T_category_changed(int *stamp);
 
 @HAVE_ROMIO@
 
+#if defined (FINEGRAIN_MPI)
+#include "fgmpi.h"
+#endif
+
 #if defined(__cplusplus)
 }
 /* Add the C++ bindings */

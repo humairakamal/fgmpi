@@ -40,7 +40,9 @@ cvars:
 
 /* Preallocated comm objects */
 /* initialized in initthread.c */
+#if !defined(FINEGRAIN_MPI)
 MPID_Comm MPID_Comm_builtin[MPID_COMM_N_BUILTIN] = { {0} };
+#endif
 MPID_Comm MPID_Comm_direct[MPID_COMM_PREALLOC]   = { {0} };
 MPIU_Object_alloc_t MPID_Comm_mem = { 0, 0, 0, 0, MPID_COMM, 
 				      sizeof(MPID_Comm), MPID_Comm_direct,
@@ -113,7 +115,7 @@ int MPIR_Comm_init(MPID_Comm *comm_p)
 
     MPIU_Object_set_ref(comm_p, 1);
 
-    MPIU_THREAD_MPI_OBJ_INIT(comm_p);
+    MPIU_THREAD_MPI_OBJ_INIT(comm_p); /* FG: TODO Double-check */
 
     /* Clear many items (empty means to use the default; some of these
        may be overridden within the upper-level communicator initialization) */
@@ -403,7 +405,7 @@ static int set_collops(MPID_Comm *comm)
         goto fn_exit;
 
     if (unlikely(!initialized)) {
-        mpi_errno = init_default_collops();
+        mpi_errno = init_default_collops(); /* FG: TODO */
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
         initialized = TRUE;
@@ -485,7 +487,9 @@ int MPIR_Comm_commit(MPID_Comm *comm)
             MPIU_Assert(num_local == 1);
             goto fn_exit;
         }
-
+#if defined (FINEGRAIN_MPI)
+        goto fn_exit; /* FG: TODO This is temporary */
+#endif
         /* we don't need a local comm if this process is the only one on this node */
         if (num_local > 1) {
             mpi_errno = MPIR_Comm_create(&comm->node_comm);

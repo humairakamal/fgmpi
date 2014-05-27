@@ -64,7 +64,8 @@ noinst_HEADERS +=                   \
     src/include/rlog.h              \
     src/include/rlog_macros.h       \
     src/include/oputil.h            \
-    src/include/mpiinfo.h
+    src/include/mpiinfo.h           \
+    src/include/fgmpiimpl.h
 
 src/include/mpich_cvars.h:
 	$(top_srcdir)/maint/extractcvars --dirs="`cat $(top_srcdir)/maint/cvardirs`"

@@ -13,7 +13,8 @@ mpi_sources +=                 \
     src/mpi/init/ismain.c      \
     src/mpi/init/finalize.c    \
     src/mpi/init/finalized.c   \
-    src/mpi/init/querythread.c
+    src/mpi/init/querythread.c \
+    src/mpi/init/fginit.c
 
 lib_lib@MPILIBNAME@_la_SOURCES += \
     src/mpi/init/initinfo.c       \

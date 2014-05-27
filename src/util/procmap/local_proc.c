@@ -74,9 +74,16 @@ int MPIU_Find_local_and_external(MPID_Comm *comm, int *local_size_p, int *local_
     MPID_Node_id_t max_node_id;
     MPID_Node_id_t node_id;
     MPID_Node_id_t my_node_id;
+#if defined(FINEGRAIN_MPI)
+    int pid, worldrank, mypid;
+    int *coFGP_reps;
+    MPIU_CHKLMEM_DECL(2);
+    MPIU_CHKPMEM_DECL(2); /* FG: TODO Fix intranode_table and internode_table */
+#else
     MPIU_CHKLMEM_DECL(1);
     MPIU_CHKPMEM_DECL(4);
-
+#endif
+    
     /* Scan through the list of processes in comm and add one
        process from each node to the list of "external" processes.  We
        add the first process we find from each node.  nodes[] is an
@@ -88,25 +95,40 @@ int MPIU_Find_local_and_external(MPID_Comm *comm, int *local_size_p, int *local_
        shrunk - so using realloc is not an appropriate strategy. */
     MPIU_CHKPMEM_MALLOC (external_ranks, int *, sizeof(int) * comm->remote_size, mpi_errno, "external_ranks");
     MPIU_CHKPMEM_MALLOC (local_ranks, int *, sizeof(int) * comm->remote_size, mpi_errno, "local_ranks");
-
+#if defined(FINEGRAIN_MPI)
+    internode_table = NULL;
+    intranode_table = NULL;
+#else
     MPIU_CHKPMEM_MALLOC (internode_table, int *, sizeof(int) * comm->remote_size, mpi_errno, "internode_table");
     MPIU_CHKPMEM_MALLOC (intranode_table, int *, sizeof(int) * comm->remote_size, mpi_errno, "intranode_table");
-
+#endif
     mpi_errno = MPID_Get_max_node_id(comm, &max_node_id);
     if (mpi_errno) MPIU_ERR_POP (mpi_errno);
     MPIU_Assert(max_node_id >= 0);
     MPIU_CHKLMEM_MALLOC (nodes, int *, sizeof(int) * (max_node_id + 1), mpi_errno, "nodes");
+#if defined(FINEGRAIN_MPI)
+    MPIU_CHKLMEM_MALLOC (coFGP_reps, int *, sizeof(int) * comm->local_size, mpi_errno, "coFGP_reps");
+#endif
 
     /* nodes maps node_id to rank in external_ranks of leader for that node */
     for (i = 0; i < (max_node_id + 1); ++i)
         nodes[i] = -1;
-
+#if !defined(FINEGRAIN_MPI)
     for (i = 0; i < comm->remote_size; ++i)
         intranode_table[i] = -1;
-    
+#endif
     external_size = 0;
 
+#if defined(FINEGRAIN_MPI)
+    for (i = 0; i < comm->local_size; ++i)
+        coFGP_reps[i] = 0;
+    mypid = -1;
+    worldrank = -1;
+    MPIDI_Comm_get_pid_worldrank(comm, comm->rank, &mypid, &worldrank);
+    mpi_errno = MPID_Get_node_id(comm, mypid, &my_node_id);
+#else
     mpi_errno = MPID_Get_node_id(comm, comm->rank, &my_node_id);
+#endif
     if (mpi_errno) MPIU_ERR_POP (mpi_errno);
     MPIU_Assert(my_node_id >= 0);
     MPIU_Assert(my_node_id <= max_node_id);
@@ -114,10 +136,18 @@ int MPIU_Find_local_and_external(MPID_Comm *comm, int *local_size_p, int *local_
     local_size = 0;
     local_rank = -1;
     external_rank = -1;
-    
+
+#if defined(FINEGRAIN_MPI)
+    for (i = 0; i < comm->totprocs; ++i)
+    {
+        pid = -1;
+        MPIDI_Comm_get_pid_worldrank(comm, i, &pid, &worldrank);
+        mpi_errno = MPID_Get_node_id(comm, pid, &node_id);
+#else
     for (i = 0; i < comm->remote_size; ++i)
     {
         mpi_errno = MPID_Get_node_id(comm, i, &node_id);
+#endif
         if (mpi_errno) MPIU_ERR_POP (mpi_errno);
 
         /* The upper level can catch this non-fatal error and should be
@@ -135,19 +165,27 @@ int MPIU_Find_local_and_external(MPID_Comm *comm, int *local_size_p, int *local_
             external_ranks[external_size] = i;
             ++external_size;
         }
-
+#if !defined(FINEGRAIN_MPI)
         /* build the map from rank in comm to rank in external_ranks */
-        internode_table[i] = nodes[node_id];
-
+        internode_table[i] = nodes[node_id]; // FG: TODO IMPORTANT - Non-scalable!!
+#endif
         /* build list of local processes */
         if (node_id == my_node_id)
         {
+#if defined(FINEGRAIN_MPI)
+            if (coFGP_reps[pid] == 0){
+#endif
              if (i == comm->rank)
                  local_rank = local_size;
-
-             intranode_table[i] = local_size;
+#if !defined(FINEGRAIN_MPI)
+             intranode_table[i] = local_size; // FG: TODO IMPORTANT -  Non-scalable!!
+#endif
              local_ranks[local_size] = i;
              ++local_size;
+#if defined(FINEGRAIN_MPI)
+             coFGP_reps[pid] = 1;
+            }
+#endif
         }
     }
 

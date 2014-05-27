@@ -753,6 +753,8 @@ export PMPILIBNAME
 export RANLIB
 export OPALIBNAME
 export MPLLIBNAME
+export PCLLIBNAME
+export FGUTILLIBNAME
 # ----------------------------------------------------------------------------
 # with-device
 if test "$with_device" = "default" ; then
@@ -1215,6 +1217,53 @@ else
         opalibdir="${with_openpa_prefix}/lib"
     fi
     PAC_APPEND_FLAG([-L${with_openpa_prefix}/lib],[WRAPPER_LDFLAGS])
+fi
+
+#PCL
+AC_ARG_VAR([PCLLIBNAME],[can be used to override the name of the PCL library (default: "pcl")])
+PCLLIBNAME=${PCLLIBNAME:-"pcl"}
+export PCLLIBNAME
+AC_SUBST(PCLLIBNAME)
+
+pclsrcdir=""
+AC_SUBST([pclsrcdir])
+pcllibdir=""
+AC_SUBST([pcllibdir])
+
+if test -e "${use_top_srcdir}/src/fgutil/pcl-1.10" ; then
+        pclsrcdir="${master_top_builddir}/src/fgutil/pcl-1.10"
+        pcllibdir="${master_top_builddir}/src/fgutil/pcl-1.10/pcl"
+        PAC_APPEND_FLAG([-I${use_top_srcdir}/src/fgutil/pcl-1.10/include],[CPPFLAGS])
+        PAC_APPEND_FLAG([-I${master_top_builddir}/src/fgutil/pcl-1.10/include],[CPPFLAGS])
+
+        PAC_CONFIG_SUBDIR_ARGS([src/fgutil/pcl-1.10],[],[],[AC_ERROR([PCL configure failed])])
+        PAC_APPEND_FLAG([-l${PCLLIBNAME}],[WRAPPER_LIBS])
+fi
+
+
+#FGutil
+AC_ARG_VAR([FGUTILLIBNAME],[can be used to override the name of the FGutil library (default: "fgmpi")])
+FGUTILLIBNAME=${FGUTILLIBNAME:-"fgmpi"}
+export FGUTILLIBNAME
+AC_SUBST(FGUTILLIBNAME)
+
+fgutilsrcdir=""
+AC_SUBST([fgutilsrcdir])
+fgutillibdir=""
+AC_SUBST([fgutillibdir])
+
+if test -e "${use_top_srcdir}/src/fgutil" ; then
+        fgutilsrcdir="${master_top_builddir}/src/fgutil"
+        fgutillibdir="${master_top_builddir}/src/fgutil/src"
+        PAC_APPEND_FLAG([-I${use_top_srcdir}/src/fgutil/src],[CPPFLAGS])
+        PAC_APPEND_FLAG([-I${use_top_srcdir}/src/fgutil/src/util],[CPPFLAGS])
+        PAC_APPEND_FLAG([-I${use_top_srcdir}/src/fgutil/src/hash],[CPPFLAGS])
+        PAC_APPEND_FLAG([-I${master_top_builddir}/src/fgutil/src],[CPPFLAGS])
+        PAC_APPEND_FLAG([-I${master_top_builddir}/src/fgutil/src/util],[CPPFLAGS])
+        PAC_APPEND_FLAG([-I${master_top_builddir}/src/fgutil/src/hash],[CPPFLAGS])
+
+        PAC_CONFIG_SUBDIR_ARGS([src/fgutil],[],[],[AC_ERROR([FGutil configure failed])])
+        PAC_APPEND_FLAG([-lfgmpi],[WRAPPER_LIBS])
 fi
 
 # ----------------------------------------------------------------------------

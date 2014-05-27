@@ -47,10 +47,10 @@ pkgconfigdir = @pkgconfigdir@
 # to build src/mpi/errhan/defmsg.h
 errnames_txt_files = 
 
-external_subdirs = @mplsrcdir@ @opasrcdir@
+external_subdirs = @mplsrcdir@ @opasrcdir@ @pclsrcdir@ @fgutilsrcdir@
 # FIXME how/where does external_libs/ldflags get used?
-external_ldflags = -L@mpllibdir@ -L@opalibdir@
-external_libs = -l@MPLLIBNAME@ -l@OPALIBNAME@
+external_ldflags = -L@mpllibdir@ -L@opalibdir@ -L@pcllibdir@ -L@fgutillibdir@
+external_libs = -l@MPLLIBNAME@ -l@OPALIBNAME@ -l@PCLLIBNAME@ -l@FGUTILLIBNAME@
 
 # NOTE on our semi-unconventional usage of DIST_SUBDIRS:
 # The automake manual recommends thinking of DIST_SUBDIRS as the list of all

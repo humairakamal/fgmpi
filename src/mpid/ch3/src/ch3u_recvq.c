@@ -24,6 +24,17 @@
 #define MPIDI_POSTED_RECV_DEQUEUE_HOOK(req) 0
 #endif
 
+#if defined(FINEGRAIN_MPI)
+/* FG: Some parts of the process group, channel and net module initialization
+   is to be done only once per HWP.
+   Here, we record the state of initialization. The first FGP will complete
+   the initialization, before other FGPs are allowed to enter InitPG() and subsequent functions. */ 
+MPID_Request ** FG_recvq_posted_head = 0;
+MPID_Request ** FG_recvq_posted_tail = 0;
+MPID_Request ** FG_recvq_unexpected_head = 0;
+MPID_Request ** FG_recvq_unexpected_tail = 0;
+#endif
+
 /* FIXME: 
  * Recvq_lock/unlock removed because it is not needed for the SINGLE_CS
  * approach and we might want a different, non-lock-based approach in 

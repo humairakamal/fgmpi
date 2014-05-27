@@ -323,6 +323,10 @@ int MPID_VCR_Dup(MPID_VCR orig_vcr, MPID_VCR * new_vcr)
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_VCR_DUP);
 
+#if defined (FINEGRAIN_MPI)
+  if(FGP_WITHIN_INIT == FGP_init_state)
+  {
+#endif
     /* We are allowed to create a vc that belongs to no process group 
      as part of the initial connect/accept action, so in that case,
      ignore the pg ref count update */
@@ -336,6 +340,10 @@ int MPID_VCR_Dup(MPID_VCR orig_vcr, MPID_VCR * new_vcr)
     else {
 	MPIDI_VC_add_ref(orig_vcr);
     }
+#if defined (FINEGRAIN_MPI)
+  }
+#endif
+
     MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,"Incr VCR %p ref count",orig_vcr));
     *new_vcr = orig_vcr;
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_VCR_DUP);
@@ -780,8 +788,16 @@ int MPIDI_VC_Init( MPIDI_VC_t *vc, MPIDI_PG_t *pg, int rank )
         MPIU_Assert(err == 0);
     }
 #endif /* MPIU_THREAD_GRANULARITY */
-    MPIDI_CH3_VC_Init(vc);
-    MPIDI_DBG_PrintVCState(vc);
+
+#if defined(FINEGRAIN_MPI)
+   if(FGP_WITHIN_INIT == FGP_init_state)
+   {
+#endif
+       MPIDI_CH3_VC_Init(vc);
+       MPIDI_DBG_PrintVCState(vc);
+#if defined(FINEGRAIN_MPI)
+   }
+#endif
 
     return MPI_SUCCESS;
 }
@@ -827,7 +843,17 @@ static int publish_node_id(MPIDI_PG_t *pg, int our_pg_rank)
     char *key;
     int key_max_sz;
     char *kvs_name;
+#if defined(FINEGRAIN_MPI)
+    MPIU_CHKLMEM_DECL(3);
+    char *self_numfgps_string = NULL;
+    char *self_fg_startrank_string = NULL;
+    int self_numfgps;
+    int self_fg_startrank;
+    PMI_Get_fg_startrank(&self_fg_startrank);
+    PMI_Get_numFGPs(&self_numfgps);
+#else
     MPIU_CHKLMEM_DECL(1);
+#endif
 
     /* set MPIU_hostname */
     ret = gethostname(MPIU_hostname, MAX_HOSTNAME_LEN);
@@ -851,6 +877,19 @@ static int publish_node_id(MPIDI_PG_t *pg, int our_pg_rank)
 
         pmi_errno = PMI_KVS_Put(kvs_name, key, MPIU_hostname);
         MPIU_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_put", "**pmi_kvs_put %d", pmi_errno);
+#if defined(FINEGRAIN_MPI)
+        MPIU_CHKLMEM_MALLOC(self_numfgps_string, char *, key_max_sz, mpi_errno, "self_numfgps_string");
+        MPIU_Snprintf (self_numfgps_string, key_max_sz, "%d", self_numfgps);
+        MPIU_Snprintf (key, key_max_sz, "numfgps[%d]", our_pg_rank);
+        pmi_errno = PMI_KVS_Put (kvs_name, key, self_numfgps_string);
+        MPIU_ERR_CHKANDJUMP1 (pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_put", "**pmi_kvs_put %d", pmi_errno);
+
+        MPIU_CHKLMEM_MALLOC(self_fg_startrank_string, char *, key_max_sz, mpi_errno, "self_fg_startrank_string");
+        MPIU_Snprintf (self_fg_startrank_string, key_max_sz, "%d", self_fg_startrank);
+        MPIU_Snprintf (key, key_max_sz, "fgpstartrank[%d]", our_pg_rank);
+        pmi_errno = PMI_KVS_Put (kvs_name, key, self_fg_startrank_string);
+        MPIU_ERR_CHKANDJUMP1 (pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_put", "**pmi_kvs_put %d", pmi_errno);
+#endif
 
         pmi_errno = PMI_KVS_Commit(kvs_name);
         MPIU_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_commit", "**pmi_kvs_commit %d", pmi_errno);
@@ -858,7 +897,7 @@ static int publish_node_id(MPIDI_PG_t *pg, int our_pg_rank)
         pmi_errno = PMI_Barrier();
         MPIU_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier", "**pmi_barrier %d", pmi_errno);
     }
-    
+
 fn_exit:
     MPIU_CHKLMEM_FREEALL();
     return mpi_errno;
@@ -1215,7 +1254,16 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
     int no_local = 0;
     int odd_even_cliques = 0;
     int pmi_version = MPIU_DEFAULT_PMI_VERSION, pmi_subversion = MPIU_DEFAULT_PMI_SUBVERSION;
+#if defined(FINEGRAIN_MPI)
+    MPIU_CHKLMEM_DECL(6);
+    MPIU_CHKPMEM_DECL(1); /* declaration for FGP_tuple_t *pid_to_fgps */
+    char *self_numfgps_string = NULL;
+    char *self_fg_startrank_string = NULL;
+    int self_numfgps;
+    int self_fg_startrank;
+#else
     MPIU_CHKLMEM_DECL(4);
+#endif
 
     /* See if the user wants to override our default values */
     MPL_env2int("PMI_VERSION", &pmi_version);
@@ -1322,6 +1370,13 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
        we somehow were able to support dynamic processes via this method. */
     MPIU_CHKLMEM_MALLOC(node_names, char **, pg->size * sizeof(char*), mpi_errno, "node_names");
     MPIU_CHKLMEM_MALLOC(node_name_buf, char *, pg->size * key_max_sz * sizeof(char), mpi_errno, "node_name_buf");
+#if defined(FINEGRAIN_MPI)
+    MPIU_CHKLMEM_MALLOC(self_numfgps_string, char *, key_max_sz, mpi_errno, "self_numfgps_string");
+    MPIU_CHKLMEM_MALLOC(self_fg_startrank_string, char *, key_max_sz, mpi_errno, "self_fg_startrank_string");
+    MPIU_CHKPMEM_MALLOC (pid_to_fgps, FGP_tuple_t *, pg->size * sizeof (FGP_tuple_t), mpi_errno, "array mapping pid to FGP tuple");
+    PMI_Get_fg_startrank(&self_fg_startrank);
+    PMI_Get_numFGPs(&self_numfgps);
+#endif
 
     /* Gather hostnames */
     for (i = 0; i < pg->size; ++i)
@@ -1339,6 +1394,10 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
         {
             /* This is us, no need to perform a get */
             MPIU_Snprintf(node_names[g_num_nodes], key_max_sz, "%s", MPIU_hostname);
+#if defined(FINEGRAIN_MPI)
+            pid_to_fgps[i].fg_startrank = self_fg_startrank;
+            pid_to_fgps[i].numfgps = self_numfgps;
+#endif
         }
         else
         {
@@ -1347,6 +1406,22 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
 
             pmi_errno = PMI_KVS_Get(kvs_name, key, node_names[g_num_nodes], key_max_sz);
             MPIU_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_get", "**pmi_kvs_get %d", pmi_errno);
+
+#if defined(FINEGRAIN_MPI)
+            MPIU_Snprintf (key, key_max_sz, "numfgps[%d]", i);
+
+            pmi_errno = PMI_KVS_Get (kvs_name, key, numfgps_string, key_max_sz);
+            MPIU_ERR_CHKANDJUMP1 (pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_get", "**pmi_kvs_get %d", pmi_errno);
+
+
+            MPIU_Snprintf (key, key_max_sz, "fgpstartrank[%d]", i);
+
+            pmi_errno = PMI_KVS_Get (kvs_name, key, fg_startrank_string, key_max_sz);
+            MPIU_ERR_CHKANDJUMP1 (pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_get", "**pmi_kvs_get %d", pmi_errno);
+
+            pid_to_fgps[i].fg_startrank = atoi(fg_startrank_string);
+            pid_to_fgps[i].numfgps = atoi(numfgps_string);
+#endif
         }
 
         /* Find the node_id for this process, or create a new one */

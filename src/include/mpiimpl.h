@@ -36,6 +36,10 @@
    do not want mpi.h to depend on any other files or configure flags */
 #include "mpichconf.h"
 
+#if defined(FINEGRAIN_MPI)
+#include "fgmpiimpl.h"
+#endif
+
 /* if we are defining this, we must define it before including mpl.h */
 #if defined(MPICH_DEBUG_MEMINIT)
 #define MPL_VG_ENABLED 1
@@ -1304,7 +1308,11 @@ int MPIR_Comm_apply_hints(MPID_Comm *comm_ptr, MPID_Info *info_ptr);
    if needed in MPI_Finalize.  Having a separate version of comm_world
    avoids possible interference with User code */
 #define MPID_COMM_N_BUILTIN 3
+#if defined(FINEGRAIN_MPI)
+#define MPID_Comm_builtin (((struct StateWrapper*)(CO_CURRENT->statevars))->MPID_Comm_builtinFG)
+#else
 extern MPID_Comm MPID_Comm_builtin[MPID_COMM_N_BUILTIN];
+#endif
 extern MPID_Comm MPID_Comm_direct[];
 /* This is the handle for the internal MPI_COMM_WORLD .  The "2" at the end
    of the handle is 3-1 (e.g., the index in the builtin array) */
@@ -2204,7 +2212,56 @@ typedef struct MPICH_PerProcess_t {
     void  (*cxx_call_errfn) ( int, int *, int *, void (*)(void) );
 #endif /* HAVE_CXX_BINDING */
 } MPICH_PerProcess_t;
+#if defined(FINEGRAIN_MPI)
+#define MPIR_Process ((struct StateWrapper*)(CO_CURRENT->statevars))->MPIR_ProcessFG
+
+struct StateWrapper {
+    int init_initialized; /* FG: This is to make sure that an FGP does not
+                             call MPI_Init more than once. */
+    int is_spawner;
+    MPICH_PerThread_t MPIR_ThreadFG;
+    MPICH_PerProcess_t MPIR_ProcessFG;
+    /*
+     fstack, fstack_sp and fstack_max_priority are static-global
+     variables in finalize.c and are not referred to outside that file.*/
+    int finalize_initialized;
+    OPAQUE fstackFG;
+    int fstack_spFG;
+    int fstack_max_priorityFG;
+
+
+    /* Originally defined in src/mpi/comm/commutil.c. Extern'd in
+       src/include/mpiimpl.h
+       Initialization is now done in MPI_Init() in init.c
+       MPID_Comm_builtinFG would be zeroed.
+    */
+    MPID_Comm MPID_Comm_builtinFG[MPID_COMM_N_BUILTIN];
+
+    /* Storing this coroutine's fgrank here */
+    int fgrank;
+
+
+    /* Originally defined in src/mpi/comm/commutil.c as:
+       static unsigned int context_mask[MAX_CONTEXT_MASK];
+       static int initialize_context_mask = 1;
+       static volatile int mask_in_use = 0;
+       static volatile int lowestContextId = MPIR_MAXID;
+
+       Initialization is now done in MPI_Init() in init.c
+     */
+    unsigned int *context_maskFG;
+    int initialize_context_maskFG;
+    volatile int mask_in_useFG;
+    volatile int lowestContextIdFG;
+
+    /* The following variables are for the CID=<LID,LBI>
+       context generation algorithm. */
+    unsigned int *LBI_maskFG;
+    int initialize_LBI_maskFG;
+};
+#else
 extern MPICH_PerProcess_t MPIR_Process;
+#endif
 
 /* ------------------------------------------------------------------------- */
 /* In MPICH, each function has an "enter" and "exit" macro.  These can be 

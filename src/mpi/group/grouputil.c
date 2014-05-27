@@ -12,7 +12,7 @@
 #endif
 
 /* Preallocated group objects */
-MPID_Group MPID_Group_builtin[MPID_GROUP_N_BUILTIN] = { {0} };
+MPID_Group MPID_Group_builtin[MPID_GROUP_N_BUILTIN] = { {0} }; /* FG: TODO Double-check if FG related fields need initialization */
 MPID_Group MPID_Group_direct[MPID_GROUP_PREALLOC] = { {0} };
 MPIU_Object_alloc_t MPID_Group_mem = { 0, 0, 0, 0, MPID_GROUP, 
 				      sizeof(MPID_Group), MPID_Group_direct,
@@ -34,7 +34,7 @@ int MPIR_Group_init(void)
     MPID_Group_builtin[0].lrank_to_lpid = NULL;
 
     /* the mutex is probably never used, but initializing it doesn't hurt */
-    MPIU_THREAD_MPI_OBJ_INIT(&MPID_Group_builtin[0]);
+    MPIU_THREAD_MPI_OBJ_INIT(&MPID_Group_builtin[0]); /* FG: TODO Double-check */
 
     /* TODO hook for device here? */
     return mpi_errno;

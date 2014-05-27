@@ -51,6 +51,13 @@ extern MPID_Group *MPIDI_Failed_procs_group;
 
 extern int MPIDI_Use_pmi2_api;
 
+#if defined(FINEGRAIN_MPI)
+extern MPID_Request ** FG_recvq_posted_head;
+extern MPID_Request ** FG_recvq_posted_tail;
+extern MPID_Request ** FG_recvq_unexpected_head;
+extern MPID_Request ** FG_recvq_unexpected_tail;
+#endif
+
 #define MPIDI_CHANGE_VC_STATE(vc, new_state) do {               \
         MPIU_DBG_VCSTATECHANGE(vc, VC_STATE_##new_state);       \
         (vc)->state = MPIDI_VC_STATE_##new_state;               \

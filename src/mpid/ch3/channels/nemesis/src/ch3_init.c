@@ -160,9 +160,11 @@ int MPIDI_CH3_VC_Init( MPIDI_VC_t *vc )
     if (!nemesis_initialized)
         goto fn_exit;
 
+#if !defined(FINEGRAIN_MPI)
     /* no need to initialize vc to self */
     if (vc->pg == MPIDI_CH3I_my_pg && vc->pg_rank == MPIDI_CH3I_my_rank)
         goto fn_exit;
+#endif
 
     vc->ch.recv_active = NULL;
 
@@ -186,12 +188,14 @@ int MPIDI_CH3_VC_Destroy(MPIDI_VC_t *vc )
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_VC_DESTROY);
 
+#if !defined(FINEGRAIN_MPI)
     /* no need to destroy vc to self, this corresponds to the optimization above
      * in MPIDI_CH3_VC_Init */
     if (vc->pg == MPIDI_CH3I_my_pg && vc->pg_rank == MPIDI_CH3I_my_rank) {
         MPIU_DBG_MSG_P(NEM_SOCK_DET, VERBOSE, "skipping self vc=%p", vc);
         goto fn_exit;
     }
+#endif
 
     mpi_errno = MPID_nem_vc_destroy(vc);
 

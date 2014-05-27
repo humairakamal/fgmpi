@@ -80,8 +80,10 @@ cvars:
 /* Any internal routines can go here.  Make them static if possible */
 
 /* Global variables can be initialized here */
-MPICH_PerProcess_t MPIR_Process = { MPICH_PRE_INIT }; 
+#if !defined(FINEGRAIN_MPI)
+MPICH_PerProcess_t MPIR_Process = { MPICH_PRE_INIT };
      /* all other fields in MPIR_Process are irrelevant */
+#endif
 MPICH_ThreadInfo_t MPIR_ThreadInfo = { 0 };
 
 /* These are initialized as null (avoids making these into common symbols).
@@ -299,6 +301,9 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
     int exit_init_cs_on_failure = 0;
     MPID_Info *info_ptr;
 
+#if defined(FINEGRAIN_MPI)
+    if(FGP_WITHIN_INIT == FGP_init_state) {
+#endif
     /* For any code in the device that wants to check for runtime 
        decisions on the value of isThreaded, set a provisional
        value here. We could let the MPID_Init routine override this */
@@ -335,6 +340,11 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
 	MPID_Thread_self(&MPIR_ThreadInfo.master_thread);
     }
 #   endif
+
+#if defined(FINEGRAIN_MPI)
+    }
+#endif
+
 
 #ifdef HAVE_ERROR_CHECKING
     /* Because the PARAM system has not been initialized, temporarily
@@ -420,10 +430,14 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
     MPIR_COMML_REMEMBER( MPIR_Process.comm_world );
     MPIR_COMML_REMEMBER( MPIR_Process.comm_self );
 
+#if defined(FINEGRAIN_MPI)
+    if(FGP_WITHIN_INIT == FGP_init_state) {
+#endif
     /* Call any and all MPID_Init type functions */
-    MPIR_Err_init();
-    MPIR_Datatype_init();
-    MPIR_Group_init();
+        MPIR_Err_init();
+        MPIR_Datatype_init();
+        MPIR_Group_init(); /* FG: TODO IMPORTANT */
+
 
     /* MPIU_Timer_pre_init(); */
 
@@ -436,6 +450,9 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
 #endif
             ;
     }
+#if defined(FINEGRAIN_MPI)
+    }
+#endif
 
 
 #if defined(HAVE_ERROR_CHECKING) && (HAVE_ERROR_CHECKING == MPID_ERROR_LEVEL_RUNTIME)
@@ -446,6 +463,9 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
        MPID_Init if necessary */
     MPIR_Process.initialized = MPICH_WITHIN_MPI;
 
+#if defined(FINEGRAIN_MPI)
+    if(FGP_WITHIN_INIT == FGP_init_state) {
+#endif
     /* We can't acquire any critical sections until this point.  Any
      * earlier the basic data structures haven't been initialized */
     MPIU_THREAD_CS_ENTER(INIT,required);
@@ -461,7 +481,10 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
     info_ptr->next  = NULL;
     info_ptr->key   = NULL;
     info_ptr->value = NULL;
-    
+#if defined(FINEGRAIN_MPI)
+    }
+#endif
+
     mpi_errno = MPID_Init(argc, argv, required, &thread_provided, 
 			  &has_args, &has_env);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
@@ -478,6 +501,15 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
     /* Assert: tag_ub is at least the minimum asked for in the MPI spec */
     MPIU_Assert( MPIR_Process.attrs.tag_ub >= 32767 );
 
+#if defined(FINEGRAIN_MPI)
+    if(FGP_WITHIN_INIT == FGP_init_state) {
+        /* FG: TODO Double-check Calling MPIU_dbg_init, MPIU_Timer_init
+           only for MAIN_CO. The process ranks (MPIR_Process.comm_world->rank)
+           will be non-contiguous, should I use the OS-process rank instead?
+           What about memory consumption in done per FGP. Note that
+           these routines are using a number of global variables.
+           Also, will it affect MPE? */
+#endif
     /* Capture the level of thread support provided */
     MPIR_ThreadInfo.thread_provided = thread_provided;
     if (provided) *provided = thread_provided;
@@ -527,8 +559,20 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
     if (mpi_errno == MPI_SUCCESS) 
 	mpi_errno = MPID_InitCompleted();
 
+#if defined(FINEGRAIN_MPI)
+    } else {
+        if (provided) *provided = thread_provided;
+    }
+#endif
+
 fn_exit:
+#if defined(FINEGRAIN_MPI)
+    if(FGP_WITHIN_INIT == FGP_init_state) {
+#endif
     MPIU_THREAD_CS_EXIT(INIT,required);
+#if defined(FINEGRAIN_MPI)
+    }
+#endif
     return mpi_errno;
 
 fn_fail:
@@ -536,10 +580,17 @@ fn_fail:
     /* signal to error handling routines that core services are unavailable */
     MPIR_Process.initialized = MPICH_PRE_INIT;
 
+#if defined(FINEGRAIN_MPI)
+    if(FGP_WITHIN_INIT == FGP_init_state) {
+#endif
     if (exit_init_cs_on_failure) {
         MPIU_THREAD_CS_EXIT(INIT,required);
     }
     MPIU_THREAD_CS_FINALIZE;
+#if defined(FINEGRAIN_MPI)
+    }
+#endif
+
     return mpi_errno;
     /* --END ERROR HANDLING-- */
 }
@@ -589,6 +640,10 @@ Notes for Fortran:
 @*/
 int MPI_Init_thread( int *argc, char ***argv, int required, int *provided )
 {
+#if defined(FINEGRAIN_MPI)
+    *provided = MPI_THREAD_SINGLE;
+    return MPI_Init(argc, argv);
+#endif
     int mpi_errno = MPI_SUCCESS;
     int rc ATTRIBUTE((unused)), reqd = required;
     MPID_MPI_INIT_STATE_DECL(MPID_STATE_MPI_INIT_THREAD);

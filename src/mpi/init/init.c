@@ -74,6 +74,11 @@ cvars:
 int MPIR_async_thread_initialized = 0;
 #endif
 
+#if defined(FINEGRAIN_MPI)
+#define INIT_INITIALIZED (((struct StateWrapper*)(CO_CURRENT->statevars))->init_initialized)
+#endif
+
+
 #undef FUNCNAME
 #define FUNCNAME MPI_Init
 
@@ -120,19 +125,66 @@ int MPI_Init( int *argc, char ***argv )
     int threadLevel, provided;
     MPID_MPI_INIT_STATE_DECL(MPID_STATE_MPI_INIT);
 
+#if defined(FINEGRAIN_MPI)
+    if (FGP_PRE_INIT == FGP_init_state){
+#endif
     rc = MPID_Wtime_init();
 #ifdef USE_DBG_LOGGING
     MPIU_DBG_PreInit( argc, argv, rc );
 #endif
+#if defined(FINEGRAIN_MPI)
+    }
+#endif
 
     MPID_MPI_INIT_FUNC_ENTER(MPID_STATE_MPI_INIT);
+
+#if defined(FINEGRAIN_MPI)
+       /* FG: Initializing of FGP StateWrapper takes place here.
+          The following if-statement makes sure that allocation to
+          statevars per FGP is only done once.
+       */
+       if( 0 == CO_CURRENT->statevars){
+           CO_CURRENT->statevars = (struct StateWrapper*)MPIU_Calloc(1, sizeof(struct StateWrapper));
+           MPIU_Assert (CO_CURRENT->statevars != 0);
+       }
+
+       if(0 == INIT_INITIALIZED){
+           MPIR_Process.initialized = MPICH_PRE_INIT;
+           INIT_INITIALIZED = 1;
+       }
+
+       if (FGP_PRE_INIT == FGP_init_state){
+           FGP_init_state = FGP_WITHIN_INIT; /* FG: The first FGP sets the initialization state. */
+           IS_SPAWNER = 1;
+       }
+#endif
+
 #   ifdef HAVE_ERROR_CHECKING
     {
         MPID_BEGIN_ERROR_CHECKS;
         {
             if (MPIR_Process.initialized != MPICH_PRE_INIT) {
+#if defined(FINEGRAIN_MPI)
+                if(1 == IS_SPAWNER){
+                    MPIU_Assert( (FGP_POST_INIT == FGP_init_state) ||
+                                 (FGP_ALL_POST_INIT == FGP_init_state) );
+                    IS_SPAWNER = 2; /* IS_SPAWNER equal to 2 means this is the
+                                       expected (silent) MPI_Init()and
+                                       it has now been seen. */
+                    return (mpi_errno);
+                } else if ((2 == IS_SPAWNER) || (0 == IS_SPAWNER)){
+                    MPIU_Internal_error_printf("WARNING! Application rank=%d is calling MPI_Init() again after initialization!\n", my_fgrank);
+                    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER,
+						  "**inittwice", NULL );
+                } else {
+                    MPIU_Internal_error_printf("%d: ERROR! This code should not be reached! Exiting....\n", my_fgrank);
+                    MPIU_Exit(-1);
+                }
+#else
+
                 mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER,
 						  "**inittwice", NULL );
+#endif
 	    }
             if (mpi_errno) goto fn_fail;
         }
@@ -142,6 +194,14 @@ int MPI_Init( int *argc, char ***argv )
 
     /* ... body of routine ... */
 
+#if defined(FINEGRAIN_MPI)
+    /* FG: TODO IMPORTANT initialization of context-id related variables */
+#endif
+
+
+#if defined(FINEGRAIN_MPI)
+    if(FGP_WITHIN_INIT == FGP_init_state) {
+#endif
     /* Temporarily disable thread-safety.  This is needed because the
      * mutexes are not initialized yet, and we don't want to
      * accidentally use them before they are initialized.  We will
@@ -151,6 +211,9 @@ int MPI_Init( int *argc, char ***argv )
 #endif /* MPICH_IS_THREADED */
 
     MPIR_T_env_init();
+#if defined(FINEGRAIN_MPI)
+    }
+#endif
 
     if (!strcmp(MPIR_CVAR_DEFAULT_THREAD_LEVEL, "MPI_THREAD_MULTIPLE"))
         threadLevel = MPI_THREAD_MULTIPLE;
@@ -173,9 +236,12 @@ int MPI_Init( int *argc, char ***argv )
     mpi_errno = MPIR_Init_thread( argc, argv, threadLevel, &provided );
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
+#if defined(FINEGRAIN_MPI)
+    if(FGP_WITHIN_INIT == FGP_init_state) {
+#endif
     if (MPIR_CVAR_ASYNC_PROGRESS) {
         if (provided == MPI_THREAD_MULTIPLE) {
-            mpi_errno = MPIR_Init_async_thread();
+            mpi_errno = MPIR_Init_async_thread(); /* FG: TODO duplicates COMM_SELF */
             if (mpi_errno) goto fn_fail;
 
             MPIR_async_thread_initialized = 1;
@@ -184,6 +250,13 @@ int MPI_Init( int *argc, char ***argv )
             printf("WARNING: No MPI_THREAD_MULTIPLE support (needed for async progress)\n");
         }
     }
+#if defined(FINEGRAIN_MPI)
+      FGP_init_state = FGP_POST_INIT;
+    } else {
+        MPIU_Assert(FGP_POST_INIT == FGP_init_state);
+        FG_Init();
+    }
+#endif
 
     /* ... end of body of routine ... */
     MPID_MPI_INIT_FUNC_EXIT(MPID_STATE_MPI_INIT);

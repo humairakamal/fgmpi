@@ -307,7 +307,7 @@ MPID_nem_init(int pg_rank, MPIDI_PG_t *pg_p, int has_parent ATTRIBUTE((unused)))
        communicator creation hooks get registered (and therefore called) before
        the netmod hooks, giving the netmod an opportunity to override the
        nemesis collective function table. */
-    mpi_errno = MPIDI_CH3U_Comm_register_create_hook(MPIDI_CH3I_comm_create, NULL);
+    mpi_errno = MPIDI_CH3U_Comm_register_create_hook(MPIDI_CH3I_comm_create, NULL); /* FG TODO Important */
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     /* network init */

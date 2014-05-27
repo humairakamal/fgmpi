@@ -37,6 +37,14 @@ static int pg_compare_ids(void * id1, void * id2);
 static int pg_destroy(MPIDI_PG_t * pg );
 static int set_eager_threshold(MPID_Comm *comm_ptr, MPID_Info *info, void *state);
 
+#if defined(FINEGRAIN_MPI)
+static int All_FGP_appnum = -1;
+static char *All_FGP_pg_id = NULL;
+static int All_FGP_has_parent = 0;
+static MPIDI_PG_t *All_FGP_pg = 0;
+#endif
+
+
 MPIDI_Process_t MPIDI_Process = { NULL };
 MPIDI_CH3U_SRBuf_element_t * MPIDI_CH3U_SRBuf_pool = NULL;
 MPIDI_CH3U_Win_fns_t MPIDI_CH3U_Win_fns = { NULL };
@@ -102,6 +110,10 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_INIT);
 
+#if defined(FINEGRAIN_MPI)
+  if(FGP_WITHIN_INIT == FGP_init_state)
+  {
+#endif
     /* initialization routine for ch3u_comm.c */
     mpi_errno = MPIDI_CH3I_Comm_init();
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
@@ -124,6 +136,9 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     }
 #endif
     
+#if defined(FINEGRAIN_MPI)
+  }
+#endif
     /*
      * Set global process attributes.  These can be overridden by the channel 
      * if necessary.
@@ -142,6 +157,11 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     
     /* FIXME: Why are pg_size and pg_rank handled differently? */
     pg_size = MPIDI_PG_Get_size(pg);
+#if defined(FINEGRAIN_MPI)
+  if(FGP_WITHIN_INIT == FGP_init_state)
+  {
+    All_FGP_has_parent = has_parent;
+#endif
     MPIDI_Process.my_pg = pg;  /* brad : this is rework for shared memories 
 				* because they need this set earlier
                                 * for getting the business card
@@ -149,6 +169,36 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     MPIDI_Process.my_pg_rank = pg_rank;
     /* FIXME: Why do we add a ref to pg here? */
     MPIDI_PG_add_ref(pg);
+
+#if defined(FINEGRAIN_MPI)
+    int totprocs;
+    PMI_Get_totprocs(&totprocs);
+
+    world_co_shared_vars = (Coproclet_shared_vars_t *)MPIU_Malloc(sizeof(Coproclet_shared_vars_t));
+    MPIR_Comm_init_coshared_all_ref(world_co_shared_vars);
+
+    worldcomm_rtw_map = NULL;
+    worldcomm_rtw_map = (RTWmap*) RTWmapWorldCreate(totprocs); /* FG: This is an empty map */
+    MPIU_Assert(worldcomm_rtw_map != NULL);
+    world_co_shared_vars->rtw_map =  worldcomm_rtw_map;
+
+    worldcomm_barrier_vars = NULL;
+    worldcomm_barrier_vars = (struct coproclet_barrier_vars *)MPIU_Malloc(sizeof(struct coproclet_barrier_vars));
+    MPIU_Assert(worldcomm_barrier_vars != NULL);
+    worldcomm_barrier_vars->coproclet_signal = 0;
+    worldcomm_barrier_vars->coproclet_counter = 0;
+    worldcomm_barrier_vars->leader_signal = 0;
+    world_co_shared_vars->co_barrier_vars = worldcomm_barrier_vars;
+
+    contextLeader_hshtbl = NULL;
+    contextLeader_hshtbl = CL_LookupHashCreate(); /* FG: This is the hash type used for context_id leader
+                                                     lookup used with MPICH2's context-id generation algorithm */
+    MPIU_Assert(contextLeader_hshtbl != NULL);
+    cidLookup_hshtbl = NULL;
+    cidLookup_hshtbl = CidLookupHashCreate();    /* FG: This is the hash type used for context_id lookup used
+                                                    with CID = <LID,LBI> context-id generation algorithm */
+    MPIU_Assert(cidLookup_hshtbl != NULL);
+#endif
 
     /* We intentionally call this before the channel init so that the channel
        can use the node_id info. */
@@ -180,16 +230,74 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     /* setup receive queue statistics */
     mpi_errno = MPIDI_CH3U_Recvq_init();
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+#if defined(FINEGRAIN_MPI)
+  }
+  else {
+      has_parent = All_FGP_has_parent;
+  }
+#endif
 
     /*
      * Initialize the MPI_COMM_WORLD object
      */
     comm = MPIR_Process.comm_world;
 
+#if defined(FINEGRAIN_MPI)
+    comm->p_rank      = pg_rank; /* FG: _p_rank_ */
+#else
     comm->rank        = pg_rank;
+#endif
     comm->remote_size = pg_size;
     comm->local_size  = pg_size;
-    
+#if defined(FINEGRAIN_MPI)
+    comm->rank = my_fgrank;
+    PMI_Get_totprocs(&(comm->totprocs));
+    comm->co_shared_vars = world_co_shared_vars;
+    comm->coFGP_comm = NULL; /* FG: TODO for hierarchy-based colls? */
+    comm->pid_comm = NULL; /* FG: TODO for hierarchy-based colls? */
+    comm->isRepresentative = 0;
+    comm->numofcoFGPs = 0;
+    comm->numPidsInComm = 0;
+    comm->barrier_vars = NULL;
+#endif
+
+#if defined(FINEGRAIN_MPI)
+    if(FGP_WITHIN_INIT == FGP_init_state) {
+        mpi_errno = MPID_VCRT_Create(comm->remote_size, &vcrt_world);/* FG: TODO Double-check ref_count */
+        if (mpi_errno != MPI_SUCCESS)
+        {
+            MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**dev|vcrt_create",
+                                 "**dev|vcrt_create %s", "MPI_COMM_WORLD");
+        }
+
+        mpi_errno = MPID_VCRT_Get_ptr(vcrt_world, &vcr_world);
+        if (mpi_errno != MPI_SUCCESS)
+        {
+            MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**dev|vcrt_get_ptr",
+                                 "dev|vcrt_get_ptr %s", "MPI_COMM_WORLD");
+        }
+
+        /* Initialize the connection table on COMM_WORLD from the process group's
+           connection table */
+        for (p = 0; p < pg_size; p++)
+        {
+            MPID_VCR_Dup(&pg->vct[p], &vcr_world[p]);
+        }
+    }
+    MPIU_Assert( (vcrt_world != NULL) && (vcr_world != NULL) );
+    comm->vcrt = vcrt_world;
+    comm->vcr  = vcr_world;
+    if(FGP_WITHIN_INIT == FGP_init_state) {
+        MPID_Dev_comm_create_hook (comm); /* FG:  MPIDI_CH3I_comm_create */
+        world_ch3i_ptr = &(comm->ch);
+        mpi_errno = MPIR_Comm_commit(comm); /*FG: TODO IMPORTANT */
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    }
+    else {
+        MPIR_Copy_ch3i_comm_ch(comm, world_ch3i_ptr); /* FG: TODO IMPORTANT. defintion changed! */
+    }
+    world_co_shared_vars->ch3i_ptr = world_ch3i_ptr; /* FG: TODO IMPORTANT */
+#else
     mpi_errno = MPID_VCRT_Create(comm->remote_size, &comm->vcrt);
     if (mpi_errno != MPI_SUCCESS)
     {
@@ -211,16 +319,32 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 	MPID_VCR_Dup(&pg->vct[p], &comm->vcr[p]);
     }
 
-    mpi_errno = MPIR_Comm_commit(comm);
+    mpi_errno = MPIR_Comm_commit(comm); 
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+#endif
 
     /*
      * Initialize the MPI_COMM_SELF object
      */
     comm = MPIR_Process.comm_self;
+#if defined(FINEGRAIN_MPI)
+    comm->p_rank      = 0;
+#else
     comm->rank        = 0;
+#endif
     comm->remote_size = 1;
     comm->local_size  = 1;
+#if defined(FINEGRAIN_MPI)
+    comm->rank = 0;
+    comm->totprocs = 1;
+    comm->co_shared_vars = NULL; /* FG: TODO FIX Double-check */
+    comm->coFGP_comm = NULL;
+    comm->pid_comm = NULL;
+    comm->isRepresentative = 0;
+    comm->numofcoFGPs = 0;
+    comm->numPidsInComm = 0;
+    comm->barrier_vars = NULL;
+#endif
     
     mpi_errno = MPID_VCRT_Create(comm->remote_size, &comm->vcrt);
     if (mpi_errno != MPI_SUCCESS)
@@ -249,17 +373,64 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
      */
     comm = MPIR_Process.icomm_world;
 
+#if defined(FINEGRAIN_MPI)
+    comm->p_rank      = pg_rank;
+#else
     comm->rank        = pg_rank;
+#endif
     comm->remote_size = pg_size;
     comm->local_size  = pg_size;
+#if defined(FINEGRAIN_MPI)
+    comm->rank = my_fgrank;
+    PMI_Get_totprocs(&(comm->totprocs));
+    comm->co_shared_vars = world_co_shared_vars;
+    comm->coFGP_comm = NULL;
+    comm->pid_comm = NULL;
+    comm->isRepresentative = 0;
+    comm->numofcoFGPs = 0;
+    comm->numPidsInComm = 0;
+    comm->barrier_vars = NULL;
+#endif
     MPID_VCRT_Add_ref( MPIR_Process.comm_world->vcrt );
     comm->vcrt = MPIR_Process.comm_world->vcrt;
     comm->vcr  = MPIR_Process.comm_world->vcr;
     
-    mpi_errno = MPIR_Comm_commit(comm);
+    mpi_errno = MPIR_Comm_commit(comm); /* FG: TODO IMPORTANT */
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 #endif
-    
+
+
+#if defined(FINEGRAIN_MPI) /* HK: Adding the predefined context-ids of
+                              communicators such as MPI_COMM_WORLD (context-id=0),
+                              MPI_COMM_SELF (context-id=4), MPIR_ICOMM_WORLD (context-id=8)
+                              to cidLookup_hshtbl
+                           */
+    if(FGP_WITHIN_INIT == FGP_init_state)
+    {
+        cidLookupHashItemptr stored = NULL;
+        comm = MPIR_Process.comm_world;
+        CidLookupHashInsert(cidLookup_hshtbl, comm->context_id, world_co_shared_vars, &stored);
+        assert(stored);
+        stored = NULL;
+        comm = MPIR_Process.comm_self;
+        CidLookupHashInsert(cidLookup_hshtbl, comm->context_id, world_co_shared_vars, &stored);
+        assert(stored);
+        stored = NULL;
+        comm = MPIR_Process.icomm_world;
+        CidLookupHashInsert(cidLookup_hshtbl, comm->context_id, world_co_shared_vars, &stored);
+        assert(stored);
+
+        /* HK: Creating an array of pre-posted receive requests */
+        int numfgps;
+        PMI_Get_numFGPs(&numfgps);
+        FG_recvq_posted_head = (MPID_Request **)MPIU_Calloc(numfgps, sizeof(MPID_Request *));
+        FG_recvq_posted_tail = (MPID_Request **)MPIU_Calloc(numfgps, sizeof(MPID_Request *));
+        FG_recvq_unexpected_head = (MPID_Request **)MPIU_Calloc(numfgps, sizeof(MPID_Request *));
+        FG_recvq_unexpected_tail = (MPID_Request **)MPIU_Calloc(numfgps, sizeof(MPID_Request *));
+
+    }
+#endif
+
     /*
      * If this process group was spawned by a MPI application, then
      * form the MPI_COMM_PARENT inter-communicator.
@@ -323,10 +494,16 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 	    MPICH_THREAD_LEVEL : requested;
     }
 
+#if defined(FINEGRAIN_MPI)
+  if(FGP_WITHIN_INIT == FGP_init_state) {
+#endif
     mpi_errno = MPIR_Comm_register_hint("eager_rendezvous_threshold",
                                         set_eager_threshold,
                                         NULL);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+#if defined(FINEGRAIN_MPI)
+  }
+#endif
 
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_INIT);
@@ -394,6 +571,10 @@ static int init_pg( int *argc, char ***argv,
 	 * and get rank and size information about our process group
 	 */
 
+#if defined(FINEGRAIN_MPI)
+     if(FGP_WITHIN_INIT == FGP_init_state)
+     { /* FG: TODO IMPORTANT PMI2 */
+#endif
 #ifdef USE_PMI2_API
         mpi_errno = PMI2_Init(has_parent, &pg_size, &pg_rank, &appnum);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
@@ -403,6 +584,13 @@ static int init_pg( int *argc, char ***argv,
 	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**pmi_init",
 			     "**pmi_init %d", pmi_errno);
 	}
+#if defined(FINEGRAIN_MPI)
+     }
+
+     MPIU_Assert(curr_fgrank >= 0);
+     my_fgrank = curr_fgrank;
+     curr_fgrank++;
+#endif
 
 	pmi_errno = PMI_Get_rank(&pg_rank);
 	if (pmi_errno != PMI_SUCCESS) {
@@ -416,11 +604,23 @@ static int init_pg( int *argc, char ***argv,
 			     "**pmi_get_size %d", pmi_errno);
 	}
 	
+#if defined (FINEGRAIN_MPI)
+     if(FGP_WITHIN_INIT == FGP_init_state)
+     {
+#endif
 	pmi_errno = PMI_Get_appnum(&appnum);
 	if (pmi_errno != PMI_SUCCESS) {
 	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**pmi_get_appnum",
 				 "**pmi_get_appnum %d", pmi_errno);
 	}
+#if defined (FINEGRAIN_MPI)
+        All_FGP_appnum = appnum;
+     }
+     else {
+         appnum = All_FGP_appnum;
+     }
+#endif
+
 #endif
 	/* Note that if pmi is not availble, the value of MPI_APPNUM is 
 	   not set */
@@ -428,8 +628,11 @@ static int init_pg( int *argc, char ***argv,
 	    MPIR_Process.attrs.appnum = appnum;
 	}
 
+#if defined(FINEGRAIN_MPI)
+    if(FGP_WITHIN_INIT == FGP_init_state)
+     { /* FG: TODO IMPORTANT PMI2 */
+#endif
 #ifdef USE_PMI2_API
-        
         /* This memory will be freed by the PG_Destroy if there is an error */
 	pg_id = MPIU_Malloc(MAX_JOBID_LEN);
 	if (pg_id == NULL) {
@@ -439,7 +642,7 @@ static int init_pg( int *argc, char ***argv,
 
         mpi_errno = PMI2_Job_GetId(pg_id, MAX_JOBID_LEN);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-        
+
 
 #else
 	/* Now, initialize the process group information with PMI calls */
@@ -469,16 +672,40 @@ static int init_pg( int *argc, char ***argv,
 				 "**pmi_get_id %d", pmi_errno);
 	}
 #endif
+#if defined (FINEGRAIN_MPI)
+     }
+#endif
     }
     else {
+#if defined(FINEGRAIN_MPI)
+    if(FGP_WITHIN_INIT == FGP_init_state)
+     {
+#endif
 	/* Create a default pg id */
 	pg_id = MPIU_Malloc(2);
 	if (pg_id == NULL) {
 	    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**nomem");
 	}
 	MPIU_Strncpy( pg_id, "0", 2 );
+#if defined (FINEGRAIN_MPI)
+     }
+#endif
     }
 
+
+#if defined (FINEGRAIN_MPI)
+      if(FGP_WITHIN_INIT == FGP_init_state)
+      {
+          All_FGP_pg_id = pg_id;
+      } else {
+          pg_id = All_FGP_pg_id;
+      }
+#endif
+
+#if defined (FINEGRAIN_MPI)
+   if(FGP_WITHIN_INIT == FGP_init_state)
+   {
+#endif
     /*
      * Initialize the process group tracking subsystem
      */
@@ -503,6 +730,13 @@ static int init_pg( int *argc, char ***argv,
         mpi_errno = MPIDI_PG_InitConnKVS( pg );
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
+#if defined (FINEGRAIN_MPI)
+    All_FGP_pg = pg;
+   }
+   else {
+       pg = All_FGP_pg;
+   }
+#endif
 
     /* FIXME: Who is this for and where does it belong? */
 #ifdef USE_MPIDI_DBG_PRINT_VC

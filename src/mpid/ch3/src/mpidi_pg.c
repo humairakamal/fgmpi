@@ -832,8 +832,8 @@ int MPIDI_PG_InitConnKVS( MPIDI_PG_t *pg )
     if (pg->connData == NULL) {
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**nomem");
     }
-    
-    mpi_errno = PMI2_Job_GetId(pg->connData, MAX_JOBID_LEN);
+    /* FG: TODO */
+    mpi_errno = PMI2_Job_GetId(pg->connData, MAX_JOBID_LEN); 
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 #else
     int pmi_errno, kvs_name_sz;

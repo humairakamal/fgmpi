@@ -31,7 +31,9 @@ int MPIDI_CH3I_comm_create(MPID_Comm *comm, void *param)
 #ifndef ENABLED_SHM_COLLECTIVES
     goto fn_exit;
 #endif
-    
+#if defined(FINEGRAIN_MPI) /* FG: TODO This is temporary */
+    goto fn_exit;
+#endif
     /* set up intranode barrier iff this is an intranode communicator */
     if (comm->hierarchy_kind == MPID_HIERARCHY_NODE) {
         MPID_Collops *cf, **cf_p;
