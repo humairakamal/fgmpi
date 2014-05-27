@@ -20,6 +20,7 @@
  * \brief ???
  */
 #include "mpidi_onesided.h"
+#include "mpidi_util.h"
 
 
 void
@@ -37,9 +38,6 @@ MPIDI_WinAccumCB(pami_context_t    context,
   MPID_assert(msginfo_size == sizeof(MPIDI_Win_MsgInfo));
   MPID_assert(_msginfo != NULL);
   const MPIDI_Win_MsgInfo * msginfo = (const MPIDI_Win_MsgInfo*)_msginfo;
-  const MPIDI_Win_request * req = (const MPIDI_Win_request*)(msginfo->req);
-  char *tmpbuf;
-  int mpi_errno, rc;
 
   int null=0;
   pami_type_t         pami_type;
@@ -110,14 +108,8 @@ MPIDI_Accumulate(pami_context_t   context,
 	will not change till that RMA has completed. In the meanwhile
 	the rest of the RMAs will have memory leaks */
       if (req->target.dt.num_contig - req->state.index == 1) {
-          map=NULL;
-          if (req->target.dt.map != &req->target.dt.__map) {
-              map=(void *) req->target.dt.map;
-          }
           rc = PAMI_Send(context, &params);
           MPID_assert(rc == PAMI_SUCCESS);
-          if (map)
-              MPIU_Free(map);
           return PAMI_SUCCESS;
       } else {
           rc = PAMI_Send(context, &params);
@@ -127,7 +119,6 @@ MPIDI_Accumulate(pami_context_t   context,
       }
   }
 
-  MPIDI_Win_datatype_unmap(&req->target.dt);
 
   return PAMI_SUCCESS;
 }
@@ -272,7 +263,6 @@ MPID_Accumulate(const void   *origin_addr,
       req->buffer_free = 1;
       req->buffer      = MPIU_Malloc(req->origin.dt.size);
       MPID_assert(req->buffer != NULL);
-      MPID_Datatype_add_ref(req->origin.dt.pointer);
       int mpi_errno = 0;
       mpi_errno = MPIR_Localcopy(origin_addr,
                                  origin_count,

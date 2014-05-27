@@ -20,14 +20,15 @@
  * \brief ???
  */
 #include "mpidi_onesided.h"
+#include "mpidi_util.h"
 
 
 static inline int
-MPIDI_Get_use_pami_rget(pami_context_t context, MPIDI_Win_request * req, int *freed)
+MPIDI_Get_use_pami_rget(pami_context_t context, MPIDI_Win_request * req)
 __attribute__((__always_inline__));
 #ifdef RDMA_FAILOVER
 static inline int
-MPIDI_Get_use_pami_get(pami_context_t context, MPIDI_Win_request * req, int *freed)
+MPIDI_Get_use_pami_get(pami_context_t context, MPIDI_Win_request * req)
 __attribute__((__always_inline__));
 #endif
 
@@ -37,17 +38,16 @@ MPIDI_Get(pami_context_t   context,
 {
   MPIDI_Win_request *req = (MPIDI_Win_request*)_req;
   pami_result_t rc;
-  int  freed=0;
 
 #ifdef USE_PAMI_RDMA
-  rc = MPIDI_Get_use_pami_rget(context,req,&freed);
+  rc = MPIDI_Get_use_pami_rget(context,req);
 #else
   if( (req->origin.memregion_used) &&
       (req->win->mpid.info[req->target.rank].memregion_used) )
     {
-      rc = MPIDI_Get_use_pami_rget(context,req,&freed);
+      rc = MPIDI_Get_use_pami_rget(context,req);
     } else {
-      rc = MPIDI_Get_use_pami_get(context,req,&freed);
+      rc = MPIDI_Get_use_pami_get(context,req);
     }
 #endif
   if(rc == PAMI_EAGAIN)
@@ -58,10 +58,9 @@ MPIDI_Get(pami_context_t   context,
 
 
 static inline int
-MPIDI_Get_use_pami_rget(pami_context_t context, MPIDI_Win_request * req, int *freed)
+MPIDI_Get_use_pami_rget(pami_context_t context, MPIDI_Win_request * req)
 {
   pami_result_t rc;
-  void  *map=NULL;
   pami_rget_simple_t  params;
 
   params=zero_rget_parms;
@@ -101,15 +100,8 @@ MPIDI_Get_use_pami_rget(pami_context_t context, MPIDI_Win_request * req, int *fr
 	will not change till that RMA has completed. In the meanwhile
 	the rest of the RMAs will have memory leaks */
     if (req->target.dt.num_contig - req->state.index == 1) {
-          map=NULL;
-          if (req->target.dt.map != &req->target.dt.__map) {
-              map=(void *) req->target.dt.map;
-          }
           rc = PAMI_Rget(context, &params);
           MPID_assert(rc == PAMI_SUCCESS);
-          if (map)
-              MPIU_Free(map);
-          *freed=1;
           return PAMI_SUCCESS;
       } else {
           rc = PAMI_Rget(context, &params);
@@ -124,10 +116,9 @@ MPIDI_Get_use_pami_rget(pami_context_t context, MPIDI_Win_request * req, int *fr
 
 #ifdef RDMA_FAILOVER
 static inline int
-MPIDI_Get_use_pami_get(pami_context_t context, MPIDI_Win_request * req, int *freed)
+MPIDI_Get_use_pami_get(pami_context_t context, MPIDI_Win_request * req)
 {
   pami_result_t rc;
-  void  *map=NULL;
   pami_get_simple_t params;
 
   params=zero_get_parms;

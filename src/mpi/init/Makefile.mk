@@ -16,7 +16,7 @@ mpi_sources +=                 \
     src/mpi/init/querythread.c \
     src/mpi/init/fginit.c
 
-lib_lib@MPILIBNAME@_la_SOURCES += \
+mpi_core_sources += \
     src/mpi/init/initinfo.c       \
     src/mpi/init/async.c
 

@@ -147,7 +147,6 @@
 	"Is_thread_main",
 );
 @routinesmpi2comm = (
-	"Reduce_scatter_block",
 	"Gatherv",
 	"Disconnect",
 	"Allreduce",
@@ -163,7 +162,6 @@
 	"Alltoallv",
 	"Reduce_scatter",
 	"Scatter",
-	"Call_errhandler",
 	"Gather",
 	"Free_keyval",
 	"Reduce",
@@ -172,6 +170,10 @@
 	"Scatterv",
 	"Get_name",
 	"Allgatherv",
+);
+@routinespostcomm = (
+	"Call_errhandler",
+	"Reduce_scatter_block",
 );
 @routinesmpi2distgraph = (
 	"Get_dist_neighbors",
@@ -226,7 +228,6 @@
 	"Write_shared",
 	"Iwrite_at",
 	"Get_view",
-	"Call_errhandler",
 	"Write_all_begin",
 	"Read_all_end",
 	"Get_byte_offset",
@@ -258,6 +259,9 @@
 	"Write_ordered_end",
 	"Write",
 	"Get_atomicity",
+);
+@routinespostfile = (
+	"Call_errhandler",
 );
 @routinesmpi2greq = (
 	"Complete",
@@ -308,7 +312,6 @@
 	"Set_name",
 	"Accumulate",
 	"Create",
-	"Call_errhandler",
 	"Free_keyval",
 	"Post",
 	"Unlock",
@@ -316,4 +319,7 @@
 	"Lock",
 	"Get_errhandler",
 	"Get_name",
+);
+@routinespostwin = (
+	"Call_errhandler",
 );

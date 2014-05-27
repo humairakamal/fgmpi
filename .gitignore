@@ -144,8 +144,8 @@ Makefile.am-stamp
 
 # random stuff
 /maint/gcovmerge
-/src/binding/f77/buildiface-stamp
-/src/binding/f90/buildiface-stamp
+/src/binding/fortran/mpif_h/buildiface-stamp
+/src/binding/fortran/use_mpi/buildiface-stamp
 /src/binding/cxx/buildiface-stamp
 
 # script-generated f90 test files
@@ -159,9 +159,8 @@ Makefile.am-stamp
 # random additions
 /README.envvar
 /maint/extracterrmsgs
-/src/binding/f90/mpi_base.f90.in
-/src/binding/f90/mpi_constants.f90.in
-/src/env/mpixxx_opts.conf
+/src/binding/fortran/use_mpi/mpi_base.f90.in
+/src/binding/fortran/use_mpi/mpi_constants.f90.in
 /src/mpi/romio/include/mpio.h
 /src/mpi/romio/include/mpiof.h
 /src/mpid/ch3/channels/nemesis/include/mpid_nem_net_module_defs.h
@@ -175,22 +174,18 @@ Makefile.am-stamp
 
 # random additions 2
 /mpich-doxygen
-/src/env/mpicc.sh
-/src/env/mpichversion
-/src/env/mpicxx.sh
-/src/env/mpif77.sh
-/src/env/mpif90.sh
 /src/include/glue_romio.h
 /src/include/mpichinfo.h
 /src/packaging/envmods/mpich.module
 /src/packaging/pkgconfig/mpich.pc
+/src/glue/romio/all_romio_symbols.c
 
 # stamp "witness" files from the new build system
-/src/binding/f90/buildiface.stamp
-/src/binding/f90/mpi.mod-stamp
-/src/binding/f90/mpi_base.mod-stamp
-/src/binding/f90/mpi_constants.mod-stamp
-/src/binding/f90/mpi_sizeofs.mod-stamp
+/src/binding/fortran/use_mpi/buildiface.stamp
+/src/binding/fortran/use_mpi/mpi.mod-stamp
+/src/binding/fortran/use_mpi/mpi_base.mod-stamp
+/src/binding/fortran/use_mpi/mpi_constants.mod-stamp
+/src/binding/fortran/use_mpi/mpi_sizeofs.mod-stamp
 
 /src/mpe2/src/callstack/bin/bt2line
 
@@ -216,13 +211,10 @@ Makefile.am-stamp
 /src/mpi/romio/libtool
 /src/pm/mpd/aclocal.m4
 /src/pm/gforker/mpiexec.gforker
-/src/env/cc_shlib.conf
-/src/env/cxx_shlib.conf
-/src/env/f77_shlib.conf
-/src/env/fc_shlib.conf
 /maint/Version
-/src/binding/f77/Makefile.mk
-/src/binding/f90/Makefile.mk
+/src/binding/fortran/mpif_h/Makefile.mk
+/src/binding/fortran/use_mpi/Makefile.mk
+/src/binding/fortran/use_mpi_f08/Makefile.mk
 
 # MPICH2 parameter handling
 /src/include/mpich_cvars.h
@@ -385,6 +377,9 @@ Makefile.am-stamp
 /maint/extractstates
 /maint/extractfixme
 /maint/structalign
+/maint/createhtmlindex
+/maint/extractcvars
+/maint/cvardirs
 
 # /src/
 
@@ -402,54 +397,72 @@ Makefile.am-stamp
 /src/binding/cxx/cov2html
 /src/binding/cxx/*.h
 
-# /src/binding/f77/
-/src/binding/f77/include
-/src/binding/f77/Makefile.sm
-/src/binding/f77/mpif_bottom.h
-/src/binding/f77/setbotf.f
-/src/binding/f77/setbot.c
-/src/binding/f77/mpif77.conf
-/src/binding/f77/mpif77
-/src/binding/f77/*.c
-/src/binding/f77/fproto.h
-/src/binding/f77/mpif.h
-/src/binding/f77/mpif.h.in
-/src/binding/f77/fprotos.h
+# /src/binding/fortran/mpif_h/
+/src/binding/fortran/mpif_h/include
+/src/binding/fortran/mpif_h/Makefile.sm
+/src/binding/fortran/mpif_h/mpif_bottom.h
+/src/binding/fortran/mpif_h/setbotf.f
+/src/binding/fortran/mpif_h/setbot.c
+/src/binding/fortran/mpif_h/mpif77.conf
+/src/binding/fortran/mpif_h/mpif77
+/src/binding/fortran/mpif_h/*.c
+/src/binding/fortran/mpif_h/fproto.h
+/src/binding/fortran/mpif_h/mpif.h
+/src/binding/fortran/mpif_h/mpif.h.in
+/src/binding/fortran/mpif_h/fprotos.h
 
-# /src/binding/f90/
-/src/binding/f90/mpi_base.f90.orig
-/src/binding/f90/mpi_base.f90.new
-/src/binding/f90/mpif.h
-/src/binding/f90/Makefile.sm
-/src/binding/f90/mpi.f90
-/src/binding/f90/mpi_t1.f90
-/src/binding/f90/mpimod.pcl
-/src/binding/f90/mpi_sizeofs.f90
-/src/binding/f90/mpi_base.f90
-/src/binding/f90/mpif90model.h
-/src/binding/f90/mpif90type.h
-/src/binding/f90/mpi_constants.f90
-/src/binding/f90/typef90intf.c
-/src/binding/f90/typef90realf.c
-/src/binding/f90/typef90cmplxf.c
-/src/binding/f90/mpifnoext.h
+# /src/binding/fortran/use_mpi/
+/src/binding/fortran/use_mpi/mpi_base.f90.orig
+/src/binding/fortran/use_mpi/mpi_base.f90.new
+/src/binding/fortran/use_mpi/mpif.h
+/src/binding/fortran/use_mpi/Makefile.sm
+/src/binding/fortran/use_mpi/mpi.f90
+/src/binding/fortran/use_mpi/mpi_t1.f90
+/src/binding/fortran/use_mpi/mpimod.pcl
+/src/binding/fortran/use_mpi/mpi_sizeofs.f90
+/src/binding/fortran/use_mpi/mpi_base.f90
+/src/binding/fortran/use_mpi/mpif90model.h
+/src/binding/fortran/use_mpi/mpif90type.h
+/src/binding/fortran/use_mpi/mpi_constants.f90
+/src/binding/fortran/use_mpi/typef90intf.c
+/src/binding/fortran/use_mpi/typef90realf.c
+/src/binding/fortran/use_mpi/typef90cmplxf.c
+/src/binding/fortran/use_mpi/mpifnoext.h
+
+# /src/binding/fortran/use_mpi_f08
+/src/binding/fortran/use_mpi_f08/pmpi_f08.F90
+
+/src/binding/fortran/use_mpi_f08/wrappers_f/profiling/*.F90
+
+/src/binding/fortran/use_mpi_f08/wrappers_c/cdesc.c
+/src/binding/fortran/use_mpi_f08/wrappers_c/cdesc.h
+/src/binding/fortran/use_mpi_f08/wrappers_c/Makefile.mk
+/src/binding/fortran/use_mpi_f08/wrappers_c/*_cdesc.c
 
 # /src/env/
 /src/env/mpicc
+/src/env/mpicc.sh
 /src/env/mpicc.bash
 /src/env/mpicc.conf
 /src/env/mpicxx
+/src/env/mpicxx.sh
 /src/env/mpicxx.bash
 /src/env/mpicxx.conf
 /src/env/mpif77
+/src/env/mpif77.sh
 /src/env/mpif77.bash
 /src/env/mpif77.conf
-/src/env/mpif90
-/src/env/mpif90.bash
-/src/env/mpif90.conf
-/src/env/mpich2version
+/src/env/mpifort
+/src/env/mpifort.sh
+/src/env/mpifort.bash
+/src/env/mpichversion
 /src/env/parkill
 /src/env/mpivars
+/src/env/mpixxx_opts.conf
+/src/env/cc_shlib.conf
+/src/env/cxx_shlib.conf
+/src/env/f77_shlib.conf
+/src/env/fc_shlib.conf
 
 # /src/include/
 /src/include/mpi.h

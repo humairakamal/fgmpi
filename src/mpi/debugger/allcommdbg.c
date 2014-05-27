@@ -1,5 +1,13 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
+/*
+ *
+ *  (C) 2012 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
 #include "mpi.h"
 #include <stdio.h>
+
+/* style: allow:printf:6 sig:0 */
 
 /* This definition is almost the same as the MPIR_Comm_list in dbginit, 
    except a void * is used instead of MPID_Comm * for head; for the use
