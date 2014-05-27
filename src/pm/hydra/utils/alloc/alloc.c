@@ -137,6 +137,9 @@ void HYDU_init_pg(struct HYD_pg *pg, int pgid)
     pg->pgid = pgid;
     pg->proxy_list = NULL;
     pg->pg_process_count = 0;
+#if defined(FINEGRAIN_MPI)
+    pg->pg_totprocess_count = 0;
+#endif
     pg->barrier_count = 0;
     pg->spawner_pg = NULL;
     pg->user_node_list = NULL;
@@ -259,6 +262,7 @@ HYD_status HYDU_alloc_exec(struct HYD_exec **exec)
     (*exec)->proc_count = -1;
 #if defined(FINEGRAIN_MPI)
     (*exec)->nfg = 1;
+    (*exec)->start_rank = -1;
 #endif
     (*exec)->env_prop = NULL;
     (*exec)->user_env = NULL;
@@ -300,7 +304,11 @@ void HYDU_free_exec_list(struct HYD_exec *exec_list)
     HYDU_FUNC_EXIT();
 }
 
+#if defined(FINEGRAIN_MPI)
+static HYD_status add_exec_to_proxy(struct HYD_exec *exec, struct HYD_proxy *proxy, int num_procs, int current_exec_start_rank)
+#else
 static HYD_status add_exec_to_proxy(struct HYD_exec *exec, struct HYD_proxy *proxy, int num_procs)
+#endif
 {
     int i;
     struct HYD_exec *texec;
@@ -318,6 +326,7 @@ static HYD_status add_exec_to_proxy(struct HYD_exec *exec, struct HYD_proxy *pro
         proxy->exec_list->proc_count = num_procs;
 #if defined(FINEGRAIN_MPI)
         proxy->exec_list->nfg = exec->nfg;
+        proxy->exec_list->start_rank = current_exec_start_rank;
 #endif
         proxy->exec_list->env_prop = exec->env_prop ? HYDU_strdup(exec->env_prop) : NULL;
         proxy->exec_list->user_env = HYDU_env_list_dup(exec->user_env);
@@ -338,6 +347,7 @@ static HYD_status add_exec_to_proxy(struct HYD_exec *exec, struct HYD_proxy *pro
         texec->proc_count = num_procs;
 #if defined(FINEGRAIN_MPI)
         texec->nfg = exec->nfg;
+        texec->start_rank = current_exec_start_rank;
 #endif
         texec->env_prop = exec->env_prop ? HYDU_strdup(exec->env_prop) : NULL;
         texec->user_env = HYDU_env_list_dup(exec->user_env);
@@ -361,6 +371,9 @@ HYD_status HYDU_create_proxy_list(struct HYD_exec *exec_list, struct HYD_node *n
     struct HYD_node *node;
     int max_oversubscribe, c, num_procs, proxy_rem_cores, exec_rem_procs, allocated_procs;
     int filler_round, num_nodes, i, dummy_fillers;
+#if defined(FINEGRAIN_MPI)
+    int current_exec_start_rank = 0;
+#endif
     HYD_status status = HYD_SUCCESS;
 
     HYDU_FUNC_ENTER();
@@ -419,8 +432,14 @@ HYD_status HYDU_create_proxy_list(struct HYD_exec *exec_list, struct HYD_node *n
         /* Special case: there is only one proxy, so all executables
          * directly get appended to this proxy */
         for (exec = exec_list; exec; exec = exec->next) {
+#if defined(FINEGRAIN_MPI)
+            status = add_exec_to_proxy(exec, pg->proxy_list, exec->proc_count, current_exec_start_rank);
+            HYDU_ERR_POP(status, "unable to add executable to proxy\n");
+            current_exec_start_rank += num_procs * exec->nfg;
+#else
             status = add_exec_to_proxy(exec, pg->proxy_list, exec->proc_count);
             HYDU_ERR_POP(status, "unable to add executable to proxy\n");
+#endif
         }
     }
     else {
@@ -463,8 +482,14 @@ HYD_status HYDU_create_proxy_list(struct HYD_exec *exec_list, struct HYD_node *n
             exec_rem_procs -= num_procs;
             proxy_rem_cores -= num_procs;
 
+#if defined(FINEGRAIN_MPI)
+            status = add_exec_to_proxy(exec, proxy, num_procs, current_exec_start_rank);
+            HYDU_ERR_POP(status, "unable to add executable to proxy\n");
+            current_exec_start_rank += num_procs * exec->nfg;
+#else
             status = add_exec_to_proxy(exec, proxy, num_procs);
             HYDU_ERR_POP(status, "unable to add executable to proxy\n");
+#endif
         }
     }
 

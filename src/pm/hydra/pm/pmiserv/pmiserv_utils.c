@@ -336,6 +336,11 @@ HYD_status HYD_pmcd_pmi_fill_in_exec_launch_info(struct HYD_pg *pg)
         HYD_STRING_STASH(exec_stash, HYDU_strdup("--global-process-count"), status);
         HYD_STRING_STASH(exec_stash, HYDU_int_to_str(pg->pg_process_count), status);
 
+#if defined(FINEGRAIN_MPI)
+        HYD_STRING_STASH(exec_stash, HYDU_strdup("--global-totprocess-count"), status);
+        HYD_STRING_STASH(exec_stash, HYDU_int_to_str(pg->pg_totprocess_count), status);
+#endif
+
         HYD_STRING_STASH(exec_stash, HYDU_strdup("--auto-cleanup"), status);
         HYD_STRING_STASH(exec_stash, HYDU_int_to_str(HYD_server_info.user_global.auto_cleanup),
                          status);
@@ -456,6 +461,8 @@ HYD_status HYD_pmcd_pmi_fill_in_exec_launch_info(struct HYD_pg *pg)
 #if defined(FINEGRAIN_MPI)
             HYD_STRING_STASH(exec_stash, HYDU_strdup("--exec-nfg"), status);
             HYD_STRING_STASH(exec_stash, HYDU_int_to_str(exec->nfg), status);
+            HYD_STRING_STASH(exec_stash, HYDU_strdup("--exec-start-rank"), status);
+            HYD_STRING_STASH(exec_stash, HYDU_int_to_str(exec->start_rank), status);
 #endif
 
             HYD_STRING_STASH(exec_stash, HYDU_strdup("--exec-local-env"), status);

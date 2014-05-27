@@ -82,6 +82,9 @@ static void help_help_fn(void)
     printf("\n");
     printf("  Other local options:\n");
     printf("    -n/-np {value}                   number of processes\n");
+#if defined(FINEGRAIN_MPI)
+    printf("    -nfg {value}                     number of co-located MPI processes inside an OS process\n");
+#endif
     printf("    {exec_name} {args}               executable name and arguments\n");
 
     printf("\n");

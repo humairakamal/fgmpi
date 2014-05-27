@@ -68,6 +68,13 @@ static int PMI_fd = -1;
 static int PMI_size = 1;
 static int PMI_rank = 0;
 
+#if defined(FINEGRAIN_MPI)
+static int PMI_fg_startrank = -1;
+static int PMI_numFGPs = -1;
+int PMI_totprocs = -1;
+int curr_fgrank = -1;
+#endif
+
 /* Set PMI_initialized to 1 for singleton init but no process manager
    to help.  Initialized to 2 for normal initialization.  Initialized
    to values higher than 2 when singleton_init by a process manager.
@@ -174,6 +181,32 @@ int PMI_Init( int *spawned )
 	else 
 	    PMI_debug = 0;
 
+#if defined(FINEGRAIN_MPI)
+
+        if ( ( p = getenv( "PMI_TOTPROCS" ) ) )
+            {
+                PMI_totprocs = atoi( p );
+            }
+	else
+	    PMI_totprocs = 1;
+
+        if ( ( p = getenv( "PMI_NUMFGP" ) ) )
+            {
+                PMI_numFGPs = atoi( p );
+            }
+	else
+	    PMI_numFGPs = 1;
+
+        if ( ( p = getenv( "PMI_FGSTARTRANK" ) ) )
+            {
+                PMI_fg_startrank = atoi( p );
+            }
+	else
+	    PMI_fg_startrank = 0;
+
+        curr_fgrank =  PMI_fg_startrank; /* HK: fgranks to be assigned to FGPs */
+
+#endif
 	/* Leave unchanged otherwise, which indicates that no value
 	   was set */
     }
@@ -245,6 +278,57 @@ int PMI_Get_rank( int *rank )
 	*rank = 0;
     return( 0 );
 }
+
+#if defined(FINEGRAIN_MPI)
+inline int MPIX_Get_collocated_startrank( int *rank )
+{
+    if ( PMI_initialized )
+	*rank = PMI_fg_startrank;
+    else
+	*rank = 0;
+    return( 0 );
+}
+
+void  mpix_get_collocated_startrank_ ( MPI_Fint *v1, MPI_Fint *ierr ){
+    *ierr = MPIX_Get_collocated_startrank ( v1 );
+}
+
+inline int PMI_Get_totprocs( int *size )
+{
+    if ( PMI_initialized )
+	*size = PMI_totprocs;
+    else
+	*size = 1;
+    return( 0 );
+}
+
+inline int MPIX_Get_collocated_size( int *size )
+{
+    if ( PMI_initialized )
+	*size = PMI_numFGPs;
+    else
+	*size = 1;
+    return( 0 );
+}
+
+void  mpix_get_collocated_size_ ( MPI_Fint *v1, MPI_Fint *ierr ){
+    *ierr = MPIX_Get_collocated_size ( v1 );
+}
+
+inline int MPIX_Get_n_size( int *size )
+{
+    if ( PMI_initialized )
+	*size = PMI_size;
+    else
+	*size = 1;
+    return( 0 );
+}
+
+void  mpix_get_n_size_ ( MPI_Fint *v1, MPI_Fint *ierr ){
+    *ierr = MPIX_Get_n_size ( v1 );
+}
+
+#endif
 
 /* 
  * Get_universe_size is one of the routines that needs to communicate

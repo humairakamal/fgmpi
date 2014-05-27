@@ -33,6 +33,9 @@ struct HYD_pmcd_pmip {
         } pmi_id_map;
 
         int global_process_count;
+#if defined(FINEGRAIN_MPI)
+        int global_totprocess_count;
+#endif
 
         /* PMI */
         char *pmi_fd;

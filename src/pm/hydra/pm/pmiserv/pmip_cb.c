@@ -472,7 +472,6 @@ static HYD_status launch_procs(void)
     int sent, closed, pmi_fds[2] = { HYD_FD_UNSET, HYD_FD_UNSET };
     char ftb_event_payload[HYDT_FTB_MAX_PAYLOAD_DATA];
 #if defined (FINEGRAIN_MPI)
-    int tot_procs = 0;
     int *nfg;
     int *fgstart_rank;
     int prev_nfg = 0;
@@ -482,15 +481,9 @@ static HYD_status launch_procs(void)
     HYDU_FUNC_ENTER();
 
     HYD_pmcd_pmip.local.proxy_process_count = 0;
-#if defined (FINEGRAIN_MPI)
-    for (exec = HYD_pmcd_pmip.exec_list; exec; exec = exec->next) {
-        HYD_pmcd_pmip.local.proxy_process_count += exec->proc_count;
-        tot_procs += (exec->nfg * exec->proc_count);
-    }
-#else
     for (exec = HYD_pmcd_pmip.exec_list; exec; exec = exec->next)
         HYD_pmcd_pmip.local.proxy_process_count += exec->proc_count;
-#endif
+
 
     HYDU_MALLOC(HYD_pmcd_pmip.downstream.out, int *,
                 HYD_pmcd_pmip.local.proxy_process_count * sizeof(int), status);
@@ -697,19 +690,19 @@ static HYD_status launch_procs(void)
 
 #if defined(FINEGRAIN_MPI)
                 /* PMI_TOTPROCS */
-                str = HYDU_int_to_str(tot_procs);
+                str = HYDU_int_to_str(HYD_pmcd_pmip.system_global.global_totprocess_count);
                 status = HYDU_append_env_to_list("PMI_TOTPROCS", str, &force_env);
                 HYDU_ERR_POP(status, "unable to add env to list\n");
                 HYDU_FREE(str);
 
                 /* PMI_NUMFGP */
-                str = HYDU_int_to_str(nfg[process_id]);
+                str = HYDU_int_to_str(exec->nfg);
                 status = HYDU_append_env_to_list("PMI_NUMFGP", str, &force_env);
                 HYDU_ERR_POP(status, "unable to add env to list\n");
                 HYDU_FREE(str);
 
                 /* PMI_FGSTARTRANK */
-                str = HYDU_int_to_str(fgstart_rank[process_id]);
+                str = HYDU_int_to_str(exec->start_rank + (i*exec->nfg));
                 status = HYDU_append_env_to_list("PMI_FGSTARTRANK", str, &force_env);
                 HYDU_ERR_POP(status, "unable to add env to list\n");
                 HYDU_FREE(str);

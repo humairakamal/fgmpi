@@ -300,6 +300,7 @@ struct HYD_exec {
 
 #if defined(FINEGRAIN_MPI)
     int nfg;
+    int start_rank;
 #endif
     int proc_count;
     struct HYD_env *user_env;
@@ -315,6 +316,9 @@ struct HYD_pg {
     int pgid;
     struct HYD_proxy *proxy_list;
     int pg_process_count;
+#if defined(FINEGRAIN_MPI)
+    int pg_totprocess_count;
+#endif
     int barrier_count;
 
     struct HYD_pg *spawner_pg;

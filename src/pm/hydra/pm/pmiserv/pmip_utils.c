@@ -443,6 +443,19 @@ static HYD_status global_process_count_fn(char *arg, char ***argv)
     return status;
 }
 
+#if defined(FINEGRAIN_MPI)
+static HYD_status global_totprocess_count_fn(char *arg, char ***argv)
+{
+    HYD_status status = HYD_SUCCESS;
+
+    status = HYDU_set_int(arg, &HYD_pmcd_pmip.system_global.global_totprocess_count, atoi(**argv));
+
+    (*argv)++;
+
+    return status;
+}
+#endif
+
 static HYD_status version_fn(char *arg, char ***argv)
 {
     HYD_status status = HYD_SUCCESS;
@@ -556,6 +569,20 @@ static HYD_status exec_nfg_fn(char *arg, char ***argv)
 
     return status;
 }
+
+static HYD_status exec_start_rank_fn(char *arg, char ***argv)
+{
+    struct HYD_exec *exec = NULL;
+    HYD_status status = HYD_SUCCESS;
+
+    for (exec = HYD_pmcd_pmip.exec_list; exec->next; exec = exec->next);
+    status = HYDU_set_int(arg, &exec->start_rank, atoi(**argv));
+
+    (*argv)++;
+
+    return status;
+}
+
 #endif
 
 static HYD_status exec_local_env_fn(char *arg, char ***argv)
@@ -680,6 +707,9 @@ struct HYD_arg_match_table HYD_pmcd_pmip_match_table[] = {
     {"global-core-map", global_core_map_fn, NULL},
     {"pmi-id-map", pmi_id_map_fn, NULL},
     {"global-process-count", global_process_count_fn, NULL},
+#if defined(FINEGRAIN_MPI)
+    {"global-totprocess-count", global_totprocess_count_fn, NULL},
+#endif
     {"version", version_fn, NULL},
     {"iface-ip-env-name", iface_ip_env_name_fn, NULL},
     {"hostname", hostname_fn, NULL},
@@ -689,6 +719,7 @@ struct HYD_arg_match_table HYD_pmcd_pmip_match_table[] = {
     {"exec-proc-count", exec_proc_count_fn, NULL},
 #if defined(FINEGRAIN_MPI)
     {"exec-nfg", exec_nfg_fn, NULL},
+    {"exec-start-rank", exec_start_rank_fn, NULL},
 #endif
     {"exec-local-env", exec_local_env_fn, NULL},
     {"exec-env-prop", exec_env_prop_fn, NULL},
