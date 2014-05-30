@@ -1199,6 +1199,17 @@ typedef struct MPID_Comm {
     MPIR_Context_id_t recvcontext_id; /* Send context id.  See notes */
     int           remote_size;   /* Value of MPI_Comm_(remote)_size */
     int           rank;          /* Value of MPI_Comm_rank */
+#if defined(FINEGRAIN_MPI)
+    int           p_rank;        /* This is now value of HWP rank _p_rank_*/
+    int           totprocs;      /* Total number of processes including all the FGPs. Value of MPI_Comm_size */
+    struct Coproclet_shared_vars * co_shared_vars; /* This encapsulates pointers to rtw_map and co_barrier_vars among others */
+    MPI_Comm *coFGP_comm;        /* FG: TODO nested communicator of all those FGPs that have the same HWP pid as the calling FGP */
+    MPI_Comm *pid_comm;          /* FG: TODO nested communicator of a respresentative set of FGPs: one each from every unique pid*/
+    int isRepresentative;        /* This is true if the calling FGP is included in the representative set of FGPs for pid_comm */
+    int numofcoFGPs;             /* FG: TODO */
+    int numPidsInComm;           /* FG: TODO */
+    MPID_nem_barrier_vars_t *barrier_vars; /*FG: TODO: This can be eventually removed, now that hierarchical shared memory barrier is in place. Currently in use for nested comm */
+#endif
     MPID_VCRT     vcrt;          /* virtual connecton reference table */
     MPID_VCR *    vcr;           /* alias to the array of virtual connections
 				    in vcrt */
@@ -2259,6 +2270,9 @@ struct StateWrapper {
     unsigned int *LBI_maskFG;
     int initialize_LBI_maskFG;
 };
+extern MPID_VCRT     vcrt_world;          /* virtual connecton reference table for MPI_COMM_WORLD */
+extern MPID_VCR *    vcr_world;           /* alias to the array of virtual connections in vcrt_world */
+extern MPIDI_CH3I_comm_t *world_ch3i_ptr; /* FG: TODO */
 #else
 extern MPICH_PerProcess_t MPIR_Process;
 #endif

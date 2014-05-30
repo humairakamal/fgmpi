@@ -63,7 +63,11 @@
 #include "mpiiov.h"
 
 #define MPIR_CONTEXT_ID_T_DATATYPE MPI_UINT16_T
+#if defined(FINEGRAIN_MPI)
+typedef uint32_t MPIR_Context_id_t;
+#else
 typedef uint16_t MPIR_Context_id_t;
+#endif
 #define MPIR_INVALID_CONTEXT_ID ((MPIR_Context_id_t)0xffff)
 
 typedef MPIU_SIZE_T MPIU_Size_t;

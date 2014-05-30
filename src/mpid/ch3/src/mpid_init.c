@@ -294,9 +294,9 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
     else {
-        MPIR_Copy_ch3i_comm_ch(comm, world_ch3i_ptr); /* FG: TODO IMPORTANT. defintion changed! */
+        //MPIR_Copy_ch3i_comm_ch(comm, world_ch3i_ptr); /* FG: TODO IMPORTANT. defintion changed! */
     }
-    world_co_shared_vars->ch3i_ptr = world_ch3i_ptr; /* FG: TODO IMPORTANT */
+    //world_co_shared_vars->ch3i_ptr = world_ch3i_ptr; /* FG: TODO IMPORTANT */
 #else
     mpi_errno = MPID_VCRT_Create(comm->remote_size, &comm->vcrt);
     if (mpi_errno != MPI_SUCCESS)
