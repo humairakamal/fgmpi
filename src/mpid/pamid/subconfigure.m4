@@ -53,8 +53,10 @@ dnl Set a value for the maximum processor name.
 MPID_MAX_PROCESSOR_NAME=128
 PM_REQUIRES_PMI=pmi2
 if test "${pamid_platform}" = "PE" ; then
+  with_shared_memory=sysv
         PM_REQUIRES_PMI=pmi2/poe
 elif test "${pamid_platform}" = "BGQ" ; then
+  with_shared_memory=mmap
   MPID_DEFAULT_CROSS_FILE=${master_top_srcdir}/src/mpid/pamid/cross/bgq8
   MPID_DEFAULT_PM=no
 fi
