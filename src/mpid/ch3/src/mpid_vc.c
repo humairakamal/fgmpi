@@ -850,8 +850,8 @@ static int publish_fg(MPIDI_PG_t *pg, int our_pg_rank)
     MPIU_CHKLMEM_DECL(3);
     MPIU_CHKPMEM_DECL(1); /* declaration for FGP_tuple_t *pid_to_fgps */
 
-    PMI_Get_fg_startrank(&self_fg_startrank);
-    PMI_Get_numFGPs(&self_numfgps);
+    MPIX_Get_collocated_startrank(&self_fg_startrank);
+    MPIX_Get_collocated_size(&self_numfgps);
 
     /* Allocate space for pmi key */
     pmi_errno = PMI_KVS_Get_key_length_max(&key_max_sz);

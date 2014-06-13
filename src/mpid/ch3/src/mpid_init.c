@@ -422,7 +422,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 
         /* HK: Creating an array of pre-posted receive requests */
         int numfgps;
-        PMI_Get_numFGPs(&numfgps);
+        MPIX_Get_collocated_size(&numfgps);
         FG_recvq_posted_head = (MPID_Request **)MPIU_Calloc(numfgps, sizeof(MPID_Request *));
         FG_recvq_posted_tail = (MPID_Request **)MPIU_Calloc(numfgps, sizeof(MPID_Request *));
         FG_recvq_unexpected_head = (MPID_Request **)MPIU_Calloc(numfgps, sizeof(MPID_Request *));

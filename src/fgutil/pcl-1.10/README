@@ -1,0 +1,4 @@
+./configure --prefix=$HOME/installs/extlibs-install
+make
+make check
+make install

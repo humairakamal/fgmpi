@@ -438,6 +438,7 @@ fn_fail:
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Comm_commit(MPID_Comm *comm)
 {
+    return (MPI_SUCCESS); /* FG: TODO IMPORTANT This is temporary */
     int mpi_errno = MPI_SUCCESS;
     int i;
     int num_local = -1, num_external = -1;

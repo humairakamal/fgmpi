@@ -1,0 +1,598 @@
+                      HOW TO USE hashlib
+                      ==================
+                      
+     <http://cbfalconer.home.att.net/download/hashlib.zip>
+
+To use this easily you should also have a copy of hashlib.h
+printed out, or easily available in another editor window.  It
+describes the complete interface to hashlib, and this is just an
+explanation of the functions, why they exist, etc.  hashlib.h
+is extensively commented.
+
+What is it for?
+==============
+
+You may be wondering "for what is hashlib useful".  The answer
+is that it is a storage facility.  You can hand it things, and
+it will tuck them away, and make it easy for you to find them
+later.
+
+A major point is that the time it takes to store, find, delete,
+or retrieve an item is almost constant no matter how big the
+table gets.  Also, you don't have to worry about the table size,
+because it will automatically adapt itself.  It may hold 5 items
+or millions.  The limit is your memory.
+
+What does it do?
+===============
+
+For a list of the things it will do, you should have the file
+"hashlib.h" handy.  This details all the things you can do, and
+how to customize the system to your data.  The interface 
+functions are:
+
+  hshinit, hshkill                Make or destroy a hashtable
+  hshfind, hshinsert, hshdelete   Insert, find, take out items
+  hshwalk                         For advanced usage, later
+  hshstatus                       Such things as how many stored
+
+Customizing to your data:
+========================
+
+In order to use a table, the first thing you have to do is to
+create it with hshinit.  At that time you tell hashlib how to
+process your data.  I will return to this later.
+
+Your actual data takes some form, which is entirely up to you.
+It must be possible to refer to a complete data item by a
+single pointer.  Your data also will have some sort of key, or
+even multiple keys.  It can have whatever auxiliary data you
+like.  This implies you must define a structure somewhere for
+your own benefit:
+
+   typedef struct hashitem {
+      sometype   yourkey;
+      otherstuff yourdata;
+   } item, *itemptr;
+   
+The field names, structure name, typedef'd names, etc are
+entirely up to you.  Somewhere in your program you will have
+at least one of these things.  hashlib will make more of them
+in which to store copies of the data you insert.
+
+Equality
+========
+
+Since hashlib works on all forms of data, it obviously can't
+read your data description.  So you have to tell it how to
+find out that two data items have the identical key.  This    
+introduces the type (defined in hashlib.h):
+
+  typedef int (*hshcmpfn)(void *litem, void *ritem);
+  
+which is a function you will design and program, and one of
+the items you pass in the hshinit call is a pointer to that
+function.  Let us assume that in the item definition above
+sometype is int (such as the typedef below under copying).
+Then your comparison function could be:
+
+   int mycmp(void *litem, void *ritem)
+   {
+      itemptr left  = litem;
+      itemptr right = ritem;
+      int     lvalue, rvalue;
+      
+      lvalue = left->yourkey;
+      rvalue = right->yourkey;
+      return lvalue == rvalue;
+   }
+   
+NOTE: I have made this function more complex than it need
+be, in order to emphasize how it goes about it.
+   
+The left and right pointers come from hashlib, and hashlib
+doesn't know about your data type.  Therefore it converts them
+into the C universal pointer, a "void *".  When you get them
+back you have to convert them back into itemptr, so you can
+access the fields of your data.
+
+All hashlib cares about is "are they equal", so the above
+returns only 0 or 1, for notequal and equal.  The comparison
+routine will be useful for other things if you make it return
+-1, 0, or +1 for less, equal, greater.  To do this you could
+make the return statement say:
+
+     return (lvalue > rvalue) - (lvalue < rvalue);
+     
+which will turn out to be 1-0, 0-0, 0-1 for the three cases.
+The point is not to return (lvalue - rvalue), because this
+can run into overflow and give erroneous results.
+
+For string comparisons you can just call strcmp with the 
+appropriate parameters.
+
+Copying
+=======
+
+When you pass an item to hashlib you don't want to worry about
+who owns the space it takes.  Therefore the principle is
+"hashlib owns all the items it stores".  Thus hashlib makes a
+copy of any data item it inserts into the table.  Once more,
+only you know how to do this, and you have to tell hashlib.
+
+  typedef void *(*hshdupfn)(void *item);
+
+in hashlib.h specifies what this function must look like.  For
+the simple structure above, all it would have to do is malloc
+space for a copy, and copy the fields.  It must copy at least
+the key field, the rest is up to you.  Remember it is dealing
+with pointer to data, and the first thing you have to do is
+make the item pointer into a pointer to your structure.
+
+Lets make the simple data structure above more concrete:
+
+   typedef struct hashitem {
+      int   yourkey;
+      int   yourdata;
+   } item, *itemptr;
+
+Then the hshdupefn (notice how the function is defined by
+editing the typedef for hshdupfn) could be:
+
+    void *mydupe(void *item)
+    {
+       itemptr myitem = item;
+       itemptr newitem;
+       
+       if (newitem = malloc(sizeof *newitem) {
+          newitem.yourkey = myitem.yourkey;
+          newitem.yourdata = myitem.yourdata;
+          /* or "*newitem = *myitem" in this case */
+       }
+       return newitem;
+    }
+    
+Notice again that only your code knows what is in the items to
+be stored, and thus how to copy them.  Your item can be as
+complicated as you wish.  So lets make it store strings:
+
+   typedef struct hashitem {
+      char *yourkey;
+      int   yourdata;
+   } item, *itemptr;
+
+and see how it affects the hshdupefn.  Yourkey is now just a
+pointer to a string somewhere, which may want to be modified
+or used in some manner.  So we have do what is called a deep
+copy.
+
+    void *mydupe(void *item)
+    {
+       itemptr myitem = item;
+       itemptr newitem;
+       
+       if (newitem = malloc(sizeof *newitem) {
+          if (newitem->yourkey = 
+                   malloc(1+strlen(myitem->yourkey) {
+             strcpy(newitem->yourkey, myitem->yourkey;
+             newitem.yourdata = myitem.yourdata;
+          }
+          else {  /* we ran out of memory, release and fail */
+             free(newitem)
+             newitem = NULL
+          }
+       }
+       return newitem;
+    }
+
+Notice how it returns NULL if malloc fails to secure the
+necessary memory anywhere.  This allows hashlib to do the
+right things under nasty cases, such as exhausting memory.
+
+The need for a deep copy is generally signalled by having 
+pointers in your data type description.  All those pointers have
+to be resolved to data that can belong to the hash table.
+
+
+Letting Go
+==========
+
+Once you have thrown a whole mess of data at hashlib, and it is
+keeping track, you may decide to release it all.  While you
+could often just abandon it, and let the operating system clean
+up after you when your program ends, this is not a good
+practice.  Besides, your program may not end.  So you have to
+tell hashlib how to get rid of one item, which it will use to
+get rid of all of them when you use the hshkill function
+(described later).
+
+   typedef void (*hshfreefn)(void *item);
+   
+in hashlib.h describes that function.  Now we will assume the
+complex hshdupefn last described above, and the corresponding
+type definition for an item.  Again, we build the function 
+header by editing the typedef and converting the passed void*
+pointer:
+
+   void myundupe(void *item)
+   {
+      itemptr myitem = item;
+      
+      free(myitem->yourkey);  /* First, because this won't */
+      free(myitem);           /* exist after this one. */
+   }
+
+thus returning all the allocated memory.  Notice how it undoes
+everything that mydupe did.  The mydupe/myundupe pair could even
+open and close files, but you will rarely want to handle
+thousands of open files at once.
+
+Now we can use the hshkill function to undo hshinit.
+
+
+Hashing
+=======
+
+This is fundamental to the efficient operation of a hashtable,
+although hashlib can put up with pretty rotten hashing and still
+grind out answers (but it may take a long time).  What we need
+to do is calculate a single unsigned long value from the key.
+What these functions are is basically black magic, therefore
+hashlib contains a couple of utility functions usable for 
+hashing strings.  There are also examples of hashing integers
+in the hashtest.c program along with some references to the
+subject of creating hash functions.  For now we will just use
+the utility string hashing functions provided in hashlib, i.e.
+hshstrhash(char *) and hshstrehash(char *).
+
+Because of the efficient way hashlib handles overflows (it
+basically just corrects them) it is necessary to have two
+hash functions.  For the above item type with strings, they
+would be:
+
+  typedef unsigned long (*hshfn)(void *item);
+  
+for reference, which we edit again and get:  
+
+  unsigned long myhash(void *item)
+  {
+     itemptr myitem = item;  /* getting used to this? */
+     return hshstrhash(myitem->yourkey);
+  }
+
+and we need two such functions, so:
+
+  unsigned long myrehash(void *item)
+  {
+     itemptr myitem = item;  /* getting used to this? */
+     return hshstrehash(myitem->yourkey);
+  }
+  
+which basically differ only in  their names and in the
+convenience hash function they call.
+
+Now we have finally customized the system to our own data
+format.  We will tell hashlib about these functions when
+we create a hashtable with hshinit.
+
+Using hashlib
+=============
+
+First, we need some way to refer to the table.  So we must 
+have a data item of type hshtbl* to hold it.  We will initialize
+that by calling hshinit.  This is much like opening a file.  For
+convenience here is the prototype for hshinit again:
+
+/* initialize and return a pointer to the data base */
+hshtbl *hshinit(hshfn hash, hshfn rehash,
+                hshcmpfn cmp,
+                hshdupfn dupe, hshfreefn undupe,
+                int      hdebug);
+
+Now this following is a fragment from your code:
+
+hshtbl *mytable;
+
+/* initialize and return a pointer to the data base */
+mytable = hshinit(myhash, myrehash,
+                  mycmp,
+                  mydupe, myundupe,
+                  0);
+
+which tells hashlib all about the customizing functions you have
+created.  Note that all those functions can be static, unless
+you have other uses for them outside your source file.  You can
+use those functions yourself as you please.
+
+Don't forget the final 0 in the call to hshinit.  That parameter
+provides for future extensions and debugging abilities, and 
+passing a zero here will maintain compatibility.
+
+You can create more than one hash table if you desire.  If they
+handle the same data format you can just do exactly the same
+call as above, except you will need a new variable of type
+hshtbl* to hold the table identification.  If they don't hold
+the same data type you can supply different functions to 
+hshinit.  It is up to you.
+
+hshtbl *mysecondtable;
+
+mysecondtable = hshinit(....); /* as before */
+
+These tables will live until you exterminate them.  Meanwhile
+you can store, find, delete, etc. items from the table.  You
+destroy the table by calling hshkill with the pointer that
+hshinit returned.
+
+    hshkill(mytable);  /* all gone */
+    
+but until that is done, lets use the functions.
+
+NOTE: Some systems have a free that takes time proportional to
+the number of items allocated.  When hashlib has stored a large
+number of item freeing them via hshkill will take n * n time,
+which may get exorbitantly long.  The fault is that of the
+system free() function.  The work-around is to just exit your
+program, without calling hshkill, and let the system do the
+cleanup.  This will usually work.
+
+Inserting (storing) data:
+=========================
+
+From here on I am assuming you have opened the hash table with
+mytable = hshinit(...), and that you have defined your data
+with:
+
+   typedef struct hashitem {
+      char *yourkey;
+      int   yourdata;
+   } item, *itemptr;
+
+Surprise, you store data by calling hshinsert.  Here is the
+prototype, for reference:
+
+void * hshinsert(hshtbl *master, void *item);
+
+and you call it with a pointer to the table in which to insert
+the item, and a pointer to the item to insert.
+
+You may have a variable of type item (after all, you know what
+it is, even if hashlib does not).  So the critical items are:
+
+hshtable *mytable;
+item      myitem;
+item     *something;
+
+(NOTE: the "item *something" could equally well be:
+           "itemptr something")
+
+You will put the data you want into myitem, filling its fields
+as needed.  Then you call:
+
+   something = hshinsert(mytable, &myitem);
+   
+If, after this, 'something' is NULL, the insertion failed 
+(probably because you ran out of memory).  Otherwise 'something'
+points to the piece of memory owned by hashlib which stores a
+copy of myitem.  You can use something to modify the stored
+copy, but you MUST NOT do anything that would change the value
+of the key, and thus change what a hshfn such as myhash or 
+myrehash returns when passed that item.  NEVER EVER do that.
+
+NOTE: The code that does the copying from myitem into hashlibs
+memory is whatever you put in the hshdupe function.
+
+One thing you might want to do is have a field in an item that
+holds a count.  You could have the dupe function zero this
+field, so that you know how it is initialized.  Then, when
+hshinsert returns an itemptr you can use that to increment that
+field with a statement like "something->count++;".  That way you
+can keep track of how many times a given key has been inserted.
+
+NOTE: If hshinsert finds an item already stored, it simply
+returns a pointer to that storage.  It does not use the dupe
+function to make another copy.
+
+Finding a data item by the key:
+==============================
+
+Again we have the same variables as above for insertion.  We
+simply call:
+
+   something = hshfind(mytable, &item);
+   
+and if 'something' is NULL the item is not present, otherwise
+it is a pointer to the memory holding it.  The same cautions
+as for hshinsert hold, i.e. you MUST NOT do anything that
+affects the key and thus the hash functions.  Being present
+means only that 'something' and &item have identical keys, as
+defined by mycmp() function.
+
+Deleting stored items:
+=====================
+
+Again, we have the same variables.  Surprise, the calling format
+is the same:
+
+   something = hshdelete(mytable, &item);
+   
+but now there is a significant difference.  The hash table no
+longer owns the memory that stored that item, you do.  So you
+have to do something with it, assuming it isn't NULL (meaning
+that the value in item was never stored in the table).  What 
+you do is up to you, but sooner or later you should release
+it by:
+           myundupe(something);
+           
+which you designed specifically for this purpose.
+
+Example programs:
+================
+
+The hashlib package contains two example programs - wdfreq.c and
+markov.c.  markov is a complex application, and can best be
+understood by reading "The Practice of Programming", by
+Kernighan and Pike.  There are heavy similarities.  wdfreq.c is
+fairly simple, and also illustrates the use of hshstatus() and
+hshwalk() functions, which are discussed below. Another useful
+illustrative program is id2id-20, which maintains two tables of
+identifier strings in identical format databases. It can be
+found at:
+
+   <http://cbfalconer.home.att.net/download/id2id-20.zip>
+
+OTHER ABILITIES
+===============
+
+This section adds information about walking the entire contents
+of the table, and performing operations on each stored item.
+There are illustrations of these operations in the demonstration
+applications (markov and wdfreq) in the hashlib package.
+
+Status of the hash table:
+========================
+
+hashlib.h defines the following structure:
+
+typedef struct hshstats {
+   unsigned long probes, misses,  /* usage statistics */
+                 hentries,        /* current entries count */
+                 hdeleted;        /* deleted entry count */
+   enum hsherr   herror;          /* error status */
+   unsigned int  version;         /* hashlib version */
+} hshstats;
+
+and also provides the function:
+
+hshstats hshstatus(hshtbl *master);
+
+This allows you to access information on the current state of
+the hash table.  hentries and hdeleted tell you how many of each
+are present.  (deleted items still take up some room in the
+table until the table is automatically reorganized by growing)
+
+The values of probes and misses allows you to evaluate how good
+your hash functions are on your particular data.  probes tells
+you how many times a key was searched.  If the hash function
+was ideal misses would be zero, but in practice the system has
+to make additional tries, and this measures those.  You should
+normally find that the ratio of misses to probes runs around 
+1.5 or so.  If it gets above 3 redesign your hash functions.
+
+By the way, probes is an internal number, and will normally be 
+higher than the actual number of calls you have made to insert,
+find, or delete items.
+
+hashlib.h also defines the following possible values for the
+field herror:
+
+/* Possible error returns, powers of 2 */
+enum hsherr {hshOK = 0, hshNOMEM, hshTBLFULL, hshINTERR = 4};
+
+Normally this field will be zero, but if a failure occurs you
+can investigate it by looking at this field.  hshTBLFULL will
+only occur when you attempt to store very many items, meaning
+over about 2,000,000.  This is controlled in the hashlib.c
+source code.  hshNOMEM occurs when your system runs out of 
+memory.  hshINTERR means I did something wrong, and you should
+save something that triggers it and let me know.  Since I never
+make mistakes, you must have a hardware fault!
+
+Scanning the whole table:
+========================
+
+Sometimes you want to examine all the data saved.  You may want
+to sum a data field, print them all out, sort them, or something
+else. This is where the hshwalk function, described in
+hashlib.h, comes in:
+
+  int hshwalk(hshtbl *master, hshexecfn exec, void *datum);
+
+which allows you to call a function you write, which knows the
+format of the data, for every item stored in the table.  The
+function must be of type hshexecfn, also described in hashtbl.h.
+
+typedef int (*hshexecfn)(void *item, void *datum, void *xtra);
+
+xtra will normally be supplied as NULL, but allows for various
+specialized debugging operations.  datum is simply echoing back
+the value of datum you gave to hshwalk, and allows you to
+specify memory fields that are available to every call to the
+hshexecfn.  This is similar to global memory, but does not 
+interfere with the reentrancy of the hashlib code.
+
+item will be a pointer to the actual item stored.
+
+If your function returns anything other than zero, the walk
+will be stopped, and that value returned from hshwalk.
+
+Let us assume you are storing things of this form:
+
+   typedef struct hashitem {
+      char *yourkey;
+      int   yourdata;
+   } item, *itemptr;
+
+and you have been setting the field yourdata when inserting the
+items.  Now you want to scan them all and find out which has
+the largest value of yourdata.
+
+We will have to design something that can keep track of which is
+largest between function calls.  Something like:
+
+   typedef struct keeptrack {
+      itemptr   biggest;
+      int       bigvalue;
+   } keeptrack;
+   
+Now we create a thing to hold that information:
+
+   keeptrack  xtradata;
+   
+and initialize it with:
+
+   xtradata.biggest = NULL;
+   xtradata.bigvalue = -INT_MIN;
+   
+Now lets temporarily jump to the hshexecfn we must design to do
+the real work.  It will need access to that xtradata thing,
+which it will receive through the datum parameter.  It will not
+use the xtra parameter.
+
+int execfn(void *item, void *datum, void *xtra)
+{
+   keeptrack xdata = datum;  /* same conversion of void* */
+   itemptr   xitem = item;   /* and the data storage */
+   
+   if (xitem->yourdata > xdata->bigvalue) {
+      /* found a new largest value - record it */
+      xdata->biggest = xitem;
+      xdata->bigvalue = xitem->yourdata;
+   }
+   /* otherwise we can ignore this item */
+   return 0;  /* no error occurred */
+}
+
+Now lets return to the function that calls hshwalk:
+
+void findbiggest(hshtbl *table)
+{
+   keeptrack xtradata;
+
+   xtradata.biggest = NULL;
+   xtradata.bigvalue = -INT_MIN;
+   hshwalk(table, execfn, &xtradata);
+   /* which will pass each item stored to execfn */
+   /* together with the address of xtradata */
+   /* when it finishes xtradata will identify */
+   /* the item with the biggest yourdata field */
+   
+   /* so do something with the content of xtradata */
+}
+
+There are examples of this sort of operation in wdfreq.c and in
+markov.c, where it is used to gather statistics.
+
+Now go forth and store and manipulate data!
+
+          C.B. Falconer.
