@@ -435,7 +435,7 @@ HYD_status HYDU_create_proxy_list(struct HYD_exec *exec_list, struct HYD_node *n
 #if defined(FINEGRAIN_MPI)
             status = add_exec_to_proxy(exec, pg->proxy_list, exec->proc_count, current_exec_start_rank);
             HYDU_ERR_POP(status, "unable to add executable to proxy\n");
-            current_exec_start_rank += num_procs * exec->nfg;
+            current_exec_start_rank += exec->proc_count * exec->nfg;
 #else
             status = add_exec_to_proxy(exec, pg->proxy_list, exec->proc_count);
             HYDU_ERR_POP(status, "unable to add executable to proxy\n");

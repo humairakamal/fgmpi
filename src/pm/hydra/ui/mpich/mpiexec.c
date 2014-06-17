@@ -257,27 +257,18 @@ int main(int argc, char **argv)
 
     /* If the number of processes is not given, we allocate all the
      * available nodes to each executable */
-    char mymachine[MAX_HOSTNAME_LEN] = { 0 };
-    gethostname(mymachine,MAX_HOSTNAME_LEN); int k=0;
     HYD_server_info.pg_list.pg_process_count = 0;
     HYD_server_info.pg_list.pg_totprocess_count = 0;
     for (exec = HYD_uii_mpx_exec_list; exec; exec = exec->next) {
-        printf("k=%d, exec->proc_count=%d, mymachine=%s\n",
-               k, exec->proc_count, mymachine);
         if (exec->proc_count == -1) {
             global_core_count = 0;
             for (node = HYD_server_info.node_list, i = 0; node; node = node->next, i++)
                 global_core_count += node->core_count;
             exec->proc_count = global_core_count;
-            printf("k=%d, global_core_count=%d, mymachine=%s\n",
-                   k, global_core_count, mymachine);
         }
         HYD_server_info.pg_list.pg_process_count += exec->proc_count;
         HYD_server_info.pg_list.pg_totprocess_count += exec->proc_count * exec->nfg;
-        k++;
     }
-    printf("k=%d, HYD_server_info.pg_list.pg_process_count=%d, mymachine=%s\n",
-           k, HYD_server_info.pg_list.pg_process_count, mymachine);
 
     status = HYDU_list_inherited_env(&HYD_server_info.user_global.global_env.inherited);
     HYDU_ERR_POP(status, "unable to get the inherited env list\n");

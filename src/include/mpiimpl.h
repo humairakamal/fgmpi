@@ -4341,7 +4341,11 @@ int MPIU_Get_intranode_rank(MPID_Comm *comm_ptr, int r);
 /* Trivial accessor macros */
 
 #define MPIR_Comm_rank(comm_ptr) ((comm_ptr)->rank)
+#if defined(FINEGRAIN_MPI)
+#define MPIR_Comm_size(comm_ptr) ((comm_ptr)->totprocs)
+#else
 #define MPIR_Comm_size(comm_ptr) ((comm_ptr)->local_size)
+#endif
 #define MPIR_Type_extent_impl(datatype, extent_ptr) MPID_Datatype_get_extent_macro(datatype, *(extent_ptr))
 #define MPIR_Type_size_impl(datatype, size) MPID_Datatype_get_size_macro(datatype, *(size))
 #define MPIR_Test_cancelled_impl(status, flag) *(flag) = MPIR_STATUS_GET_CANCEL_BIT(*(status))
