@@ -600,6 +600,7 @@
 /comm/comm_group_rand
 /comm/comm_idup
 /comm/comm_idup_mul
+/comm/comm_idup_overlap
 /comm/comm_info
 /comm/commcreate1
 /comm/ctxsplit
@@ -1030,7 +1031,9 @@
 /threads/comm/comm_create_group_threads
 /threads/comm/comm_create_threads
 /threads/comm/comm_dup_deadlock
+/threads/comm/comm_idup
 /threads/comm/ctxdup
+/threads/comm/ctxidup
 /threads/comm/dup_leak_test
 /threads/init/initth
 /threads/pt2pt/threads

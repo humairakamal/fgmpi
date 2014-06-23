@@ -182,7 +182,7 @@ MPID_getSharedSegment_mmap(MPID_Win * win)
   close (fd); /* no longer needed */
 
   /* set mutex_lock address and initialize it   */
-  win->mpid.shm->mutex_lock = (MPIDI_SHM_MUTEX *) win->mpid.shm->base_addr;
+  win->mpid.shm->ctrl = (MPIDI_Win_shm_ctrl_t *) win->mpid.shm->base_addr;
   if (1 == first) {
     MPIDI_SHM_MUTEX_INIT(win);
   }
@@ -271,7 +271,7 @@ MPID_getSharedSegment_sysv(MPID_Win * win)
         MPIU_ERR_CHKANDJUMP((win->mpid.shm->base_addr == (void*) -1), mpi_errno,MPI_ERR_BUFFER, "**bufnull");
 
         /* set mutex_lock address and initialize it */
-        win->mpid.shm->mutex_lock = (MPIDI_SHM_MUTEX *) win->mpid.shm->base_addr;
+        win->mpid.shm->ctrl = (MPIDI_Win_shm_ctrl_t *) win->mpid.shm->base_addr;
         MPIDI_SHM_MUTEX_INIT(win);
 
         /* successfully created shm segment - shared the key with other tasks */
@@ -285,7 +285,7 @@ MPID_getSharedSegment_sysv(MPID_Win * win)
         if (win->mpid.shm->shm_id != -1) { /* shm segment is available */
             win->mpid.shm->base_addr = (void *) shmat(win->mpid.shm->shm_id,0,0);
         }
-        win->mpid.shm->mutex_lock = (MPIDI_SHM_MUTEX *) win->mpid.shm->base_addr;
+        win->mpid.shm->ctrl = (MPIDI_Win_shm_ctrl_t *) win->mpid.shm->base_addr;
     }
 
     win->mpid.shm->allocated = 1;
@@ -333,7 +333,7 @@ MPID_getSharedSegment(MPI_Aint     size,
         /* The beginning of the heap allocation contains a control block
          * before the data begins.
          */
-        new_size = MPIDI_ROUND_UP_PAGESIZE(sizeof(MPIDI_Win_shm_ctrl_t),pageSize);
+        new_size = MPIDI_ROUND_UP_PAGESIZE((sizeof(MPIDI_Win_shm_ctrl_t)+ ((comm_size+1) * sizeof(void *))),pageSize);
 
         if (size > 0) {
             if (*noncontig)
@@ -349,7 +349,7 @@ MPID_getSharedSegment(MPI_Aint     size,
         win->mpid.shm->segment_len = new_size;
         win->mpid.shm->base_addr = base_pp;
         if (size !=0) {
-            win->mpid.info[rank].base_addr = (void *)((MPI_Aint) base_pp + MPIDI_ROUND_UP_PAGESIZE(sizeof(MPIDI_Win_shm_ctrl_t),pageSize));
+            win->mpid.info[rank].base_addr = (void *)((MPI_Aint) base_pp + MPIDI_ROUND_UP_PAGESIZE((sizeof(MPIDI_Win_shm_ctrl_t) +  ((comm_size+1) * sizeof(void *))),pageSize));
         } else {
             win->mpid.info[rank].base_addr = NULL;
         }
@@ -357,42 +357,48 @@ MPID_getSharedSegment(MPI_Aint     size,
         win->mpid.info[rank].base_size = size;
 
         /* set mutex_lock address and initialize it   */
-        win->mpid.shm->mutex_lock = (pthread_mutex_t *) win->mpid.shm->base_addr;
-        win->mpid.shm->shm_count = (int *)((MPI_Aint) win->mpid.shm->mutex_lock + (MPI_Aint) sizeof(pthread_mutex_t));
+        win->mpid.shm->ctrl = (MPIDI_Win_shm_ctrl_t *) win->mpid.shm->base_addr;
         MPIDI_SHM_MUTEX_INIT(win);
-        OPA_fetch_and_add_int((OPA_int_t *) win->mpid.shm->shm_count,1);
+        OPA_fetch_and_add_int((OPA_int_t *) &win->mpid.shm->ctrl->shm_count,(int) 1);
 
     } else {
         /* allocate a temporary buffer to gather the 'size' of each buffer on
          * the node to determine the amount of shared memory to allocate
          */
-        MPI_Aint *tmp_buf;
-        tmp_buf = MPIU_Malloc (2*comm_size*sizeof(MPI_Aint));
-        tmp_buf[rank] = (MPI_Aint) size;
+        MPI_Aint * size_array;
+        size_array = MPIU_Malloc (2*comm_size*sizeof(MPI_Aint));
+        size_array[rank] = (MPI_Aint) size;
         mpi_errno = MPIR_Allgather_impl(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL,
-                                        tmp_buf, 1 * sizeof(MPI_Aint), MPI_BYTE,
+                                        size_array, 1 * sizeof(MPI_Aint), MPI_BYTE,
                                         (*win_ptr)->comm_ptr, &errflag);
         if (mpi_errno) {
-            MPIU_Free(tmp_buf);
+            MPIU_Free(size_array);
             MPIU_ERR_POP(mpi_errno);
         }
 
         /* calculate total number of bytes needed */
+        MPI_Aint actual_size;
+        win->mpid.info[0].base_addr = NULL;
         for (i = 0; i < comm_size; ++i) {
-            win->mpid.info[i].base_size = tmp_buf[i];
-            len = tmp_buf[i];
-            if (*noncontig)
-                /* Round up to next page size */
-                win->mpid.shm->segment_len += MPIDI_ROUND_UP_PAGESIZE(len,pageSize);
-            else
-                win->mpid.shm->segment_len += len;
+            win->mpid.info[i].base_size = size_array[i];
+
+            actual_size = (*noncontig)?MPIDI_ROUND_UP_PAGESIZE(size_array[i],pageSize):size_array[i];
+
+            win->mpid.shm->segment_len += actual_size;
+
+            /* Save the OFFSET to each rank's private shared memory area. This
+             * will be added to the BASE ADDRESS of the entire shared memory
+             * allocation to determine the virtual address.
+             */
+            if (i < comm_size-1)
+                win->mpid.info[i+1].base_addr =
+                    (void *) ((uintptr_t)win->mpid.info[i].base_addr + actual_size);
         }
-        MPIU_Free(tmp_buf);
 
         /* The beginning of the shared memory allocation contains a control
          * block before the data begins.
          */
-        win->mpid.shm->segment_len += MPIDI_ROUND_UP_PAGESIZE(sizeof(MPIDI_Win_shm_ctrl_t),pageSize);
+        win->mpid.shm->segment_len += MPIDI_ROUND_UP_PAGESIZE((sizeof(MPIDI_Win_shm_ctrl_t) + ((comm_size+1) * sizeof(void *))),pageSize);
 
         /* Get the shared segment which includes the control block header and
          * data buffer - possibly padded if non-contiguous.
@@ -406,15 +412,25 @@ MPID_getSharedSegment(MPI_Aint     size,
 #endif
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
+        /* compute the base addresses of each process within the shared memory segment */
+        win->base = (void *) ((long) win->mpid.shm->base_addr + (long ) MPIDI_ROUND_UP_PAGESIZE((sizeof(MPIDI_Win_shm_ctrl_t) + ((comm_size+1) * sizeof(void *))),pageSize));
+
+        for (i = 0; i < comm_size; ++i) {
+            win->mpid.info[i].base_addr =
+                (void *) ((uintptr_t)win->mpid.info[i].base_addr + (uintptr_t)win->base);
+        }
+
+        for (i = 0; i < comm_size; ++i) {
+            if (size_array[i] == 0) win->mpid.info[i].base_addr = NULL;
+        }
+
+        MPIU_Free(size_array);
+
         /* increment the shared counter */
-        win->mpid.shm->shm_count=(int *)((MPI_Aint) win->mpid.shm->mutex_lock + (MPI_Aint) sizeof(MPIDI_SHM_MUTEX));
-        OPA_fetch_and_add_int((OPA_int_t *) win->mpid.shm->shm_count,1);
+        OPA_fetch_and_add_int((OPA_int_t *) &win->mpid.shm->ctrl->shm_count,(int) 1);
 
         /* wait for all ranks complete */
-        while(*win->mpid.shm->shm_count != comm_size) MPIDI_QUICKSLEEP;
-
-        /* compute the base addresses of each process within the shared memory segment */
-        win->base = (void *) ((long) win->mpid.shm->base_addr + (long ) MPIDI_ROUND_UP_PAGESIZE(sizeof(MPIDI_Win_shm_ctrl_t),pageSize));
+        while((int) win->mpid.shm->ctrl->shm_count != comm_size) MPIDI_QUICKSLEEP;
     }
 
 fn_exit:
@@ -509,22 +525,6 @@ MPID_Win_allocate_shared(MPI_Aint     size,
   mpi_errno = MPIDI_Win_allgather(size,win_ptr);
   if (mpi_errno != MPI_SUCCESS)
       return mpi_errno;
-
-  if (comm_size > 1) {
-      char *cur_base = (*win_ptr)->base;
-      for (i = 0; i < comm_size; ++i) {
-          if (win->mpid.info[i].base_size) {
-              if (noncontig)  
-                  /* Round up to next page size */
-                  win->mpid.info[i].base_addr =(void *) ((MPI_Aint) cur_base + (MPI_Aint) MPIDI_ROUND_UP_PAGESIZE(size,pageSize));
-              else
-                  win->mpid.info[i].base_addr = (void *) ((MPI_Aint) cur_base + (MPI_Aint) size);
-              cur_base = win->mpid.info[i].base_addr;
-          } else {
-              win->mpid.info[i].base_addr = NULL; 
-          }
-      }
-  }
 
   *(void**) base_ptr = (void *) win->mpid.info[rank].base_addr;
 
