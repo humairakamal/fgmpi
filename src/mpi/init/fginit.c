@@ -250,32 +250,24 @@ inline int Set_PROC_NULL(int *worldrank_ptr, int *pid_ptr) /* OUT,OUT */
     return (MPI_SUCCESS);
 }
 
-#if 0 /* HK: Replacing this since this only works for MPI_COMM_WORLD */
-int Is_within_same_HWP(int FGrank, int HWPrank)
-{
-    if (EQUAL == is_Within(FGrank, pid_to_fgps[HWPrank].fg_startrank, pid_to_fgps[HWPrank].numfgps))
-        return (1);
-    else
-        return (0);
-}
-#else /* HK: Returns 1 if FGrank and comm->fgrank have same pid in the communicator comm. Otherwise, returns 0. */
+
+/* Returns 1 if FGrank and comm->fgrank have same pid in the
+   communicator comm. Otherwise, returns 0. */
 int Is_within_same_HWP(int reqfgrank, MPID_Comm *comm, int *reqrankpid)
 {
-    int reqpid=-1, worldrank = -1, commfgrankpid=-2; /* Unequal initializers at the beginning. */
-    MPIDI_Comm_get_pid_worldrank(comm, reqfgrank, &reqpid, &worldrank);    
+    int reqpid=-1, worldrank = -1, commfgrankpid=-2; /* Unequal initializers */
+    MPIDI_Comm_get_pid_worldrank(comm, reqfgrank, &reqpid, &worldrank);
     if(NULL != reqrankpid){
         *reqrankpid = reqpid;
     }
 
-    //    MPIDI_Comm_get_pid_worldrank(comm, comm->fgrank, &commfgrankpid, NULL);    
-    //    assert(commfgrankpid == comm->p_rank); /* _p_rank_ */
     commfgrankpid = comm->p_rank; /* comm->p_rank is the HWP pid  _p_rank_ */
     if (commfgrankpid == reqpid)
         return (1);
     else
         return (0);
 }
-#endif
+
 
 
 #endif /* #if defined (FINEGRAIN_MPI) */
