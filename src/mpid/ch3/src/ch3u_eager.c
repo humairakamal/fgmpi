@@ -91,6 +91,10 @@ int MPIDI_CH3_EagerNoncontigSend( MPID_Request **sreq_p,
     MPID_Request *sreq = *sreq_p;
     MPIDI_CH3_Pkt_t upkt;
     MPIDI_CH3_Pkt_eager_send_t * const eager_pkt = &upkt.eager_send;
+#if defined(FINEGRAIN_MPI)
+    int destpid=-1, destworldrank=-1;
+    MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
+#endif
     
     MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                      "sending non-contiguous eager message, data_sz=" MPIDI_MSG_SZ_FMT,
@@ -99,14 +103,20 @@ int MPIDI_CH3_EagerNoncontigSend( MPID_Request **sreq_p,
     sreq->dev.OnFinal = 0;
 
     MPIDI_Pkt_init(eager_pkt, reqtype);
+#if defined(FINEGRAIN_MPI)
+    eager_pkt->match.parts.dest_rank = destworldrank;
+#endif
     eager_pkt->match.parts.rank	= comm->rank;
     eager_pkt->match.parts.tag	= tag;
     eager_pkt->match.parts.context_id	= comm->context_id + context_offset;
     eager_pkt->sender_req_id	= MPI_REQUEST_NULL;
     eager_pkt->data_sz		= data_sz;
-    
-    MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
 
+#if defined(FINEGRAIN_MPI)
+    MPIDI_Comm_get_vc_set_active_direct(comm, destpid, &vc);
+#else
+    MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
+#endif
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(eager_pkt, seqnum);
     MPIDI_Request_set_seqnum(sreq, seqnum);
@@ -155,8 +165,15 @@ int MPIDI_CH3_EagerContigSend( MPID_Request **sreq_p,
     MPIDI_CH3_Pkt_eager_send_t * const eager_pkt = &upkt.eager_send;
     MPID_Request *sreq = *sreq_p;
     MPID_IOV iov[2];
-    
+#if defined(FINEGRAIN_MPI)
+    int destpid=-1, destworldrank=-1;
+    MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
+#endif
+
     MPIDI_Pkt_init(eager_pkt, reqtype);
+#if defined(FINEGRAIN_MPI)
+    eager_pkt->match.parts.dest_rank = destworldrank;
+#endif
     eager_pkt->match.parts.rank	= comm->rank;
     eager_pkt->match.parts.tag	= tag;
     eager_pkt->match.parts.context_id	= comm->context_id + context_offset;
@@ -172,8 +189,12 @@ int MPIDI_CH3_EagerContigSend( MPID_Request **sreq_p,
 	    
     iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) buf;
     iov[1].MPID_IOV_LEN = data_sz;
-    
+
+#if defined(FINEGRAIN_MPI)
+    MPIDI_Comm_get_vc_set_active_direct(comm, destpid, &vc);
+#else
     MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
+#endif
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(eager_pkt, seqnum);
     
@@ -222,9 +243,16 @@ int MPIDI_CH3_EagerContigShortSend( MPID_Request **sreq_p,
     MPIDI_CH3_Pkt_eagershort_send_t * const eagershort_pkt = 
 	&upkt.eagershort_send;
     MPID_Request *sreq = *sreq_p;
+#if defined(FINEGRAIN_MPI)
+    int destpid=-1, destworldrank=-1;
+    MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
+#endif
     
     /*    printf( "Sending short eager\n"); fflush(stdout); */
     MPIDI_Pkt_init(eagershort_pkt, reqtype);
+#if defined(FINEGRAIN_MPI)
+    eagershort_pkt->match.parts.dest_rank = destworldrank;
+#endif
     eagershort_pkt->match.parts.rank	     = comm->rank;
     eagershort_pkt->match.parts.tag	     = tag;
     eagershort_pkt->match.parts.context_id = comm->context_id + context_offset;
@@ -233,8 +261,12 @@ int MPIDI_CH3_EagerContigShortSend( MPID_Request **sreq_p,
     MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
        "sending contiguous short eager message, data_sz=" MPIDI_MSG_SZ_FMT,
 					data_sz));
-	    
+
+#if defined(FINEGRAIN_MPI)
+    MPIDI_Comm_get_vc_set_active_direct(comm, destpid, &vc);
+#else
     MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
+#endif
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(eagershort_pkt, seqnum);
 

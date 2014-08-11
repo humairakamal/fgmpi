@@ -75,7 +75,7 @@ int FGmpiexec( int *argc, char ***argv, LookupMapPtr_t lookupFuncPtr )
     FG_MPI_Main_processPtr = FG_MAP_FunctionPtr(*argc, *argv, fgstartrank);
 
     if(numspawn > 0) {
-        FG_Wrapargs = (FWraparg_t*)malloc(numspawn * sizeof(FWraparg_t));
+        FG_Wrapargs = (FWraparg_t*)MPIU_Malloc(numspawn * sizeof(FWraparg_t));
         assert(FG_Wrapargs);
 
         /* mapping to functions */
@@ -100,7 +100,7 @@ int FGmpiexec( int *argc, char ***argv, LookupMapPtr_t lookupFuncPtr )
 
 inline void* FG_MPIU_Malloc(size_t a, const char fcname[], int lineno){
     void * retval;
-    retval = malloc((size_t)(a));
+    retval = MPIU_Malloc((size_t)(a));
     if(retval){
         return retval;
     }

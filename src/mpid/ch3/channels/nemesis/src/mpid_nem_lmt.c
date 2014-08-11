@@ -70,11 +70,19 @@ int MPID_nem_lmt_RndvSend(MPID_Request **sreq_p, const void * buf, int count,
     MPID_PKT_DECL_CAST(upkt, MPID_nem_pkt_lmt_rts_t, rts_pkt);
     MPIDI_VC_t *vc;
     MPID_Request *sreq =*sreq_p;
+#if defined(FINEGRAIN_MPI)
+    int destpid=-1, destworldrank=-1;
+#endif
     MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_LMT_RNDVSEND);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_LMT_RNDVSEND);
 
+#if defined(FINEGRAIN_MPI)
+    MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
+    MPIDI_Comm_get_vc_set_active_direct(comm, destpid, &vc);
+#else
     MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
+#endif
 
     /* if the lmt functions are not set, fall back to the default rendezvous code */
     if (vc->ch.lmt_initiate_lmt == NULL)
@@ -90,6 +98,9 @@ int MPID_nem_lmt_RndvSend(MPID_Request **sreq_p, const void * buf, int count,
     sreq->ch.lmt_tmp_cookie.MPID_IOV_LEN = 0;
 	
     MPIDI_Pkt_init(rts_pkt, MPIDI_NEM_PKT_LMT_RTS);
+#if defined(FINEGRAIN_MPI)
+    rts_pkt->match.parts.dest_rank = destworldrank;
+#endif
     rts_pkt->match.parts.rank	      = comm->rank;
     rts_pkt->match.parts.tag	      = tag;
     rts_pkt->match.parts.context_id = comm->context_id + context_offset;

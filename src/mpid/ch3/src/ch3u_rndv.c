@@ -28,6 +28,10 @@ int MPIDI_CH3_RndvSend( MPID_Request **sreq_p, const void * buf, int count,
     MPID_Request * rts_sreq;
     MPID_Request *sreq =*sreq_p;
     int          mpi_errno = MPI_SUCCESS;
+#if defined(FINEGRAIN_MPI)
+    int destpid=-1, destworldrank=-1;
+    MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
+#endif
 	
     MPIU_DBG_MSG_D(CH3_OTHER,VERBOSE,
 		   "sending rndv RTS, data_sz=" MPIDI_MSG_SZ_FMT, data_sz);
@@ -37,13 +41,20 @@ int MPIDI_CH3_RndvSend( MPID_Request **sreq_p, const void * buf, int count,
     sreq->partner_request = NULL;
 	
     MPIDI_Pkt_init(rts_pkt, MPIDI_CH3_PKT_RNDV_REQ_TO_SEND);
+#if defined(FINEGRAIN_MPI)
+    rts_pkt->match.parts.dest_rank = destworldrank;
+#endif
     rts_pkt->match.parts.rank	      = comm->rank;
     rts_pkt->match.parts.tag	      = tag;
     rts_pkt->match.parts.context_id = comm->context_id + context_offset;
     rts_pkt->sender_req_id    = sreq->handle;
     rts_pkt->data_sz	      = data_sz;
 
+#if defined(FINEGRAIN_MPI)
+    MPIDI_Comm_get_vc_set_active_direct(comm, destpid, &vc);
+#else
     MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
+#endif
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(rts_pkt, seqnum);
     MPIDI_Request_set_seqnum(sreq, seqnum);
@@ -292,6 +303,9 @@ int MPIDI_CH3_PktHandler_RndvSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     
     if (req->dev.recv_data_sz == 0) {
         *buflen = sizeof(MPIDI_CH3_Pkt_t);
+#if defined(FINEGRAIN_MPI)
+        FG_Notify_on_event(req->dev.match.parts.dest_rank, UNBLOCK);
+#endif
 	MPIDI_CH3U_Request_complete(req);
 	*rreqp = NULL;
     }
@@ -307,6 +321,9 @@ int MPIDI_CH3_PktHandler_RndvSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 
         if (complete) 
         {
+#if defined(FINEGRAIN_MPI)
+            FG_Notify_on_event(req->dev.match.parts.dest_rank, UNBLOCK);
+#endif
             MPIDI_CH3U_Request_complete(req);
             *rreqp = NULL;
         }

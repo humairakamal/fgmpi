@@ -66,11 +66,15 @@ typedef unsigned long MPID_Seqnum_t;
 
 #include "mpichconf.h"
 
+#if defined(FINEGRAIN_MPI)
+typedef int32_t MPIR_Rank_t;
+#else
 #if CH3_RANK_BITS == 16
 typedef int16_t MPIR_Rank_t;
-#elif CH3_RANK_BITS == 32
+#elif (CH3_RANK_BITS == 32)
 typedef int32_t MPIR_Rank_t;
 #endif /* CH3_RANK_BITS */
+#endif /* FINEGRAIN_MPI */
 
 /* Indicates that this device is topology aware and implements the
    MPID_Get_node_id function (and friends). */
@@ -107,6 +111,9 @@ typedef struct MPIDI_Message_match_parts {
     int32_t tag;
     MPIR_Rank_t rank;
     MPIR_Context_id_t context_id;
+#if defined(FINEGRAIN_MPI)
+    MPIR_Rank_t dest_rank;
+#endif
 } MPIDI_Message_match_parts_t;
 typedef union {
     MPIDI_Message_match_parts_t parts;
@@ -310,6 +317,9 @@ typedef struct MPIDI_Request {
 
     /* user_buf, user_count, and datatype needed to process 
        rendezvous messages. */
+#if defined(FINEGRAIN_MPI)
+    void       **user_buf_handle;
+#endif
     void        *user_buf;
     int          user_count;
     MPI_Datatype datatype;

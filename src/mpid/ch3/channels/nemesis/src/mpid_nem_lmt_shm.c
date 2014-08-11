@@ -643,6 +643,9 @@ static int lmt_shm_recv_progress(MPIDI_VC_t *vc, MPID_Request *req, int *done)
     OPA_store_int(&copy_buf->owner_info.val.rank, NO_OWNER);
 
     *done = TRUE;
+#if defined(FINEGRAIN_MPI)
+    FG_Notify_on_event(req->dev.match.parts.dest_rank, UNBLOCK);
+#endif
     MPIDI_CH3U_Request_complete(req);
 
  fn_exit:

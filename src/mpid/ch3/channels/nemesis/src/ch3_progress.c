@@ -1095,7 +1095,7 @@ int MPIDI_CH3I_Register_anysource_notification(void (*enqueue_fn)(MPID_Request *
 #define FUNCNAME MPIDI_CH3I_Anysource_posted
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-static void anysource_posted(MPID_Request *rreq)
+static void anysource_posted(MPID_Request *rreq) /* FG: TODO */
 {
     qn_ent_t *ent = qn_head;
 
@@ -1144,7 +1144,7 @@ static int anysource_matched(MPID_Request *rreq)
 #define FUNCNAME MPIDI_CH3I_Posted_recv_enqueued
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-void MPIDI_CH3I_Posted_recv_enqueued(MPID_Request *rreq)
+void MPIDI_CH3I_Posted_recv_enqueued(MPID_Request *rreq) /*FG: TODO */
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_POSTED_RECV_ENQUEUED);
 
@@ -1162,7 +1162,7 @@ void MPIDI_CH3I_Posted_recv_enqueued(MPID_Request *rreq)
 	MPIDI_VC_t *vc;
 
         /* MT FIXME does this macro need some sort of synchronization too? */
-	MPIDI_Comm_get_vc((rreq)->comm, (rreq)->dev.match.parts.rank, &vc);
+	MPIDI_Comm_get_vc((rreq)->comm, (rreq)->dev.match.parts.rank, &vc); /*FG: TODO */
 
 #ifdef ENABLE_COMM_OVERRIDES
         /* MT FIXME causes deadlock b/c of the MSGQUEUE/CH3COMM ordering (acquired
@@ -1210,7 +1210,7 @@ void MPIDI_CH3I_Posted_recv_enqueued(MPID_Request *rreq)
 #define FUNCNAME MPIDI_CH3I_Posted_recv_dequeued
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_Posted_recv_dequeued(MPID_Request *rreq)
+int MPIDI_CH3I_Posted_recv_dequeued(MPID_Request *rreq) /*FG: TODO */
 {
     int local_rank = -1;
     MPIDI_VC_t *vc;
@@ -1233,7 +1233,7 @@ int MPIDI_CH3I_Posted_recv_dequeued(MPID_Request *rreq)
             goto fn_exit;
 
         /* don't use MPID_NEM_IS_LOCAL, it doesn't handle dynamic processes */
-        MPIDI_Comm_get_vc(rreq->comm, rreq->dev.match.parts.rank, &vc);
+        MPIDI_Comm_get_vc(rreq->comm, rreq->dev.match.parts.rank, &vc); /*FG: TODO */
         MPIU_Assert(vc != NULL);
         if (!vc->ch.is_local)
             goto fn_exit;

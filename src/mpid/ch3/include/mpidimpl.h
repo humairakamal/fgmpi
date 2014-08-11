@@ -51,13 +51,6 @@ extern MPID_Group *MPIDI_Failed_procs_group;
 
 extern int MPIDI_Use_pmi2_api;
 
-#if defined(FINEGRAIN_MPI)
-extern MPID_Request ** FG_recvq_posted_head;
-extern MPID_Request ** FG_recvq_posted_tail;
-extern MPID_Request ** FG_recvq_unexpected_head;
-extern MPID_Request ** FG_recvq_unexpected_tail;
-#endif
-
 #define MPIDI_CHANGE_VC_STATE(vc, new_state) do {               \
         MPIU_DBG_VCSTATECHANGE(vc, VC_STATE_##new_state);       \
         (vc)->state = MPIDI_VC_STATE_##new_state;               \
@@ -241,6 +234,13 @@ extern MPIDI_Process_t MPIDI_Process;
  *     completion state
  *     cancelled state
  */
+
+#if defined(FINEGRAIN_MPI)
+extern MPID_Request ** FG_recvq_posted_head;
+extern MPID_Request ** FG_recvq_posted_tail;
+extern MPID_Request ** FG_recvq_unexpected_head;
+extern MPID_Request ** FG_recvq_unexpected_tail;
+#endif
 
 /* FIXME XXX DJG for TLS hack */
 #define MPID_REQUEST_TLS_MAX 128
@@ -544,7 +544,7 @@ extern MPIDI_Process_t MPIDI_Process;
 /*------------------
   BEGIN COMM SECTION
   ------------------*/
-#define MPIDI_Comm_get_vc(comm_, rank_, vcp_) *(vcp_) = (comm_)->vcr[(rank_)]
+#define MPIDI_Comm_get_vc(comm_, rank_, vcp_) *(vcp_) = (comm_)->vcr[(rank_)] /*FG: TODO */
 
 #ifdef USE_MPIDI_DBG_PRINT_VC
 void MPIDI_DBG_PrintVC(MPIDI_VC_t *vc);
@@ -556,6 +556,40 @@ void MPIDI_DBG_PrintVCState(MPIDI_VC_t *vc);
 #define MPIDI_DBG_PrintVCState(vc)
 #endif
 
+#if defined(FINEGRAIN_MPI)
+#define MPIDI_Comm_get_vc_set_active_direct(comm__, pid__, vcp__) do {  \
+        if ( pid__ < 0 ) {                                              \
+            MPIU_Internal_error_printf("Error: Negative pid. This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);                      \
+            MPID_Abort(NULL, MPI_SUCCESS, -1, NULL);                    \
+            MPIU_Exit(-1);                                              \
+        }                                                               \
+        *(vcp__) = (comm__)->vcr[(pid__)];                              \
+        if ((*(vcp__))->state == MPIDI_VC_STATE_INACTIVE)                \
+        {                                                               \
+            MPIDI_DBG_PrintVCState2(*(vcp__), MPIDI_VC_STATE_ACTIVE);    \
+            MPIDI_CHANGE_VC_STATE((*(vcp__)), ACTIVE);                   \
+        }                                                               \
+    } while (0)
+
+/* FG: MPIDI_Comm_get_vc takes the rank local to a communicator and
+   looks up its pid and returns the vc channel associated with it.
+*/
+#define MPIDI_Comm_get_vc_set_active(comm_, rank_, vcp_) do {           \
+        int foundpid = -1, worldrank = -1;                              \
+        MPIDI_Comm_get_pid_worldrank(comm_, rank_, &foundpid, &worldrank); \
+        if ( foundpid < 0 ) {                                           \
+            MPIU_Internal_error_printf("Error: Negative pid. This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);                      \
+            MPID_Abort(NULL, MPI_SUCCESS, -1, NULL);                    \
+            MPIU_Exit(-1);                                              \
+        }                                                               \
+        *(vcp_) = (comm_)->vcr[foundpid];                               \
+        if ((*(vcp_))->state == MPIDI_VC_STATE_INACTIVE)                \
+        {                                                               \
+            MPIDI_DBG_PrintVCState2(*(vcp_), MPIDI_VC_STATE_ACTIVE);    \
+            MPIDI_CHANGE_VC_STATE((*(vcp_)), ACTIVE);                   \
+        }                                                               \
+    } while (0)
+#else
 #define MPIDI_Comm_get_vc_set_active(comm_, rank_, vcp_) do {           \
         *(vcp_) = (comm_)->vcr[(rank_)];                                \
         if ((*(vcp_))->state == MPIDI_VC_STATE_INACTIVE)                \
@@ -564,6 +598,11 @@ void MPIDI_DBG_PrintVCState(MPIDI_VC_t *vc);
             MPIDI_CHANGE_VC_STATE((*(vcp_)), ACTIVE);                   \
         }                                                               \
     } while(0)
+#endif
+
+#if defined(FINEGRAIN_MPI)
+#define COMPARE_RANKS(rank_, comm_, destpid_)  ((rank_ == comm_->rank) || (destpid_ == comm_->p_rank))  /* _p_rank_ */
+#endif
 
 /*----------------
   END COMM SECTION

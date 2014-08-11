@@ -30,6 +30,9 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 #endif    
     int eager_threshold = -1;
     int mpi_errno = MPI_SUCCESS;    
+#if defined(FINEGRAIN_MPI)
+    int destpid=-1, destworldrank=-1;
+#endif
     MPIDI_STATE_DECL(MPID_STATE_MPID_SEND);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_SEND);
@@ -38,6 +41,24 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
                 "rank=%d, tag=%d, context=%d", 
 		rank, tag, comm->context_id + context_offset));
 
+#if defined(FINEGRAIN_MPI)
+    MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
+
+    if (COMPARE_RANKS(rank,comm,destpid) && comm->comm_kind != MPID_INTERCOMM)
+    {
+	mpi_errno = MPIDI_Isend_self(&buf, count, datatype, rank, tag, comm,
+				     context_offset, MPIDI_REQUEST_TYPE_SEND,
+				     &sreq);
+        if (rank == comm->rank)
+	{
+            printf("my_fgrank=%d: %s, self send DEADLOCK\n", my_fgrank, __FUNCTION__);
+	    if (sreq != NULL && sreq->cc != 0) {
+		MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
+				    "**dev|selfsenddeadlock");
+	    }
+	}
+
+#else
     if (rank == comm->rank && comm->comm_kind != MPID_INTERCOMM)
     {
 	mpi_errno = MPIDI_Isend_self(buf, count, datatype, rank, tag, comm, 
@@ -55,6 +76,7 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 	    }
 	}
 #	endif
+#endif
 	if (mpi_errno != MPI_SUCCESS) { MPIU_ERR_POP(mpi_errno); }
 	goto fn_exit;
     }
@@ -64,7 +86,11 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 	goto fn_exit;
     }
 
+#if defined(FINEGRAIN_MPI)
+    MPIDI_Comm_get_vc_set_active_direct(comm, destpid, &vc);
+#else
     MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
+#endif
 
 #ifdef ENABLE_COMM_OVERRIDES
     if (vc->comm_ops && vc->comm_ops->send)
@@ -85,6 +111,9 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"sending zero length message");
 	MPIDI_Pkt_init(eager_pkt, MPIDI_CH3_PKT_EAGER_SEND);
+#if defined(FINEGRAIN_MPI)
+        eager_pkt->match.parts.dest_rank = destworldrank;
+#endif
 	eager_pkt->match.parts.rank = comm->rank;
 	eager_pkt->match.parts.tag = tag;
 	eager_pkt->match.parts.context_id = comm->context_id + context_offset;
