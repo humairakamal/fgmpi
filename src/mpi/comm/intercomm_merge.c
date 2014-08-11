@@ -15,6 +15,8 @@
 #pragma _HP_SECONDARY_DEF PMPI_Intercomm_merge  MPI_Intercomm_merge
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPI_Intercomm_merge as PMPI_Intercomm_merge
+#elif defined(HAVE_WEAK_ATTRIBUTE)
+int MPI_Intercomm_merge(MPI_Comm intercomm, int high, MPI_Comm *newintracomm) __attribute__((weak,alias("PMPI_Intercomm_merge")));
 #endif
 /* -- End Profiling Symbol Block */
 
@@ -256,7 +258,7 @@ int MPI_Intercomm_merge(MPI_Comm intercomm, int high, MPI_Comm *newintracomm)
         MPID_BEGIN_ERROR_CHECKS;
         {
             /* Validate comm_ptr */
-            MPID_Comm_valid_ptr( comm_ptr, mpi_errno );
+            MPID_Comm_valid_ptr( comm_ptr, mpi_errno, FALSE );
 	    /* If comm_ptr is not valid, it will be reset to null */
 	    if (comm_ptr && comm_ptr->comm_kind != MPID_INTERCOMM) {
 		mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, 

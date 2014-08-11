@@ -63,6 +63,10 @@ cvars:
 #pragma _HP_SECONDARY_DEF PMPI_Allreduce  MPI_Allreduce
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPI_Allreduce as PMPI_Allreduce
+#elif defined(HAVE_WEAK_ATTRIBUTE)
+int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
+                  MPI_Op op, MPI_Comm comm)
+                  __attribute__((weak,alias("PMPI_Allreduce")));
 #endif
 /* -- End Profiling Symbol Block */
 
@@ -847,7 +851,7 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
             MPID_Datatype *datatype_ptr = NULL;
             MPID_Op *op_ptr = NULL;
 
-            MPID_Comm_valid_ptr( comm_ptr, mpi_errno );
+            MPID_Comm_valid_ptr( comm_ptr, mpi_errno, FALSE );
             if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 	    MPIR_ERRTEST_COUNT(count, mpi_errno);
 	    MPIR_ERRTEST_DATATYPE(datatype, "datatype", mpi_errno);

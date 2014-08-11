@@ -41,7 +41,7 @@ cvars:
     - name        : MPIR_CVAR_CH3_RMA_NREQUEST_NEW_THRESHOLD
       category    : CH3
       type        : int
-      default     : 128
+      default     : 0
       class       : none
       verbosity   : MPI_T_VERBOSITY_USER_BASIC
       scope       : MPI_T_SCOPE_ALL_EQ
@@ -54,7 +54,7 @@ cvars:
     - name        : MPIR_CVAR_CH3_RMA_GC_NUM_COMPLETED
       category    : CH3
       type        : int
-      default     : 1
+      default     : (-1)
       class       : none
       verbosity   : MPI_T_VERBOSITY_USER_BASIC
       scope       : MPI_T_SCOPE_ALL_EQ
@@ -80,7 +80,7 @@ cvars:
     - name        : MPIR_CVAR_CH3_RMA_GC_NUM_TESTED
       category    : CH3
       type        : int
-      default     : (-1)
+      default     : 100
       class       : none
       verbosity   : MPI_T_VERBOSITY_USER_BASIC
       scope       : MPI_T_SCOPE_ALL_EQ
@@ -130,6 +130,208 @@ cvars:
         messages, for single-operation passive target epochs.
 
 === END_MPI_T_CVAR_INFO_BLOCK ===
+*/
+
+/* Notes for memory barriers in RMA synchronizations
+
+   When SHM is allocated for RMA window, we need to add memory berriers at proper
+   places in RMA synchronization routines to guarantee the ordering of read/write
+   operations, so that any operations after synchronization calls will see the
+   correct data.
+
+   There are four kinds of operations involved in the following explanation:
+
+   1. Local loads/stores: any operations happening outside RMA epoch and accessing
+      each process's own window memory.
+
+   2. SHM operations: any operations happening inside RMA epoch. They may access
+      any processes' window memory, which include direct loads/stores, and
+      RMA operations that are internally implemented as direct loads/stores in
+      MPI implementation.
+
+   3. PROC_SYNC: synchronzations among processes by sending/recving messages.
+
+   4. MEM_SYNC: a full memory barrier. It ensures the ordering of read/write
+      operations on each process.
+
+   (1) FENCE synchronization
+
+              RANK 0                           RANK 1
+
+       (local loads/stores)             (local loads/stores)
+
+           WIN_FENCE {                    WIN_FENCE {
+               MEM_SYNC                       MEM_SYNC
+               PROC_SYNC -------------------- PROC_SYNC
+               MEM_SYNC                       MEM_SYNC
+           }                              }
+
+        (SHM operations)                  (SHM operations)
+
+           WIN_FENCE {                     WIN_FENCE {
+               MEM_SYNC                        MEM_SYNC
+               PROC_SYNC --------------------- PROC_SYNC
+               MEM_SYNC                        MEM_SYNC
+           }                               }
+
+      (local loads/stores)              (local loads/stores)
+
+       We need MEM_SYNC before and after PROC_SYNC for both starting WIN_FENCE
+       and ending WIN_FENCE, to ensure the ordering between local loads/stores
+       and PROC_SYNC in starting WIN_FENCE (and vice versa in ending WIN_FENCE),
+       and the ordering between PROC_SYNC and SHM operations in starting WIN_FENCE
+       (and vice versa for ending WIN_FENCE).
+
+       In starting WIN_FENCE, the MEM_SYNC before PROC_SYNC essentially exposes
+       previous local loads/stores to other processes; after PROC_SYNC, each
+       process knows that everyone else already exposed their local loads/stores;
+       the MEM_SYNC after PROC_SYNC ensures that my following SHM operations will
+       happen after PROC_SYNC and will see the latest data on other processes.
+
+       In ending WIN_FENCE, the MEM_SYNC before PROC_SYNC essentially exposes
+       previous SHM operations to other processes; after PROC_SYNC, each process
+       knows everyone else already exposed their SHM operations; the MEM_SYNC
+       after PROC_SYNC ensures that my following local loads/stores will happen
+       after PROC_SYNC and will see the latest data in my memory region.
+
+   (2) POST-START-COMPLETE-WAIT synchronization
+
+              RANK 0                           RANK 1
+
+                                          (local loads/stores)
+
+           WIN_START {                      WIN_POST {
+                                                MEM_SYNC
+               PROC_SYNC ---------------------- PROC_SYNC
+               MEM_SYNC
+           }                                }
+
+         (SHM operations)
+
+           WIN_COMPLETE {                  WIN_WAIT/TEST {
+               MEM_SYNC
+               PROC_SYNC --------------------- PROC_SYNC
+                                               MEM_SYNC
+           }                               }
+
+                                          (local loads/stores)
+
+       We need MEM_SYNC before PROC_SYNC for WIN_POST and WIN_COMPLETE, and
+       MEM_SYNC after PROC_SYNC in WIN_START and WIN_WAIT/TEST, to ensure the
+       ordering between local loads/stores and PROC_SYNC in WIN_POST (and
+       vice versa in WIN_WAIT/TEST), and the ordering between PROC_SYNC and SHM
+       operations in WIN_START (and vice versa in WIN_COMPLETE).
+
+       In WIN_POST, the MEM_SYNC before PROC_SYNC essentially exposes previous
+       local loads/stores to group of origin processes; after PROC_SYNC, origin
+       processes knows all target processes already exposed their local
+       loads/stores; in WIN_START, the MEM_SYNC after PROC_SYNC ensures that
+       following SHM operations will happen after PROC_SYNC and will see the
+       latest data on target processes.
+
+       In WIN_COMPLETE, the MEM_SYNC before PROC_SYNC essentailly exposes previous
+       SHM operations to group of target processes; after PROC_SYNC, target
+       processes knows all origin process already exposed their SHM operations;
+       in WIN_WAIT/TEST, the MEM_SYNC after PROC_SYNC ensures that following local
+       loads/stores will happen after PROC_SYNC and will see the latest data in
+       my memory region.
+
+   (3) Passive target synchronization
+
+              RANK 0                          RANK 1
+
+                                        WIN_LOCK(target=1) {
+                                            PROC_SYNC (lock granted)
+                                            MEM_SYNC
+                                        }
+
+                                        (SHM operations)
+
+                                        WIN_UNLOCK(target=1) {
+                                            MEM_SYNC
+                                            PROC_SYNC (lock released)
+                                        }
+
+         PROC_SYNC -------------------- PROC_SYNC
+
+         WIN_LOCK (target=1) {
+             PROC_SYNC (lock granted)
+             MEM_SYNC
+         }
+
+         (SHM operations)
+
+         WIN_UNLOCK (target=1) {
+             MEM_SYNC
+             PROC_SYNC (lock released)
+         }
+
+         PROC_SYNC -------------------- PROC_SYNC
+
+                                        WIN_LOCK(target=1) {
+                                            PROC_SYNC (lock granted)
+                                            MEM_SYNC
+                                        }
+
+                                        (SHM operations)
+
+                                        WIN_UNLOCK(target=1) {
+                                            MEM_SYNC
+                                            PROC_SYNC (lock released)
+                                        }
+
+         We need MEM_SYNC after PROC_SYNC in WIN_LOCK, and MEM_SYNC before
+         PROC_SYNC in WIN_UNLOCK, to ensure the ordering between SHM operations
+         and PROC_SYNC and vice versa.
+
+         In WIN_LOCK, the MEM_SYNC after PROC_SYNC guarantees two things:
+         (a) it guarantees that following SHM operations will happen after
+         lock is granted; (b) it guarantees that following SHM operations
+         will happen after any PROC_SYNC with target before WIN_LOCK is called,
+         which means those SHM operations will see the latest data on target
+         process.
+
+         In WIN_UNLOCK, the MEM_SYNC before PROC_SYNC also guarantees two
+         things: (a) it guarantees that SHM operations will happen before
+         lock is released; (b) it guarantees that SHM operations will happen
+         before any PROC_SYNC with target after WIN_UNLOCK is returned, which
+         means following SHM operations on that target will see the latest data.
+
+         WIN_LOCK_ALL/UNLOCK_ALL are same with WIN_LOCK/UNLOCK.
+
+              RANK 0                          RANK 1
+
+         WIN_LOCK_ALL
+
+         (SHM operations)
+
+         WIN_FLUSH(target=1) {
+             MEM_SYNC
+         }
+
+         PROC_SYNC ------------------------PROC_SYNC
+
+                                           WIN_LOCK(target=1) {
+                                               PROC_SYNC (lock granted)
+                                               MEM_SYNC
+                                           }
+
+                                           (SHM operations)
+
+                                           WIN_UNLOCK(target=1) {
+                                               MEM_SYNC
+                                               PROC_SYNC (lock released)
+                                           }
+
+         WIN_UNLOCK_ALL
+
+         We need MEM_SYNC in WIN_FLUSH to ensure the ordering between SHM
+         operations and PROC_SYNC.
+
+         The MEM_SYNC in WIN_FLUSH guarantees that all SHM operations before
+         this WIN_FLUSH will happen before any PROC_SYNC with target after
+         this WIN_FLUSH, which means SHM operations on target process after
+         PROC_SYNC with origin will see the latest data.
 */
 
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(RMA, rma_lockqueue_alloc);
@@ -968,6 +1170,28 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	MPIR_T_PVAR_TIMER_END(RMA, rma_winfence_clearlock);
     }
 
+    if (!(assert & MPI_MODE_NOSUCCEED) &&
+        (assert & MPI_MODE_NOPRECEDE || win_ptr->fence_issued == 0)) {
+
+        /* In the FENCE that opens an epoch but does not close an epoch,
+           if SHM is allocated, perform a barrier among processes on the
+           same node, to prevent one process modifying another process's
+           memory before that process starts an epoch. */
+
+        if (win_ptr->shm_allocated == TRUE) {
+            MPID_Comm *node_comm_ptr = win_ptr->comm_ptr->node_comm;
+
+            /* Ensure ordering of load/store operations. */
+            OPA_read_write_barrier();
+
+            mpi_errno = MPIR_Barrier_impl(node_comm_ptr, &errflag);
+            if (mpi_errno) {goto fn_fail;}
+
+            /* Ensure ordering of load/store operations. */
+            OPA_read_write_barrier();
+        }
+    }
+
     /* Note that the NOPRECEDE and NOSUCCEED must be specified by all processes
        in the window's group if any specify it */
     if (assert & MPI_MODE_NOPRECEDE)
@@ -1053,6 +1277,11 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	/* result is stored in rma_target_proc[0] */
 	if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
         MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+
+        /* Ensure ordering of load/store operations. */
+        if (win_ptr->shm_allocated == TRUE) {
+            OPA_read_write_barrier();
+        }
 
 	/* Set the completion counter */
 	/* FIXME: MT: this needs to be done atomically because other
@@ -2050,6 +2279,11 @@ int MPIDI_Win_post(MPID_Group *post_grp_ptr, int assert, MPID_Win *win_ptr)
     }
         
     post_grp_size = post_grp_ptr->size;
+
+    /* Ensure ordering of load/store operations. */
+    if (win_ptr->shm_allocated == TRUE) {
+        OPA_read_write_barrier();
+    }
         
     /* initialize the completion counter */
     win_ptr->my_counter = post_grp_size;
@@ -2144,6 +2378,113 @@ int MPIDI_Win_post(MPID_Group *post_grp_ptr, int assert, MPID_Win *win_ptr)
 }
 
 
+static int recv_post_msgs(MPID_Win *win_ptr, int *ranks_in_win_grp, int local)
+{
+    int mpi_errno = MPI_SUCCESS;
+    int start_grp_size, src, rank, i, j;
+    MPI_Request *req;
+    MPI_Status *status;
+    MPID_Comm *comm_ptr = win_ptr->comm_ptr;
+    MPIU_CHKLMEM_DECL(2);
+    MPIDI_STATE_DECL(MPID_STATE_RECV_POST_MSGS);
+
+    MPIDI_RMA_FUNC_ENTER(MPID_STATE_RECV_POST_MSGS);
+
+    /* Wait for 0-byte messages from processes either on the same node
+     * or not (depending on the "local" parameter), so we know they
+     * have entered post. */
+
+    start_grp_size = win_ptr->start_group_ptr->size;
+
+    rank = win_ptr->comm_ptr->rank;
+    MPIU_CHKLMEM_MALLOC(req, MPI_Request *, start_grp_size*sizeof(MPI_Request), mpi_errno, "req");
+    MPIU_CHKLMEM_MALLOC(status, MPI_Status *, start_grp_size*sizeof(MPI_Status), mpi_errno, "status");
+
+    j = 0;
+    for (i = 0; i < start_grp_size; i++) {
+        src = ranks_in_win_grp[i];
+
+        if (src == rank)
+            continue;
+
+        if (local && win_ptr->shm_allocated == TRUE) {
+            MPID_Request *req_ptr;
+            MPIDI_VC_t *orig_vc = NULL, *target_vc = NULL;
+
+            MPIDI_Comm_get_vc(win_ptr->comm_ptr, rank, &orig_vc);
+            MPIDI_Comm_get_vc(win_ptr->comm_ptr, src, &target_vc);
+
+            if (orig_vc->node_id == target_vc->node_id) {
+                mpi_errno = MPID_Irecv(NULL, 0, MPI_INT, src, SYNC_POST_TAG,
+                                       comm_ptr, MPID_CONTEXT_INTRA_PT2PT, &req_ptr);
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                req[j++] = req_ptr->handle;
+            }
+        }
+        else if (!local) {
+            MPID_Request *req_ptr;
+
+            mpi_errno = MPID_Irecv(NULL, 0, MPI_INT, src, SYNC_POST_TAG,
+                                   comm_ptr, MPID_CONTEXT_INTRA_PT2PT, &req_ptr);
+            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+            req[j++] = req_ptr->handle;
+        }
+    }
+
+    if (j) {
+        mpi_errno = MPIR_Waitall_impl(j, req, status);
+        if (mpi_errno && mpi_errno != MPI_ERR_IN_STATUS) MPIU_ERR_POP(mpi_errno);
+        /* --BEGIN ERROR HANDLING-- */
+        if (mpi_errno == MPI_ERR_IN_STATUS) {
+            for (i = 0; i < start_grp_size; i++) {
+                if (status[i].MPI_ERROR != MPI_SUCCESS) {
+                    mpi_errno = status[i].MPI_ERROR;
+                    MPIU_ERR_POP(mpi_errno);
+                }
+            }
+        }
+        /* --END ERROR HANDLING-- */
+    }
+
+ fn_fail:
+    MPIU_CHKLMEM_FREEALL();
+    MPIDI_RMA_FUNC_EXIT(MPID_STATE_RECV_POST_MSGS);
+    return mpi_errno;
+}
+
+static int fill_ranks_in_win_grp(MPID_Win *win_ptr, int *ranks_in_win_grp)
+{
+    int mpi_errno = MPI_SUCCESS;
+    int i, *ranks_in_start_grp;
+    MPID_Group *win_grp_ptr;
+    MPIU_CHKLMEM_DECL(2);
+    MPIDI_STATE_DECL(MPID_STATE_FILL_RANKS_IN_WIN_GRP);
+
+    MPIDI_RMA_FUNC_ENTER(MPID_STATE_FILL_RANKS_IN_WIN_GRP);
+
+    MPIU_CHKLMEM_MALLOC(ranks_in_start_grp, int *, win_ptr->start_group_ptr->size*sizeof(int),
+			mpi_errno, "ranks_in_start_grp");
+
+    for (i = 0; i < win_ptr->start_group_ptr->size; i++)
+	ranks_in_start_grp[i] = i;
+
+    mpi_errno = MPIR_Comm_group_impl(win_ptr->comm_ptr, &win_grp_ptr);
+    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+
+    mpi_errno = MPIR_Group_translate_ranks_impl(win_ptr->start_group_ptr, win_ptr->start_group_ptr->size,
+                                                ranks_in_start_grp,
+                                                win_grp_ptr, ranks_in_win_grp);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    mpi_errno = MPIR_Group_free_impl(win_grp_ptr);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+ fn_fail:
+    MPIU_CHKLMEM_FREEALL();
+    MPIDI_RMA_FUNC_EXIT(MPID_STATE_FILL_RANKS_IN_WIN_GRP);
+    return mpi_errno;
+}
+
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_Win_start
@@ -2152,6 +2493,8 @@ int MPIDI_Win_post(MPID_Group *post_grp_ptr, int assert, MPID_Win *win_ptr)
 int MPIDI_Win_start(MPID_Group *group_ptr, int assert, MPID_Win *win_ptr)
 {
     int mpi_errno=MPI_SUCCESS;
+    int *ranks_in_win_grp;
+    MPIU_CHKLMEM_DECL(1);
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_START);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_WIN_START);
@@ -2205,7 +2548,23 @@ int MPIDI_Win_start(MPID_Group *group_ptr, int assert, MPID_Win *win_ptr)
     MPIR_Group_add_ref( group_ptr );
     win_ptr->start_assert = assert;
 
+    /* wait for messages from local processes */
+    MPIU_CHKLMEM_MALLOC(ranks_in_win_grp, int *, win_ptr->start_group_ptr->size*sizeof(int),
+			mpi_errno, "ranks_in_win_grp");
+
+    mpi_errno = fill_ranks_in_win_grp(win_ptr, ranks_in_win_grp);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    mpi_errno = recv_post_msgs(win_ptr, ranks_in_win_grp, 1);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    /* Ensure ordering of load/store operations */
+    if (win_ptr->shm_allocated == TRUE) {
+        OPA_read_write_barrier();
+    }
+
  fn_fail:
+    MPIU_CHKLMEM_FREEALL();
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_WIN_START);
     return mpi_errno;
 }
@@ -2219,17 +2578,16 @@ int MPIDI_Win_start(MPID_Group *group_ptr, int assert, MPID_Win *win_ptr)
 int MPIDI_Win_complete(MPID_Win *win_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
-    int comm_size, *nops_to_proc, src, new_total_op_count;
+    int comm_size, *nops_to_proc, new_total_op_count;
     int i, j, dst, total_op_count, *curr_ops_cnt;
     MPIDI_RMA_Op_t *curr_ptr;
     MPIDI_RMA_Ops_list_t *ops_list;
     MPID_Comm *comm_ptr;
     MPI_Win source_win_handle, target_win_handle;
-    MPID_Group *win_grp_ptr;
-    int start_grp_size, *ranks_in_start_grp, *ranks_in_win_grp, rank;
+    int start_grp_size, *ranks_in_win_grp, rank;
     int nRequest = 0;
     int nRequestNew = 0;
-    MPIU_CHKLMEM_DECL(9);
+    MPIU_CHKLMEM_DECL(6);
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_COMPLETE);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_WIN_COMPLETE);
@@ -2258,23 +2616,11 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
     start_grp_size = win_ptr->start_group_ptr->size;
 
     MPIR_T_PVAR_TIMER_START(RMA, rma_wincomplete_recvsync);
-    MPIU_CHKLMEM_MALLOC(ranks_in_start_grp, int *, start_grp_size*sizeof(int), 
-			mpi_errno, "ranks_in_start_grp");
-        
+
     MPIU_CHKLMEM_MALLOC(ranks_in_win_grp, int *, start_grp_size*sizeof(int), 
 			mpi_errno, "ranks_in_win_grp");
         
-    for (i=0; i<start_grp_size; i++)
-    {
-	ranks_in_start_grp[i] = i;
-    }
-        
-    mpi_errno = MPIR_Comm_group_impl(comm_ptr, &win_grp_ptr);
-    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
-
-    mpi_errno = MPIR_Group_translate_ranks_impl(win_ptr->start_group_ptr, start_grp_size,
-                                                ranks_in_start_grp,
-                                                win_grp_ptr, ranks_in_win_grp);
+    mpi_errno = fill_ranks_in_win_grp(win_ptr, ranks_in_win_grp);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     rank = win_ptr->comm_ptr->rank;
@@ -2284,43 +2630,9 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
        message from each target process */
     if ((win_ptr->start_assert & MPI_MODE_NOCHECK) == 0)
     {
-        MPI_Request *req;
-        MPI_Status *status;
-
-        MPIU_CHKLMEM_MALLOC(req, MPI_Request *, start_grp_size*sizeof(MPI_Request), mpi_errno, "req");
-        MPIU_CHKLMEM_MALLOC(status, MPI_Status *, start_grp_size*sizeof(MPI_Status), mpi_errno, "status");
-
-	MPIR_T_PVAR_COUNTER_INC(RMA, rma_wincomplete_recvsync_aux, start_grp_size);
-	for (i = 0; i < start_grp_size; i++) {
-	    src = ranks_in_win_grp[i];
-	    if (src != rank) {
-                MPID_Request *req_ptr;
-		/* FIXME: This is a heavyweight way to process these sync 
-		   messages - this should be handled with a special packet
-		   type and callback function.
-		*/
-                mpi_errno = MPID_Irecv(NULL, 0, MPI_INT, src, SYNC_POST_TAG,
-                                       comm_ptr, MPID_CONTEXT_INTRA_PT2PT, &req_ptr);
-		if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-                req[i] = req_ptr->handle;
-	    } else {
-                req[i] = MPI_REQUEST_NULL;
-            }
-
-	}
-        mpi_errno = MPIR_Waitall_impl(start_grp_size, req, status);
-        if (mpi_errno && mpi_errno != MPI_ERR_IN_STATUS) MPIU_ERR_POP(mpi_errno);
-
-        /* --BEGIN ERROR HANDLING-- */
-        if (mpi_errno == MPI_ERR_IN_STATUS) {
-            for (i = 0; i < start_grp_size; i++) {
-                if (status[i].MPI_ERROR != MPI_SUCCESS) {
-                    mpi_errno = status[i].MPI_ERROR;
-                    MPIU_ERR_POP(mpi_errno);
-                }
-            }
-        }
-        /* --END ERROR HANDLING-- */
+        /* wait for messages from non-local processes */
+        mpi_errno = recv_post_msgs(win_ptr, ranks_in_win_grp, 0);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
     MPIR_T_PVAR_TIMER_END(RMA, rma_wincomplete_recvsync);
 
@@ -2473,9 +2785,6 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 
     MPIU_Assert(MPIDI_CH3I_RMA_Ops_isempty(ops_list));
     
-    mpi_errno = MPIR_Group_free_impl(win_grp_ptr);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-
     /* free the group stored in window */
     MPIR_Group_release(win_ptr->start_group_ptr);
     win_ptr->start_group_ptr = NULL; 
@@ -2681,6 +2990,11 @@ int MPIDI_Win_lock(int lock_type, int dest, int assert, MPID_Win *win_ptr)
            argument or info key. */
         mpi_errno = send_lock_msg(dest, lock_type, win_ptr);
         MPIU_ERR_CHKANDJUMP(mpi_errno != MPI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**ch3|rma_msg");
+    }
+
+    /* Ensure ordering of load/store operations. */
+    if (win_ptr->shm_allocated == TRUE) {
+        OPA_read_write_barrier();
     }
 
  fn_exit:
@@ -2936,6 +3250,11 @@ int MPIDI_Win_flush(int rank, MPID_Win *win_ptr)
     MPIU_ERR_CHKANDJUMP(win_ptr->targets[rank].remote_lock_state == MPIDI_CH3_WIN_LOCK_NONE,
                         mpi_errno, MPI_ERR_RMA_SYNC, "**rmasync");
 
+    /* Ensure ordering of read/write operations */
+    if (win_ptr->shm_allocated == TRUE) {
+        OPA_read_write_barrier();
+    }
+
     /* Local flush: ops are performed immediately on the local process */
     if (rank == win_ptr->comm_ptr->rank) {
         MPIU_Assert(win_ptr->targets[rank].remote_lock_state == MPIDI_CH3_WIN_LOCK_GRANTED);
@@ -2952,10 +3271,6 @@ int MPIDI_Win_flush(int rank, MPID_Win *win_ptr)
     /* NOTE: All flush and req-based operations are currently implemented in
        terms of MPIDI_Win_flush.  When this changes, those operations will also
        need to insert this read/write memory fence for shared memory windows. */
-
-    if (win_ptr->shm_allocated == TRUE) {
-        OPA_read_write_barrier();
-    }
 
     rma_op = MPIDI_CH3I_RMA_Ops_head(&win_ptr->targets[rank].rma_ops_list);
 

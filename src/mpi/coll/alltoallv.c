@@ -14,6 +14,11 @@
 #pragma _HP_SECONDARY_DEF PMPI_Alltoallv  MPI_Alltoallv
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPI_Alltoallv as PMPI_Alltoallv
+#elif defined(HAVE_WEAK_ATTRIBUTE)
+int MPI_Alltoallv(const void *sendbuf, const int *sendcounts, const int *sdispls,
+                  MPI_Datatype sendtype, void *recvbuf, const int *recvcounts,
+                  const int *rdispls, MPI_Datatype recvtype, MPI_Comm comm)
+                  __attribute__((weak,alias("PMPI_Alltoallv")));
 #endif
 /* -- End Profiling Symbol Block */
 
@@ -466,7 +471,7 @@ int MPI_Alltoallv(const void *sendbuf, const int *sendcounts,
             int i, comm_size;
             int check_send = (comm_ptr->comm_kind == MPID_INTRACOMM && sendbuf != MPI_IN_PLACE);
 
-            MPID_Comm_valid_ptr( comm_ptr, mpi_errno );
+            MPID_Comm_valid_ptr( comm_ptr, mpi_errno, FALSE );
             if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
             if (comm_ptr->comm_kind == MPID_INTRACOMM) {

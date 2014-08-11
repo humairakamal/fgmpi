@@ -14,6 +14,10 @@
 #pragma _HP_SECONDARY_DEF PMPI_Ireduce  MPI_Ireduce
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPI_Ireduce as PMPI_Ireduce
+#elif defined(HAVE_WEAK_ATTRIBUTE)
+int MPI_Ireduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
+                MPI_Op op, int root, MPI_Comm comm, MPI_Request *request)
+                __attribute__((weak,alias("PMPI_Ireduce")));
 #endif
 /* -- End Profiling Symbol Block */
 
@@ -844,6 +848,7 @@ int MPI_Ireduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype data
     {
         MPID_BEGIN_ERROR_CHECKS
         {
+            MPIR_ERRTEST_COUNT(count, mpi_errno);
             MPIR_ERRTEST_DATATYPE(datatype, "datatype", mpi_errno);
             MPIR_ERRTEST_OP(op, mpi_errno);
             MPIR_ERRTEST_COMM(comm, mpi_errno);
@@ -864,7 +869,7 @@ int MPI_Ireduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype data
         {
             int rank;
 
-            MPID_Comm_valid_ptr(comm_ptr, mpi_errno);
+            MPID_Comm_valid_ptr( comm_ptr, mpi_errno, FALSE );
             if (HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN) {
                 MPID_Datatype *datatype_ptr = NULL;
                 MPID_Datatype_get_ptr(datatype, datatype_ptr);

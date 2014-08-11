@@ -47,17 +47,18 @@ MPID_Win_shared_query(MPID_Win *win, int rank, MPI_Aint *size,
     if (rank == MPI_PROC_NULL) {
       for (i=0; i<win->comm_ptr->local_size; ++i) {
           if (win->mpid.info[i].base_size != 0) {
-              *((void **) base_ptr) = win->mpid.info[i].base_addr;
               *size                 = win->mpid.info[i].base_size;
               *disp_unit            = win->mpid.info[i].disp_unit;
               break;
           }
       }
+      *((void **) base_ptr) = win->base; /* return the begin. address of shared segment */
     } else {
-        *((void **) base_ptr) = win->mpid.info[rank].base_addr;
+        *((void **) base_ptr) = win->mpid.info[rank].base_addr; /* return the begin. address of the rank */
         *size                 = win->mpid.info[rank].base_size;
         *disp_unit            = win->mpid.info[rank].disp_unit;
     }
+
 
     return mpi_errno;
 }

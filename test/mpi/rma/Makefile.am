@@ -84,6 +84,7 @@ noinst_PROGRAMS =          \
     win_shared             \
     win_shared_noncontig   \
     win_shared_noncontig_put \
+    win_shared_zerobyte    \
     win_zero               \
     win_large_shm          \
     win_dynamic_acc        \
@@ -122,7 +123,9 @@ noinst_PROGRAMS =          \
     rma-contig             \
     badrma                 \
     nb_test                \
-    acc-loc
+    acc-loc                \
+    fence_shm              \
+    get-struct
 
 strided_acc_indexed_LDADD       = $(LDADD) -lm
 strided_acc_onelock_LDADD       = $(LDADD) -lm

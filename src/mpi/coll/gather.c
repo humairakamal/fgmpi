@@ -45,6 +45,10 @@ cvars:
 #pragma _HP_SECONDARY_DEF PMPI_Gather  MPI_Gather
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPI_Gather as PMPI_Gather
+#elif defined(HAVE_WEAK_ATTRIBUTE)
+int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
+               int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm)
+               __attribute__((weak,alias("PMPI_Gather")));
 #endif
 /* -- End Profiling Symbol Block */
 
@@ -790,7 +794,7 @@ int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
 	    MPID_Datatype *sendtype_ptr=NULL, *recvtype_ptr=NULL;
 	    int rank;
 
-            MPID_Comm_valid_ptr( comm_ptr, mpi_errno );
+            MPID_Comm_valid_ptr( comm_ptr, mpi_errno, FALSE );
             if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
 	    if (comm_ptr->comm_kind == MPID_INTRACOMM) {

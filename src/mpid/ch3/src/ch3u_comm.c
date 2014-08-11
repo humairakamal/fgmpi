@@ -203,11 +203,13 @@ int comm_created(MPID_Comm *comm, void *param)
 
     MPIDI_FUNC_ENTER(MPID_STATE_COMM_CREATED);
 
-    comm->ch.coll_active = TRUE;
     comm->ch.anysource_enabled = TRUE;
 
     /* Use the VC's eager threshold by default. */
     comm->ch.eager_max_msg_sz = -1;
+
+    /* Initialize the last acked failure to -1 */
+    comm->ch.last_ack_rank = -1;
 
     COMM_ADD(comm);
 
@@ -305,7 +307,7 @@ int MPIDI_CH3I_Comm_handle_failed_procs(MPID_Group *new_failed_procs)
     COMM_FOREACH(comm) {
         /* if this comm is already collectively inactive and
            anysources are disabled, there's no need to check */
-        if (!comm->ch.coll_active && !comm->ch.anysource_enabled)
+        if (!comm->ch.anysource_enabled)
             continue;
 
         mpi_errno = nonempty_intersection(comm, new_failed_procs, &flag);
@@ -313,9 +315,8 @@ int MPIDI_CH3I_Comm_handle_failed_procs(MPID_Group *new_failed_procs)
 
         if (flag) {
             MPIU_DBG_MSG_FMT(CH3_OTHER, VERBOSE,
-                             (MPIU_DBG_FDEST, "disabling AS and coll on communicator %p (%#08x)",
+                             (MPIU_DBG_FDEST, "disabling AS on communicator %p (%#08x)",
                               comm, comm->handle));
-            comm->ch.coll_active = FALSE;
             comm->ch.anysource_enabled = FALSE;
         }
     }
@@ -331,4 +332,19 @@ int MPIDI_CH3I_Comm_handle_failed_procs(MPID_Group *new_failed_procs)
     return mpi_errno;
  fn_fail:
     goto fn_exit;
+}
+
+void MPIDI_CH3I_Comm_find(MPIR_Context_id_t context_id, MPID_Comm **comm)
+{
+    MPIDI_STATE_DECL(MPIDI_STATE_MPIDI_CH3I_COMM_FIND);
+    MPIDI_FUNC_ENTER(MPIDI_STATE_MPIDI_CH3I_COMM_FIND);
+
+    COMM_FOREACH((*comm)) {
+        if ((*comm)->context_id == context_id) {
+            MPIU_DBG_MSG_D(CH3_OTHER,VERBOSE,"Found matching context id: %d", context_id);
+            break;
+        }
+    }
+
+    MPIDI_FUNC_EXIT(MPIDI_STATE_MPIDI_CH3I_COMM_FIND);
 }

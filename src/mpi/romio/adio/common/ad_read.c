@@ -6,7 +6,11 @@
  */
 
 
+#ifdef _STDC_C99
 #define _XOPEN_SOURCE 600
+#else
+#define _XOPEN_SOURCE 500
+#endif
 #include <unistd.h>
 
 #include "adio.h"
@@ -15,6 +19,10 @@
 #endif
 #ifdef ROMIO_GPFS
 # include "adio/ad_gpfs/ad_gpfs_tuning.h"
+#endif
+
+#ifdef HAVE_LIMITS_H
+#include <limits.h>
 #endif
 
 void ADIOI_GEN_ReadContig(ADIO_File fd, void *buf, int count, 
@@ -55,6 +63,10 @@ void ADIOI_GEN_ReadContig(ADIO_File fd, void *buf, int count,
 	MPE_Log_event( ADIOI_MPE_read_a, 0, NULL );
 #endif
 	rd_count = len - bytes_xfered;
+	/* stupid FreeBSD and Darwin do not like a count larger than a signed
+           int, even though size_t is eight bytes... */
+        if (rd_count > INT_MAX)
+            rd_count = INT_MAX;
 #ifdef ROMIO_GPFS
 	if (gpfsmpio_devnullio)
 	    err = pread(fd->null_fd, p, rd_count, offset+bytes_xfered);

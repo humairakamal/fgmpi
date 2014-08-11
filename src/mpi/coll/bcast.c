@@ -103,6 +103,9 @@ cvars:
 #pragma _HP_SECONDARY_DEF PMPI_Bcast  MPI_Bcast
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPI_Bcast as PMPI_Bcast
+#elif defined(HAVE_WEAK_ATTRIBUTE)
+int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm)
+              __attribute__((weak,alias("PMPI_Bcast")));
 #endif
 /* -- End Profiling Symbol Block */
 
@@ -1561,7 +1564,7 @@ int MPI_Bcast( void *buffer, int count, MPI_Datatype datatype, int root,
         {
             MPID_Datatype *datatype_ptr = NULL;
 	    
-            MPID_Comm_valid_ptr( comm_ptr, mpi_errno );
+            MPID_Comm_valid_ptr( comm_ptr, mpi_errno, FALSE );
             if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 	    MPIR_ERRTEST_COUNT(count, mpi_errno);
 	    MPIR_ERRTEST_DATATYPE(datatype, "datatype", mpi_errno);

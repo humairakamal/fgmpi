@@ -48,6 +48,8 @@ int gethostname(char *name, size_t len);
 /* group of processes detected to have failed.  This is a subset of
    comm_world group. */
 extern MPID_Group *MPIDI_Failed_procs_group;
+extern int MPIDI_last_known_failed;
+extern char *MPIDI_failed_procs_string;
 
 extern int MPIDI_Use_pmi2_api;
 
@@ -1548,6 +1550,7 @@ MPID_Request * MPIDI_CH3U_Recvq_FDP_or_AEU(MPIDI_Message_match * match,
 int MPIDI_CH3U_Recvq_count_unexp(void);
 int MPIDI_CH3U_Complete_posted_with_error(MPIDI_VC_t *vc);
 int MPIDI_CH3U_Complete_disabled_anysources(void);
+int MPIDI_CH3U_Clean_recvq(MPID_Comm *comm_ptr);
 
 
 int MPIDI_CH3U_Request_load_send_iov(MPID_Request * const sreq, 
@@ -1570,6 +1573,7 @@ int MPIDI_CH3U_Receive_data_unexpected(MPID_Request * rreq, char *buf, MPIDI_msg
 int MPIDI_CH3I_Comm_init(void);
 
 int MPIDI_CH3I_Comm_handle_failed_procs(MPID_Group *new_failed_procs);
+void MPIDI_CH3I_Comm_find(MPIR_Context_id_t context_id, MPID_Comm **comm);
 
 /* The functions below allow channels to register functions to be
    called immediately after a communicator has been created, and
@@ -1703,6 +1707,10 @@ int MPIDI_CH3_Channel_close( void );
 #else
 #define MPIDI_CH3_Channel_close( )   MPI_SUCCESS
 #endif
+
+/* MPIDI_CH3U_Get_failed_group() generates a group of failed processes based
+ * on the last list generated during MPIDI_CH3U_Check_for_failed_procs */
+int MPIDI_CH3U_Get_failed_group(int last_rank, MPID_Group **failed_group);
 /* MPIDI_CH3U_Check_for_failed_procs() reads PMI_dead_processes key
    and marks VCs to those processes as failed */
 int MPIDI_CH3U_Check_for_failed_procs(void);
@@ -1860,7 +1868,8 @@ int MPIDI_CH3_PktHandler_Close( MPIDI_VC_t *, MPIDI_CH3_Pkt_t *,
 				MPIDI_msg_sz_t *, MPID_Request ** );
 int MPIDI_CH3_PktHandler_EndCH3( MPIDI_VC_t *, MPIDI_CH3_Pkt_t *,
 				 MPIDI_msg_sz_t *, MPID_Request ** );
-
+int MPIDI_CH3_PktHandler_Revoke(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
+                                MPIDI_msg_sz_t *buflen, MPID_Request **rreqp);
 int MPIDI_CH3_PktHandler_Init( MPIDI_CH3_PktHandler_Fcn *[], int );
 
 #ifdef MPICH_DBG_OUTPUT

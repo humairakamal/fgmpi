@@ -62,6 +62,11 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_WIN_ALLOCATE_SHM);
 
+    if ((*win_ptr)->comm_ptr->node_comm == NULL) {
+        mpi_errno = MPIDI_CH3U_Win_allocate_no_shm(size, disp_unit, info, comm_ptr, base_ptr, win_ptr);
+        goto fn_exit;
+    }
+
     /* If create flavor is MPI_WIN_FLAVOR_ALLOCATE, alloc_shared_noncontig is set to 1 by default. */
     if ((*win_ptr)->create_flavor == MPI_WIN_FLAVOR_ALLOCATE)
         (*win_ptr)->info_args.alloc_shared_noncontig = 1;
@@ -298,17 +303,24 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
         }
 
         char *cur_base = (*win_ptr)->shm_base_addr;
+        int cur_rank = 0;
         node_shm_base_addrs[0] = (*win_ptr)->shm_base_addr;
         for (i = 1; i < node_size; ++i) {
             if (node_sizes[i]) {
+                /* For the base addresses, we track the previous
+                 * process that has allocated non-zero bytes of shared
+                 * memory.  We can not simply use "i-1" for the
+                 * previous process because rank "i-1" might not have
+                 * allocated any memory. */
                 if (noncontig) {
-                    node_shm_base_addrs[i] = cur_base + MPIDI_CH3_ROUND_UP_PAGESIZE(node_sizes[i-1]);
+                    node_shm_base_addrs[i] = cur_base + MPIDI_CH3_ROUND_UP_PAGESIZE(node_sizes[cur_rank]);
                 } else {
-                    node_shm_base_addrs[i] = cur_base + node_sizes[i-1];
+                    node_shm_base_addrs[i] = cur_base + node_sizes[cur_rank];
                 }
                 cur_base = node_shm_base_addrs[i];
+                cur_rank = i;
             } else {
-                node_shm_base_addrs[i] = NULL; /* FIXME: Is this right? */
+                node_shm_base_addrs[i] = NULL;
             }
         }
 

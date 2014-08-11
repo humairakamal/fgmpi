@@ -279,9 +279,9 @@ void ADIOI_GPFS_ReadStridedColl(ADIO_File fd, void *buf, int count,
 	 *
 	 * First verify that the filetype is contig and the offsets are
 	 * increasing in rank order*/
-	int i, inOrderAndNoGaps = 1;
-	for (i=0;i<(nprocs-1);i++) {
-	    if (end_offsets[i] != (st_offsets[i+1]-1))
+	int x, inOrderAndNoGaps = 1;
+	for (x=0;x<(nprocs-1);x++) {
+	    if (end_offsets[x] != (st_offsets[x+1]-1))
 		inOrderAndNoGaps = 0;
 	}
 	if (inOrderAndNoGaps && buftype_is_contig) {
@@ -292,6 +292,14 @@ void ADIOI_GPFS_ReadStridedColl(ADIO_File fd, void *buf, int count,
 
 	    /* NOTE: we are skipping the rest of two-phase in this path */
             GPFSMPIO_T_CIO_REPORT( 0, fd, myrank, nprocs)
+
+            ADIOI_Free(offset_list);
+            ADIOI_Free(len_list);
+            ADIOI_Free(st_offsets);
+            ADIOI_Free(end_offsets);
+            ADIOI_Free(fd_start);
+            ADIOI_Free(fd_end);
+
 	    return;
 	}
     }
@@ -821,8 +829,8 @@ static void ADIOI_R_Exchange_data(ADIO_File fd, void *buf, ADIOI_Flatlist_node
 		tmp = others_req[i].lens[k];
 		others_req[i].lens[k] = partial_send[i];
 	    }
-	    MPI_Type_hindexed(count[i], 
-                 &(others_req[i].lens[start_pos[i]]),
+	    ADIOI_Type_create_hindexed_x(count[i],
+		  &(others_req[i].lens[start_pos[i]]),
 	            &(others_req[i].mem_ptrs[start_pos[i]]), 
 			 MPI_BYTE, &send_type);
 	    /* absolute displacement; use MPI_BOTTOM in send */

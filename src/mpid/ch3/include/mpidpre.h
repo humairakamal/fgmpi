@@ -178,8 +178,11 @@ typedef union {
 typedef struct MPIDI_CH3I_comm
 {
     int eager_max_msg_sz;   /* comm-wide eager/rendezvous message threshold */
-    int coll_active;        /* TRUE iff this communicator is collectively active */
     int anysource_enabled;  /* TRUE iff this anysource recvs can be posted on this communicator */
+    int last_ack_rank;      /* The rank of the last acknowledged failure */
+    int waiting_for_revoke; /* The number of other processes from which we are
+                             * waiting for a revoke message before we can release
+                             * the context id */
     struct MPID_nem_barrier_vars *barrier_vars; /* shared memory variables used in barrier */
     struct MPID_Comm *next; /* next pointer for list of communicators */
     struct MPID_Comm *prev; /* prev pointer for list of communicators */
@@ -203,8 +206,11 @@ typedef struct MPIDI_VC * MPID_VCR;
 #   define MPIDI_REQUEST_SEQNUM
 #endif
 
+/* We start with an arbitrarily chosen number (42), to help with
+ * debugging when a packet type is not initialized or wrongly
+ * initialized. */
 enum MPIDI_CH3_Lock_states {
-    MPIDI_CH3_WIN_LOCK_NONE = 0,
+    MPIDI_CH3_WIN_LOCK_NONE = 42,
     MPIDI_CH3_WIN_LOCK_CALLED,
     MPIDI_CH3_WIN_LOCK_REQUESTED,
     MPIDI_CH3_WIN_LOCK_GRANTED,
@@ -223,8 +229,11 @@ enum MPIDI_Win_info_arg_vals_accumulate_ops {
     MPIDI_ACC_OPS_SAME_OP_NO_OP
 };
 
+/* We start with an arbitrarily chosen number (42), to help with
+ * debugging when a packet type is not initialized or wrongly
+ * initialized. */
 enum MPIDI_Win_epoch_states {
-    MPIDI_EPOCH_NONE = 0,
+    MPIDI_EPOCH_NONE = 42,
     MPIDI_EPOCH_FENCE,
     MPIDI_EPOCH_POST,
     MPIDI_EPOCH_START,
