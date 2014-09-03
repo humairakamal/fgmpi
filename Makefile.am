@@ -49,9 +49,9 @@ errnames_txt_files =
 
 external_subdirs = @mplsrcdir@ @opasrcdir@ @pclsrcdir@ @fgutilsrcdir@
 external_ldflags = -L@mpllibdir@ -L@opalibdir@ -L@pcllibdir@ -L@fgutillibdir@
-external_libs = @mpllib@ @opalib@
+external_libs = @EXTERNAL_LIBS@
 mpi_convenience_libs =
-pmpi_convenience_libs =
+pmpi_convenience_libs = @mpllib@ @opalib@
 fgmpi_libs = -l@PCLLIBNAME@ -l@FGUTILLIBNAME@
 
 # NOTE on our semi-unconventional usage of DIST_SUBDIRS:
@@ -152,7 +152,7 @@ lib_LTLIBRARIES += lib/lib@PMPILIBNAME@.la
 lib_lib@PMPILIBNAME@_la_SOURCES = $(mpi_sources) $(mpi_f77_sources) $(mpi_core_sources)
 lib_lib@PMPILIBNAME@_la_LDFLAGS = $(external_ldflags) $(ABIVERSIONFLAGS)
 lib_lib@PMPILIBNAME@_la_LIBADD = $(external_libs) $(pmpi_convenience_libs) $(fgmpi_libs)
-EXTRA_lib_lib@PMPILIBNAME@_la_DEPENDENCIES = $(external_libs)
+EXTRA_lib_lib@PMPILIBNAME@_la_DEPENDENCIES = $(pmpi_convenience_libs)
 
 # lib@MPILIBNAME@.la might depend on lib@PMPILIBNAME@.la.  We add them
 # in that order to lib_LTLIBRARIES so libtool doesn't get
@@ -170,7 +170,7 @@ lib_lib@MPILIBNAME@_la_SOURCES = $(mpi_sources) $(mpi_core_sources)
 lib_lib@MPILIBNAME@_la_LDFLAGS = $(external_ldflags) $(ABIVERSIONFLAGS)
 lib_lib@MPILIBNAME@_la_CPPFLAGS = $(AM_CPPFLAGS)
 lib_lib@MPILIBNAME@_la_LIBADD = $(external_libs) $(pmpi_convenience_libs) $(mpi_convenience_libs) $(fgmpi_libs)
-EXTRA_lib_lib@MPILIBNAME@_la_DEPENDENCIES = $(external_libs)
+EXTRA_lib_lib@MPILIBNAME@_la_DEPENDENCIES = $(pmpi_convenience_libs) $(mpi_convenience_libs)
 endif !BUILD_PROFILING_LIB
 
 if BUILD_F77_BINDING
@@ -263,7 +263,14 @@ DISTCLEANFILES += config.system
 # we can only have one clean-local, so we hook into it via conditionally
 # defined variables in the dependencies section
 clean-local: $(CLEAN_LOCAL_TARGETS)
-	rm -f ${DESTDIR}${bindir}/@MPICPP_NAME@
+
+uninstall-local:
+	for x in @MPICPP_NAME@ @MPIF90_NAME@ @MPIF77_NAME@ ; do \
+		rm -f ${DESTDIR}${bindir}/$$x ; \
+	done ; \
+	for x in mpl opa mpich fmpich mpichf90 mpichcxx ; do \
+		rm -f ${DESTDIR}${libdir}/lib$$x@SHLIB_EXT@ ; \
+	done
 
 # --------------------------------------------------------------------------
 #  coverage rules

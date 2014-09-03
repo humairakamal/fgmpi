@@ -28,6 +28,11 @@
     MPIDI_NEM_PKT_LMT_COOKIE,               \
     MPIDI_NEM_PKT_CKPT_MARKER,              \
     MPIDI_NEM_PKT_NETMOD
+
+typedef struct {
+    struct MPID_nem_barrier_vars *barrier_vars; /* shared memory variables used in barrier */
+    void *netmod_priv;      /* netmod communicator private data */
+} MPIDI_CH3I_CH_comm_t;
     
 typedef enum MPIDI_CH3I_VC_state
 {

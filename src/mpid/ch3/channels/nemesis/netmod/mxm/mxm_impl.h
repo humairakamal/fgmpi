@@ -9,6 +9,7 @@
 #ifndef MX_MODULE_IMPL_H
 #define MX_MODULE_IMPL_H
 #include "mpid_nem_impl.h"
+#include "pmi.h"
 #include <mxm/api/mxm_api.h>
 
 
@@ -209,6 +210,17 @@ static inline void list_grow_mxm_req(list_head_t * list_head)
         mxm_req = (MPID_nem_mxm_req_t *) MPIU_Malloc(sizeof(MPID_nem_mxm_req_t));
         list_enqueue(list_head, &mxm_req->queue);
     }
+}
+
+static inline void _mxm_barrier(void)
+{
+    int pmi_errno;
+
+#ifdef USE_PMI2_API
+    pmi_errno = PMI2_KVS_Fence();
+#else
+    pmi_errno = PMI_Barrier();
+#endif
 }
 
 static inline void _mxm_to_mpi_status(mxm_error_t mxm_error, MPI_Status * mpi_status)

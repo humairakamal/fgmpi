@@ -35,6 +35,11 @@ int main(int argc, char **argv)
     MPI_Comm_rank(shm_comm, &shm_rank);
     MPI_Comm_size(shm_comm, &shm_nproc);
 
+    /* Platform does not support shared memory, just return. */
+    if (shm_nproc < 2) {
+        goto exit;
+    }
+
     bases = calloc(shm_nproc, sizeof(int *));
 
     if (shm_rank == 0 || shm_rank == shm_nproc - 1) {
@@ -49,7 +54,7 @@ int main(int argc, char **argv)
     MPI_Win_shared_query(shm_win, MPI_PROC_NULL, &size, &disp_unit, &abs_base);
 
     if (verbose)
-        printf("%d -- allocate shared: my_base = %p, absolute base\n", shm_rank, my_base, abs_base);
+        printf("%d -- allocate shared: my_base = %p, absolute base = %p\n", shm_rank, my_base, abs_base);
 
     for (i = 0; i < shm_nproc; i++) {
         MPI_Win_shared_query(shm_win, i, &size, &disp_unit, &bases[i]);
@@ -91,16 +96,20 @@ int main(int argc, char **argv)
 
     MPI_Win_unlock_all(shm_win);
     MPI_Win_free(&shm_win);
-    MPI_Comm_free(&shm_comm);
 
     MPI_Reduce(&errors, &all_errors, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+
+  exit:
 
     if (rank == 0 && all_errors == 0)
         printf(" No Errors\n");
 
+    MPI_Comm_free(&shm_comm);
+
     MPI_Finalize();
 
-    free(bases);
+    if (bases)
+        free(bases);
 
     return 0;
 }

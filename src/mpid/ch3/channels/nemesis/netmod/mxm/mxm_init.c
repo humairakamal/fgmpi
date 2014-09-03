@@ -14,6 +14,36 @@
 #include "mpid_nem_impl.h"
 #include "mxm_impl.h"
 
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+cvars:
+    - name        : MPIR_CVAR_NEMESIS_MXM_BULK_CONNECT
+      category    : CH3
+      type        : boolean
+      default     : false
+      class       : none
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        If true, force mxm to connect all processes at initialization
+        time.
+
+    - name        : MPIR_CVAR_NEMESIS_MXM_BULK_DISCONNECT
+      category    : CH3
+      type        : boolean
+      default     : false
+      class       : none
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        If true, force mxm to disconnect all processes at
+        finalization time.
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
+
+
 MPID_nem_netmod_funcs_t MPIDI_nem_mxm_funcs = {
     MPID_nem_mxm_init,
     MPID_nem_mxm_finalize,
@@ -77,6 +107,8 @@ static int _mxm_conf(void);
 int MPID_nem_mxm_post_init(void)
 {
     int mpi_errno = MPI_SUCCESS;
+
+    _mxm_barrier();
 
 #if MXM_API >= MXM_VERSION(3,1)
     /* Current logic guarantees that all VCs have been initialized before post init call */
@@ -150,6 +182,8 @@ int MPID_nem_mxm_finalize(void)
 
     MPIDI_STATE_DECL(MPID_STATE_MXM_FINALIZE);
     MPIDI_FUNC_ENTER(MPID_STATE_MXM_FINALIZE);
+
+    _mxm_barrier();
 
     mpi_errno = _mxm_fini();
     if (mpi_errno)
@@ -358,11 +392,9 @@ static int _mxm_conf(void)
              "%ld.%ld", (cur_ver >> MXM_MAJOR_BIT) & 0xff, (cur_ver >> MXM_MINOR_BIT) & 0xff);
 #endif
 
-    env_val = getenv("MPICH_NETMOD_MXM_BULK_CONNECT");
-    _mxm_obj.conf.bulk_connect = (env_val ? atoi(env_val) : (cur_ver < MXM_VERSION(3, 2) ? 0 : 1));
-    env_val = getenv("MPICH_NETMOD_MXM_BULK_DISCONNECT");
-    _mxm_obj.conf.bulk_disconnect = (env_val ?
-                                     atoi(env_val) : (cur_ver < MXM_VERSION(3, 2) ? 0 : 1));
+    _mxm_obj.conf.bulk_connect = cur_ver < MXM_VERSION(3, 2) ? 0 : MPIR_CVAR_NEMESIS_MXM_BULK_CONNECT;
+    _mxm_obj.conf.bulk_disconnect = cur_ver < MXM_VERSION(3, 2) ? 0 : MPIR_CVAR_NEMESIS_MXM_BULK_DISCONNECT;
+
     if (cur_ver < MXM_VERSION(3, 2) &&
         (_mxm_obj.conf.bulk_connect || _mxm_obj.conf.bulk_disconnect)) {
         _mxm_obj.conf.bulk_connect = 0;
@@ -552,7 +584,7 @@ static int _mxm_add_comm(MPID_Comm * comm, void *param)
                          mpi_errno, MPI_ERR_OTHER,
                          "**mxm_mq_create", "**mxm_mq_create %s", mxm_error_string(ret));
 
-    comm->ch.netmod_comm = (void *) mxm_mq;
+    comm->dev.ch.netmod_priv = (void *) mxm_mq;
 
   fn_exit:
     return mpi_errno;
@@ -563,7 +595,7 @@ static int _mxm_add_comm(MPID_Comm * comm, void *param)
 static int _mxm_del_comm(MPID_Comm * comm, void *param)
 {
     int mpi_errno = MPI_SUCCESS;
-    mxm_mq_h mxm_mq = (mxm_mq_h) comm->ch.netmod_comm;
+    mxm_mq_h mxm_mq = (mxm_mq_h) comm->dev.ch.netmod_priv;
 
     _dbg_mxm_output(6, "Del COMM comm %p (context %d rank %d) \n",
                     comm, comm->context_id, comm->rank);
@@ -571,7 +603,7 @@ static int _mxm_del_comm(MPID_Comm * comm, void *param)
     if (mxm_mq)
         mxm_mq_destroy(mxm_mq);
 
-    comm->ch.netmod_comm = NULL;
+    comm->dev.ch.netmod_priv = NULL;
 
   fn_exit:
     return mpi_errno;
