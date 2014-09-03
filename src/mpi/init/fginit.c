@@ -26,10 +26,6 @@ Coproclet_shared_vars_t * world_co_shared_vars;
 static void* FG_Process_wrapper( void* wrapargs );
 extern void FG_Spawn_threads(FG_WrapperProcessPtr_t WrapProcessPtr, FWraparg_t* FG_WrapArgs, int num_spawn, int *argc, char ***argv);
 
-void* FG_Scheduler_progress_loop(void* args)
-{
-    return (NULL); /* FG: TODO This is temporary */
-}
 
 void* FG_Process_wrapper( void* wrapargs )
 {

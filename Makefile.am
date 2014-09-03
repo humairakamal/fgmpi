@@ -49,9 +49,10 @@ errnames_txt_files =
 
 external_subdirs = @mplsrcdir@ @opasrcdir@ @pclsrcdir@ @fgutilsrcdir@
 external_ldflags = -L@mpllibdir@ -L@opalibdir@ -L@pcllibdir@ -L@fgutillibdir@
-external_libs = @mpllib@ @opalib@ -l@PCLLIBNAME@ -l@FGUTILLIBNAME@
+external_libs = @mpllib@ @opalib@
 mpi_convenience_libs =
 pmpi_convenience_libs =
+fgmpi_libs = -l@PCLLIBNAME@ -l@FGUTILLIBNAME@
 
 # NOTE on our semi-unconventional usage of DIST_SUBDIRS:
 # The automake manual recommends thinking of DIST_SUBDIRS as the list of all
@@ -150,7 +151,7 @@ if BUILD_PROFILING_LIB
 lib_LTLIBRARIES += lib/lib@PMPILIBNAME@.la
 lib_lib@PMPILIBNAME@_la_SOURCES = $(mpi_sources) $(mpi_f77_sources) $(mpi_core_sources)
 lib_lib@PMPILIBNAME@_la_LDFLAGS = $(external_ldflags) $(ABIVERSIONFLAGS)
-lib_lib@PMPILIBNAME@_la_LIBADD = $(external_libs) $(pmpi_convenience_libs)
+lib_lib@PMPILIBNAME@_la_LIBADD = $(external_libs) $(pmpi_convenience_libs) $(fgmpi_libs)
 EXTRA_lib_lib@PMPILIBNAME@_la_DEPENDENCIES = $(external_libs)
 
 # lib@MPILIBNAME@.la might depend on lib@PMPILIBNAME@.la.  We add them
@@ -168,7 +169,7 @@ lib_LTLIBRARIES += lib/lib@MPILIBNAME@.la
 lib_lib@MPILIBNAME@_la_SOURCES = $(mpi_sources) $(mpi_core_sources)
 lib_lib@MPILIBNAME@_la_LDFLAGS = $(external_ldflags) $(ABIVERSIONFLAGS)
 lib_lib@MPILIBNAME@_la_CPPFLAGS = $(AM_CPPFLAGS)
-lib_lib@MPILIBNAME@_la_LIBADD = $(external_libs) $(pmpi_convenience_libs) $(mpi_convenience_libs)
+lib_lib@MPILIBNAME@_la_LIBADD = $(external_libs) $(pmpi_convenience_libs) $(mpi_convenience_libs) $(fgmpi_libs)
 EXTRA_lib_lib@MPILIBNAME@_la_DEPENDENCIES = $(external_libs)
 endif !BUILD_PROFILING_LIB
 

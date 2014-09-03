@@ -2228,8 +2228,10 @@ typedef struct MPICH_PerProcess_t {
     void  (*cxx_call_errfn) ( int, int *, int *, void (*)(void) );
 #endif /* HAVE_CXX_BINDING */
 } MPICH_PerProcess_t;
+
 #if defined(FINEGRAIN_MPI)
 #define MPIR_Process ((struct StateWrapper*)(CO_CURRENT->statevars))->MPIR_ProcessFG
+extern int FGP_finalizations;
 
 struct StateWrapper {
     int init_initialized; /* FG: This is to make sure that an FGP does not

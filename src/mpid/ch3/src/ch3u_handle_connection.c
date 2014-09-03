@@ -18,7 +18,7 @@
 static volatile int MPIDI_Outstanding_close_ops = 0;
 int MPIDI_Failed_vc_count = 0;
 
-MPID_Group *MPIDI_Failed_procs_group = NULL;
+MPID_Group *MPIDI_Failed_procs_group = NULL; /* FG: TODO bypass uses MPI_Group */
 int MPIDI_last_known_failed = MPI_PROC_NULL;
 char *MPIDI_failed_procs_string = NULL;
 
@@ -443,7 +443,7 @@ static int terminate_failed_VCs(MPID_Group *new_failed_group)
 #define FUNCNAME MPIDI_CH3U_Get_failed_group
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIDI_CH3U_Get_failed_group(int last_rank, MPID_Group **failed_group)
+int MPIDI_CH3U_Get_failed_group(int last_rank, MPID_Group **failed_group) /* FG: TODO bypass uses MPI_Group */
 {
     char *c;
     int i, mpi_errno = MPI_SUCCESS, rank;
@@ -511,7 +511,7 @@ fn_fail:
 #define FUNCNAME MPIDI_CH3U_Check_for_failed_procs
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIDI_CH3U_Check_for_failed_procs(void)
+int MPIDI_CH3U_Check_for_failed_procs(void) /* FG: TODO bypass uses MPI_Group */
 {
     int mpi_errno = MPI_SUCCESS;
     int pmi_errno;

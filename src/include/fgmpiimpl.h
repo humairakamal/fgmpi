@@ -99,7 +99,6 @@ extern void* FG_Scheduler_progress_loop(void* args);
 
 extern int curr_fgrank;
 extern int PMI_totprocs;
-extern int FGP_finalizations;
 
 
 typedef struct FGP_tuple{

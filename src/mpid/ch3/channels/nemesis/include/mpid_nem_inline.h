@@ -880,6 +880,11 @@ MPID_nem_mpich_blocking_recv(MPID_nem_cell_ptr_t *cell, int *in_fbox, int comple
     /* We should never enter this function in a multithreaded app */
     MPIU_Assert(!MPIR_ThreadInfo.isThreaded);
 #endif
+#if defined(FINEGRAIN_MPI)
+    printf("\n%s: THIS FUNCTION SHOULD NOT HAVE BEEN REACHED!!\n\n", __FUNCTION__);
+    MPIU_Assert(0);
+    MPIU_Exit(-1);
+#endif
 
 #ifdef USE_FASTBOX
     if (poll_active_fboxes(cell)) goto fbox_l;

@@ -299,7 +299,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     comm->vcrt = vcrt_world;
     comm->vcr  = vcr_world;
     if(FGP_WITHIN_INIT == FGP_init_state) {
-        MPID_Dev_comm_create_hook (comm); /* FG:  MPIDI_CH3I_comm_create */
+        MPID_Dev_comm_create_hook (comm); /* FG: TODO MPIDI_CH3I_comm_create */
         world_ch3i_ptr = &(comm->ch);
         mpi_errno = MPIR_Comm_commit(comm); /*FG: TODO IMPORTANT */
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);

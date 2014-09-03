@@ -915,7 +915,7 @@ static inline void dequeue_and_set_error(MPID_Request **req,  MPID_Request *prev
  * may then find it and dequeue it.
  *
  */
-int MPIDI_CH3U_Clean_recvq(MPID_Comm *comm_ptr)
+int MPIDI_CH3U_Clean_recvq(MPID_Comm *comm_ptr) /* FG: TODO */
 {
     int mpi_errno = MPI_SUCCESS;
     int error = MPIX_ERR_REVOKED;

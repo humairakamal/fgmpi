@@ -546,7 +546,21 @@ extern MPID_Request ** FG_recvq_unexpected_tail;
 /*------------------
   BEGIN COMM SECTION
   ------------------*/
-#define MPIDI_Comm_get_vc(comm_, rank_, vcp_) *(vcp_) = (comm_)->vcr[(rank_)] /*FG: TODO */
+#if defined(FINEGRAIN_MPI)
+#define MPIDI_Comm_get_vc(comm_, rank_, vcp_)                           \
+{                                                                       \
+    int foundpid = -1, worldrank = -1;                                  \
+    MPIDI_Comm_get_pid_worldrank(comm_, rank_, &foundpid, &worldrank);  \
+    if ( foundpid < 0 ) {                                               \
+        MPIU_Internal_error_printf("Error: Negative pid. This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);                         \
+        MPID_Abort(NULL, MPI_SUCCESS, -1, NULL);                        \
+        MPIU_Exit(-1);                                                  \
+    }                                                                   \
+    *(vcp_) = (comm_)->vcr[foundpid];                                   \
+}
+#else
+#define MPIDI_Comm_get_vc(comm_, rank_, vcp_) *(vcp_) = (comm_)->vcr[(rank_)]
+#endif
 
 #ifdef USE_MPIDI_DBG_PRINT_VC
 void MPIDI_DBG_PrintVC(MPIDI_VC_t *vc);

@@ -122,6 +122,45 @@ static int check_terminating_vcs(void)
     goto fn_exit;
 }
 
+#if defined(FINEGRAIN_MPI)
+int FGP_finalizations = 0;
+void* FG_Scheduler_progress_loop(void* args)
+{
+    int numfgps;
+    int mpi_errno = MPI_SUCCESS;
+    MPID_Progress_state progress_state;
+
+    MPIU_Assert (0 == CO_CURRENT->statevars);
+    CO_CURRENT->statevars = (struct StateWrapper*)MPIU_Calloc(1, sizeof(struct StateWrapper));
+    MPIU_Assert (0 != CO_CURRENT->statevars);
+    my_fgrank = PROGRESS_THREAD_RANK;
+    MPIX_Get_collocated_size(&numfgps);
+
+    MPID_Progress_start(&progress_state);
+
+    while(FGP_finalizations < numfgps)
+    {
+        mpi_errno = MPID_Progress_test();
+        if (mpi_errno != MPI_SUCCESS)
+	    {
+		/* --BEGIN ERROR HANDLING-- */
+		MPID_Progress_end(&progress_state);
+		goto fn_fail;
+		/* --END ERROR HANDLING-- */
+            }
+        FG_Yield();
+    }
+    MPID_Progress_end(&progress_state);
+
+  fn_exit:
+    return (NULL);
+
+  fn_fail:
+    MPIU_Assert (0);
+    goto fn_exit;
+
+}
+#endif
 
 /* MPIDI_CH3I_Shm_send_progress() this function makes progress sending
    queued messages on the shared memory queues.  This function is
@@ -292,6 +331,10 @@ int MPIDI_CH3I_Progress (MPID_Progress_state *progress_state, int is_blocking)
     int pollcount = 0;
 #endif
     int made_progress = FALSE;
+#if defined(FINEGRAIN_MPI)
+    int completion_count_prior = OPA_load_int(&MPIDI_CH3I_progress_completion_count);
+    int completion_count_after;
+#endif
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_PROGRESS);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_PROGRESS);
@@ -303,11 +346,14 @@ int MPIDI_CH3I_Progress (MPID_Progress_state *progress_state, int is_blocking)
         MPIU_Assert(progress_state != NULL);
     }
 
+#if !defined(FINEGRAIN_MPI) /* FG: TODO Temporary bypass.
+                               MPIDI_CH3U_Check_for_failed_procs calls MPI_Group routines */
     if (sigusr1_count > my_sigusr1_count) {
         my_sigusr1_count = sigusr1_count;
         mpi_errno = MPIDI_CH3U_Check_for_failed_procs();
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
+#endif
     
 #ifdef ENABLE_CHECKPOINTING
     if (MPIR_CVAR_NEMESIS_ENABLE_CKPOINT) {
@@ -351,6 +397,9 @@ int MPIDI_CH3I_Progress (MPID_Progress_state *progress_state, int is_blocking)
             if (MPID_nem_safe_to_block_recv() && is_blocking
 #ifdef MPICH_IS_THREADED
                 && !MPIR_ThreadInfo.isThreaded
+#endif
+#if defined(FINEGRAIN_MPI)
+                && 0
 #endif
                 )
             {
@@ -457,12 +506,14 @@ int MPIDI_CH3I_Progress (MPID_Progress_state *progress_state, int is_blocking)
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
         }
 
+#if !defined(FINEGRAIN_MPI)  /* FG: TODO Non-blocking collectives */
         /* make progress on NBC schedules */
         mpi_errno = MPIDU_Sched_progress(&made_progress);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
         if (made_progress) {
             MPIDI_CH3_Progress_signal_completion();
         }
+#endif
 
         /* in the case of progress_wait, bail out if anything completed (CC-1) */
         if (is_blocking) {
@@ -476,6 +527,13 @@ int MPIDI_CH3I_Progress (MPID_Progress_state *progress_state, int is_blocking)
                 break;
             }
         }
+
+#if defined(FINEGRAIN_MPI)
+        completion_count_after = OPA_load_int(&MPIDI_CH3I_progress_completion_count);
+        if ( completion_count_prior ==  completion_count_after )
+            FG_Yield();
+#endif
+
 
 #ifdef MPICH_IS_THREADED
         MPIU_THREAD_CHECK_BEGIN;
@@ -755,6 +813,9 @@ int MPID_nem_handle_pkt(MPIDI_VC_t *vc, char *buf, MPIDI_msg_sz_t buflen)
                     /* MT FIXME-N1 */
 #if !(defined(MPICH_IS_THREADED) && (MPIU_THREAD_GRANULARITY == MPIU_THREAD_GRANULARITY_PER_OBJECT))
                     MPIU_Assert(MPIDI_Request_get_type(rreq) != MPIDI_REQUEST_TYPE_GET_RESP);
+#endif
+#if defined(FINEGRAIN_MPI)
+                    FG_Notify_on_event(rreq->dev.match.parts.dest_rank, UNBLOCK);
 #endif
                     MPIDI_CH3U_Request_complete(rreq);
                     complete = TRUE;
@@ -1095,7 +1156,7 @@ int MPIDI_CH3I_Register_anysource_notification(void (*enqueue_fn)(MPID_Request *
 #define FUNCNAME MPIDI_CH3I_Anysource_posted
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-static void anysource_posted(MPID_Request *rreq) /* FG: TODO */
+static void anysource_posted(MPID_Request *rreq)
 {
     qn_ent_t *ent = qn_head;
 
@@ -1144,7 +1205,7 @@ static int anysource_matched(MPID_Request *rreq)
 #define FUNCNAME MPIDI_CH3I_Posted_recv_enqueued
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-void MPIDI_CH3I_Posted_recv_enqueued(MPID_Request *rreq) /*FG: TODO */
+void MPIDI_CH3I_Posted_recv_enqueued(MPID_Request *rreq)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_POSTED_RECV_ENQUEUED);
 
@@ -1153,7 +1214,7 @@ void MPIDI_CH3I_Posted_recv_enqueued(MPID_Request *rreq) /*FG: TODO */
     /* MT FIXME acquiring MPIDCOMM here violates lock ordering rules (see
      * mpiimplthread.h comments), easily causes deadlock */
 
-    if ((rreq)->dev.match.parts.rank == MPI_ANY_SOURCE)
+    if ((rreq)->dev.match.parts.rank == MPI_ANY_SOURCE) /* FG: TODO? */
         /* call anysource handler */
 	anysource_posted(rreq);
     else
@@ -1162,9 +1223,9 @@ void MPIDI_CH3I_Posted_recv_enqueued(MPID_Request *rreq) /*FG: TODO */
 	MPIDI_VC_t *vc;
 
         /* MT FIXME does this macro need some sort of synchronization too? */
-	MPIDI_Comm_get_vc((rreq)->comm, (rreq)->dev.match.parts.rank, &vc); /*FG: TODO */
+	MPIDI_Comm_get_vc((rreq)->comm, (rreq)->dev.match.parts.rank, &vc);
 
-#ifdef ENABLE_COMM_OVERRIDES
+#ifdef ENABLE_COMM_OVERRIDES /* FG: TODO? */
         /* MT FIXME causes deadlock b/c of the MSGQUEUE/CH3COMM ordering (acquired
          * in reverse in some pkt handlers?) */
         MPIU_THREAD_CS_ENTER(CH3COMM,vc);
@@ -1185,7 +1246,12 @@ void MPIDI_CH3I_Posted_recv_enqueued(MPID_Request *rreq) /*FG: TODO */
 
         /* don't enqueue a fastbox for yourself */
         MPIU_Assert(rreq->comm != NULL);
+#if defined(FINEGRAIN_MPI)
+        if ( (rreq->dev.match.parts.rank == rreq->comm->rank) ||
+             (rreq->comm->p_rank == vc->pg_rank) ) /* FG: Double-check */
+#else
         if (rreq->dev.match.parts.rank == rreq->comm->rank)
+#endif
             goto fn_exit;
 
         /* don't enqueue non-local processes */
@@ -1210,7 +1276,7 @@ void MPIDI_CH3I_Posted_recv_enqueued(MPID_Request *rreq) /*FG: TODO */
 #define FUNCNAME MPIDI_CH3I_Posted_recv_dequeued
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_Posted_recv_dequeued(MPID_Request *rreq) /*FG: TODO */
+int MPIDI_CH3I_Posted_recv_dequeued(MPID_Request *rreq)
 {
     int local_rank = -1;
     MPIDI_VC_t *vc;
@@ -1229,12 +1295,21 @@ int MPIDI_CH3I_Posted_recv_dequeued(MPID_Request *rreq) /*FG: TODO */
 #if !(defined(MPICH_IS_THREADED) && (MPIU_THREAD_GRANULARITY == MPIU_THREAD_GRANULARITY_PER_OBJECT))
     else
     {
+#if defined(FINEGRAIN_MPI)
+        MPIU_Assert(rreq->comm != NULL);
+        MPIDI_Comm_get_vc(rreq->comm, rreq->dev.match.parts.rank, &vc);
+        MPIU_Assert(vc != NULL);
+        if ( (rreq->dev.match.parts.rank == rreq->comm->rank) ||
+             (rreq->comm->p_rank == vc->pg_rank) ) /* FG: Double-check */
+            goto fn_exit;
+#else
         if (rreq->dev.match.parts.rank == rreq->comm->rank)
             goto fn_exit;
 
         /* don't use MPID_NEM_IS_LOCAL, it doesn't handle dynamic processes */
-        MPIDI_Comm_get_vc(rreq->comm, rreq->dev.match.parts.rank, &vc); /*FG: TODO */
+        MPIDI_Comm_get_vc(rreq->comm, rreq->dev.match.parts.rank, &vc);
         MPIU_Assert(vc != NULL);
+#endif
         if (!vc->ch.is_local)
             goto fn_exit;
 
