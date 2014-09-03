@@ -515,7 +515,7 @@ int MPIDI_CH3I_Progress (MPID_Progress_state *progress_state, int is_blocking)
         }
 #endif
 
-#if defined HAVE_LIBHCOLL
+#if defined HAVE_LIBHCOLL /* FG: TODO? */
         if (MPIR_CVAR_CH3_ENABLE_HCOLL) {
             mpi_errno = hcoll_do_progress();
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
