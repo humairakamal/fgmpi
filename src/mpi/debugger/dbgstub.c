@@ -246,7 +246,7 @@ int dbgrI_field_offset(mqs_type *type, char *name)
 }
 
 /* Simulate converting name to the address of a variable/symbol */
-int dbgrI_find_symbol( mqs_image *image, char *name, mqs_taddr_t * loc )
+int dbgrI_find_symbol( mqs_image *image, char *name, mqs_taddr_t * loc ) /* FG: TODO */
 {
     if (strcmp( name, "MPIR_All_communicators" ) == 0) {
 	*loc = (mqs_taddr_t)&MPIR_All_communicators;

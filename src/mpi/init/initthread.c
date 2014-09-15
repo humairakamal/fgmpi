@@ -328,7 +328,7 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
        decisions on the value of isThreaded, set a provisional
        value here. We could let the MPID_Init routine override this */
 #if defined MPICH_IS_THREADED
-    MPIR_ThreadInfo.isThreaded = required == MPI_THREAD_MULTIPLE;
+    MPIR_ThreadInfo.isThreaded = required == MPI_THREAD_MULTIPLE; /* FG: TODO */
 #endif /* MPICH_IS_THREADED */
 
     MPIU_THREAD_CS_INIT;
@@ -545,7 +545,7 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
     MPIR_ThreadInfo.thread_provided = thread_provided;
     if (provided) *provided = thread_provided;
 #if defined MPICH_IS_THREADED
-    MPIR_ThreadInfo.isThreaded = (thread_provided == MPI_THREAD_MULTIPLE);
+    MPIR_ThreadInfo.isThreaded = (thread_provided == MPI_THREAD_MULTIPLE); /* FG: TODO */
 #endif /* MPICH_IS_THREADED */
 
     /* FIXME: Define these in the interface.  Does Timer init belong here? */
