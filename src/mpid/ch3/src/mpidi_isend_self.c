@@ -16,8 +16,13 @@
 #define FUNCNAME MPIDI_Isend_self
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
+#if defined(FINEGRAIN_MPI)
+int MPIDI_Isend_self(const void ** buf_handle, int count, MPI_Datatype datatype, int rank, int tag, MPID_Comm * comm, int context_offset,
+		     int type, MPID_Request ** request)
+#else
 int MPIDI_Isend_self(const void * buf, int count, MPI_Datatype datatype, int rank, int tag, MPID_Comm * comm, int context_offset,
 		     int type, MPID_Request ** request)
+#endif
 {
     MPIDI_Message_match match;
     MPID_Request * sreq;
@@ -28,17 +33,27 @@ int MPIDI_Isend_self(const void * buf, int count, MPI_Datatype datatype, int ran
 #endif    
     int found;
     int mpi_errno = MPI_SUCCESS;
+#if defined(FINEGRAIN_MPI)
+    void * buf = (void *) (*buf_handle);
+    int destpid=-1, destworldrank=-1;
+    MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
+#endif
 	
     MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"sending message to self");
 	
     MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
     MPIDI_Request_set_type(sreq, type);
     MPIDI_Request_set_msg_type(sreq, MPIDI_REQUEST_SELF_MSG);
-    
+
+#if defined(FINEGRAIN_MPI)
+    /* FG: TODO Zerocopy */
+    match.parts.dest_rank = destworldrank;
+    match.parts.rank = comm->rank;
+#else
     match.parts.rank = rank;
+#endif
     match.parts.tag = tag;
     match.parts.context_id = comm->context_id + context_offset;
-
     MPIU_THREAD_CS_ENTER(MSGQUEUE,);
 
     rreq = MPIDI_CH3U_Recvq_FDP_or_AEU(&match, &found);
@@ -48,6 +63,9 @@ int MPIDI_Isend_self(const void * buf, int count, MPI_Datatype datatype, int ran
         /* Set the refcount to 0 since the user will never have a chance to
          * release their reference */
         MPIU_Object_set_ref(sreq, 0);
+#if defined(FINEGRAIN_MPI)
+        /* FG: TODO Zerocopy */
+#endif
         MPIDI_CH3_Request_destroy(sreq);
 	sreq = NULL;
         MPIU_ERR_SET1(mpi_errno, MPI_ERR_OTHER, "**nomem", 
@@ -66,18 +84,29 @@ int MPIDI_Isend_self(const void * buf, int count, MPI_Datatype datatype, int ran
         goto fn_exit;
     }
 
+#if defined(FINEGRAIN_MPI)
+    MPIDI_Comm_get_vc_set_active_direct(comm, destpid, &vc);
+#else
     MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
+#endif
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Request_set_seqnum(sreq, seqnum);
     MPIDI_Request_set_seqnum(rreq, seqnum);
-    
+
+#if defined(FINEGRAIN_MPI)
+    rreq->status.MPI_SOURCE = match.parts.rank;
+#else
     rreq->status.MPI_SOURCE = rank;
+#endif
     rreq->status.MPI_TAG = tag;
     
     if (found)
     {
 	MPIDI_msg_sz_t data_sz;
-	
+
+#if defined(FINEGRAIN_MPI)
+        /* FG: TODO Zerocopy */
+#endif
         /* we found a posted req, which we now own, so we can release the CS */
         MPIU_THREAD_CS_EXIT(MSGQUEUE,);
 

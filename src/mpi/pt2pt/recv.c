@@ -147,6 +147,25 @@ int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
        complete */
     if (!MPID_Request_is_complete(request_ptr))
     {
+#if defined(FINEGRAIN_MPI)
+      if ( (source != MPI_ANY_SOURCE) && Is_within_same_HWP(source, comm_ptr, NULL) )
+      {
+          /* FG SCHEDULER: For schedulers like RR, if we are expecting a message from
+             an MPI process that is co-located, then we will not enter
+             the progress engine and yield to another MPI process.
+             For schedulers like blocking receive, the progress-thread will
+             make progress e.g. in LMT, when a clear-to-send is sent and the
+             full message has not been received, then request_ptr->cc_ptr
+             will not be zero and the receiver will block again.
+          */
+          while((*(request_ptr)->cc_ptr) != 0)
+          {
+              scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
+              FG_Yield_on_event(tye);
+          }
+      }
+      else {
+#endif
 	MPID_Progress_state progress_state;
 	    
 	MPID_Progress_start(&progress_state);
@@ -162,8 +181,18 @@ int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
 		goto fn_fail;
 		/* --END ERROR HANDLING-- */
 	    }
+#if defined(FINEGRAIN_MPI)
+            if((*(request_ptr)->cc_ptr) != 0)
+            {
+                scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
+                FG_Yield_on_event(tye);
+            }
+#endif
 	}
 	MPID_Progress_end(&progress_state);
+#if defined(FINEGRAIN_MPI)
+      }
+#endif
     }
 
     mpi_errno = request_ptr->status.MPI_ERROR;

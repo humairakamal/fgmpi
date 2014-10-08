@@ -323,6 +323,47 @@ extern MPID_Request ** FG_recvq_unexpected_tail;
    comm, buf, datatype, and count all be available with those names
    (they are not arguments to the routine)
 */
+#if defined(FINEGRAIN_MPI) /* FG: TODO IMPORTANT Double-check (sreq_)->dev.match.parts.rank = rank; */
+#define MPIDI_Request_create_sreq(sreq_, mpi_errno_, FAIL_)	\
+{								\
+    (sreq_) = MPIU_Handle_obj_alloc(&MPID_Request_mem);         \
+    if ((sreq_) == NULL)					\
+    {								\
+	MPIU_DBG_MSG(CH3_CHANNEL,TYPICAL,"unable to allocate a request");\
+	(mpi_errno_) = MPIR_ERR_MEMALLOCFAILED;			\
+	FAIL_;							\
+    }								\
+    MPIU_DBG_MSG_P(CH3_CHANNEL,VERBOSE,                         \
+	       "allocated request, handle=0x%08x", (sreq_)->handle);\
+								\
+    MPIU_Object_set_ref((sreq_), 2);				\
+    (sreq_)->kind = MPID_REQUEST_SEND;				\
+    (sreq_)->comm = comm;					\
+    (sreq_)->greq_fns = NULL;                                   \
+    MPID_cc_set(&(sreq_)->cc, 1);                               \
+    (sreq_)->cc_ptr		   = &(sreq_)->cc;              \
+    (sreq_)->partner_request   = NULL;                          \
+    MPIR_Comm_add_ref(comm);					\
+    (sreq_)->status.MPI_ERROR	   = MPI_SUCCESS;               \
+    MPIR_STATUS_SET_CANCEL_BIT((sreq_)->status, FALSE);	        \
+    (sreq_)->dev.state = 0;                                     \
+    (sreq_)->dev.cancel_pending = FALSE;                        \
+    (sreq_)->dev.match.parts.rank = rank;			\
+    (sreq_)->dev.match.parts.tag = tag;				\
+    (sreq_)->dev.match.parts.context_id = comm->context_id + context_offset;	\
+    (sreq_)->dev.match.parts.dest_rank = destworldrank;         \
+    (sreq_)->dev.user_buf = (void *) buf;			\
+    (sreq_)->dev.user_count = count;				\
+    (sreq_)->dev.datatype = datatype;				\
+    (sreq_)->dev.datatype_ptr	   = NULL;                      \
+    (sreq_)->dev.segment_ptr	   = NULL;                      \
+    (sreq_)->dev.OnDataAvail	   = NULL;                      \
+    (sreq_)->dev.OnFinal	   = NULL;                      \
+    (sreq_)->dev.iov_count	   = 0;                         \
+    (sreq_)->dev.iov_offset	   = 0;                         \
+    MPIDI_Request_clear_dbg(sreq_);                             \
+}
+#else
 #define MPIDI_Request_create_sreq(sreq_, mpi_errno_, FAIL_)	\
 {								\
     (sreq_) = MPIU_Handle_obj_alloc(&MPID_Request_mem);         \
@@ -361,7 +402,9 @@ extern MPID_Request ** FG_recvq_unexpected_tail;
     (sreq_)->dev.iov_offset	   = 0;                         \
     MPIDI_Request_clear_dbg(sreq_);                             \
 }
+#endif
 
+/* FG: TODO? MPIDI_Request_create_rreq */
 /* This is the receive request version of MPIDI_Request_create_sreq */
 #define MPIDI_Request_create_rreq(rreq_, mpi_errno_, FAIL_)	\
 {								\
@@ -1119,8 +1162,13 @@ const char * MPIDI_VC_GetStateString(int);
 
 
 /* Prototypes for internal device routines */
+#if defined(FINEGRAIN_MPI)
+int MPIDI_Isend_self(const void **, int, MPI_Datatype, int, int, MPID_Comm *,
+                     int, int, MPID_Request **);
+#else
 int MPIDI_Isend_self(const void *, int, MPI_Datatype, int, int, MPID_Comm *, 
 		     int, int, MPID_Request **);
+#endif
 
 /*--------------------------
   BEGIN MPI PORT SECTION 
@@ -1342,7 +1390,7 @@ int MPIDI_CH3I_Progress_finalize(void);
    resource shared among threads - it needs to be managed more 
    explicitly as such as shared resource */
 #ifndef MPICH_IS_THREADED
-#   define MPIDI_CH3_Progress_signal_completion()	\
+#   define MPIDI_CH3_Progress_signal_completion()	\ /* FG: TODO? */
     {							\
        MPIDI_CH3I_INCR_PROGRESS_COMPLETION_COUNT;		\
     }
@@ -1931,7 +1979,11 @@ int MPIDI_CH3_SendNoncontig_iov( struct MPIDI_VC *vc, struct MPID_Request *sreq,
 /* Routines to ack packets, called in the receive routines when a 
    message is matched */
 int MPIDI_CH3_EagerSyncAck( MPIDI_VC_t *, MPID_Request * );
+#if defined(FINEGRAIN_MPI)
+int MPIDI_CH3_RecvFromSelf( MPID_Request *, void **, int, MPI_Datatype );
+#else
 int MPIDI_CH3_RecvFromSelf( MPID_Request *, void *, int, MPI_Datatype );
+#endif
 int MPIDI_CH3_RecvRndv( MPIDI_VC_t *, MPID_Request * );
 
 /* Handler routines to continuing after an IOV is processed (assigned to the

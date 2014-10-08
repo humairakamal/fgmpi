@@ -31,7 +31,10 @@ int MPID_Rsend(const void * buf, int count, MPI_Datatype datatype, int rank, int
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif    
-    int mpi_errno = MPI_SUCCESS;    
+    int mpi_errno = MPI_SUCCESS;
+#if defined(FINEGRAIN_MPI)
+    int destpid=-1, destworldrank=-1;
+#endif
     MPIDI_STATE_DECL(MPID_STATE_MPID_RSEND);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_RSEND);
@@ -46,10 +49,17 @@ int MPID_Rsend(const void * buf, int count, MPI_Datatype datatype, int rank, int
             MPIR_SHRINK_TAG != MPIR_TAG_MASK_ERROR_BIT(tag & ~MPIR_Process.tagged_coll_mask)) {
         MPIU_ERR_SETANDJUMP(mpi_errno,MPIX_ERR_REVOKED,"**revoked");
     }
-    
+
+#if defined(FINEGRAIN_MPI) /* FG: TODO REMAINING OF THIS FUNCTION */
+    MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
+    if (COMPARE_RANKS(rank,comm,destpid) && comm->comm_kind != MPID_INTERCOMM)
+    {
+	mpi_errno = MPIDI_Isend_self(&buf, count, datatype, rank, tag, comm, context_offset, MPIDI_REQUEST_TYPE_RSEND, &sreq);
+#else
     if (rank == comm->rank && comm->comm_kind != MPID_INTERCOMM)
     {
 	mpi_errno = MPIDI_Isend_self(buf, count, datatype, rank, tag, comm, context_offset, MPIDI_REQUEST_TYPE_RSEND, &sreq);
+#endif
 	goto fn_exit;
     }
 

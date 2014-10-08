@@ -29,6 +29,9 @@ int MPID_Ssend(const void * buf, int count, MPI_Datatype datatype, int rank, int
 #endif    
     int eager_threshold = -1;
     int mpi_errno = MPI_SUCCESS;
+#if defined(FINEGRAIN_MPI)
+    int destpid=-1, destworldrank=-1;
+#endif
     MPIDI_STATE_DECL(MPID_STATE_MPID_SSEND);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_SSEND);
@@ -44,6 +47,26 @@ int MPID_Ssend(const void * buf, int count, MPI_Datatype datatype, int rank, int
         MPIU_ERR_SETANDJUMP(mpi_errno,MPIX_ERR_REVOKED,"**revoked");
     }
 
+#if defined(FINEGRAIN_MPI) /* FG: TODO REMAINING OF THIS FUNCTION */
+    MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
+    if (COMPARE_RANKS(rank,comm,destpid) && comm->comm_kind != MPID_INTERCOMM)
+    {
+	mpi_errno = MPIDI_Isend_self(&buf, count, datatype, rank, tag, comm,
+				     context_offset, MPIDI_REQUEST_TYPE_SSEND,
+				     &sreq);
+        if (rank == comm->rank)
+	{
+            printf("my_fgrank=%d: %s, self send DEADLOCK\n", my_fgrank, __FUNCTION__);
+            /* --BEGIN ERROR HANDLING-- */
+	    if (sreq != NULL && sreq->cc != 0)
+                {
+                    mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER,
+                                                     "**dev|selfsenddeadlock", 0);
+		goto fn_exit;
+                }
+	    /* --END ERROR HANDLING-- */
+	}
+#else
     if (rank == comm->rank && comm->comm_kind != MPID_INTERCOMM)
     {
 	mpi_errno = MPIDI_Isend_self(buf, count, datatype, rank, tag, comm, 
@@ -64,6 +87,7 @@ int MPID_Ssend(const void * buf, int count, MPI_Datatype datatype, int rank, int
 	    /* --END ERROR HANDLING-- */
 	}
 #	endif
+#endif
 	goto fn_exit;
     }
     

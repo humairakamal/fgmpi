@@ -29,6 +29,9 @@ int MPID_Issend(const void * buf, int count, MPI_Datatype datatype, int rank, in
 #endif    
     int eager_threshold = -1;
     int mpi_errno = MPI_SUCCESS;
+#if defined(FINEGRAIN_MPI)
+    int destpid=-1, destworldrank=-1;
+#endif
     MPIDI_STATE_DECL(MPID_STATE_MPID_ISSEND);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_ISSEND);
@@ -44,9 +47,16 @@ int MPID_Issend(const void * buf, int count, MPI_Datatype datatype, int rank, in
         MPIU_ERR_SETANDJUMP(mpi_errno,MPIX_ERR_REVOKED,"**revoked");
     }
     
+#if defined(FINEGRAIN_MPI) /* FG: TODO REMAINING OF THIS FUNCTION */
+    MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
+    if (COMPARE_RANKS(rank,comm,destpid) && comm->comm_kind != MPID_INTERCOMM)
+    {
+	mpi_errno = MPIDI_Isend_self(&buf, count, datatype, rank, tag, comm, context_offset, MPIDI_REQUEST_TYPE_SSEND, &sreq);
+#else
     if (rank == comm->rank && comm->comm_kind != MPID_INTERCOMM)
     {
 	mpi_errno = MPIDI_Isend_self(buf, count, datatype, rank, tag, comm, context_offset, MPIDI_REQUEST_TYPE_SSEND, &sreq);
+#endif
 	goto fn_exit;
     }
 

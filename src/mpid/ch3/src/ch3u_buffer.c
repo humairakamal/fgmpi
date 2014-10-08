@@ -226,14 +226,23 @@ void MPIDI_CH3U_Buffer_copy(
  * This routine is called by mpid_recv and mpid_irecv when a request
  * matches a send-to-self message 
  */
+#if defined(FINEGRAIN_MPI)
+int MPIDI_CH3_RecvFromSelf( MPID_Request *rreq, void ** buf_handle, int count,
+			    MPI_Datatype datatype )
+#else
 int MPIDI_CH3_RecvFromSelf( MPID_Request *rreq, void *buf, int count, 
 			    MPI_Datatype datatype )
+#endif
 {
     MPID_Request * const sreq = rreq->partner_request;
 
     if (sreq != NULL)
     {
 	MPIDI_msg_sz_t data_sz;
+#if defined(FINEGRAIN_MPI)
+        void * buf = (void *) (*buf_handle);
+        /* FG: TODO ZEROCOPY */
+#endif
 	
 	MPIDI_CH3U_Buffer_copy(sreq->dev.user_buf, sreq->dev.user_count,
 			       sreq->dev.datatype, &sreq->status.MPI_ERROR,
@@ -258,3 +267,14 @@ int MPIDI_CH3_RecvFromSelf( MPID_Request *rreq, void *buf, int count,
 
     return MPI_SUCCESS;
 }
+
+#if defined(FINEGRAIN_MPI)
+/* FG: TODO FOLLOWING FUNCTIONS
+void MPIDI_CH3U_Buffer_allocate(
+    const void * const sbuf, int scount, MPI_Datatype sdt, int * smpi_errno,
+    void ** rbuf_handle, int rcount, MPI_Datatype rdt, MPIDI_msg_sz_t * rsz,
+    int * rmpi_errno)
+
+void MPIDI_CH3U_Buffer_free( MPID_Request * request_ptr )
+    */
+#endif
