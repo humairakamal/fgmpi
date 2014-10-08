@@ -1170,28 +1170,6 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	MPIR_T_PVAR_TIMER_END(RMA, rma_winfence_clearlock);
     }
 
-    if (!(assert & MPI_MODE_NOSUCCEED) &&
-        (assert & MPI_MODE_NOPRECEDE || win_ptr->fence_issued == 0)) {
-
-        /* In the FENCE that opens an epoch but does not close an epoch,
-           if SHM is allocated, perform a barrier among processes on the
-           same node, to prevent one process modifying another process's
-           memory before that process starts an epoch. */
-
-        if (win_ptr->shm_allocated == TRUE) {
-            MPID_Comm *node_comm_ptr = win_ptr->comm_ptr->node_comm;
-
-            /* Ensure ordering of load/store operations. */
-            OPA_read_write_barrier();
-
-            mpi_errno = MPIR_Barrier_impl(node_comm_ptr, &errflag);
-            if (mpi_errno) {goto fn_fail;}
-
-            /* Ensure ordering of load/store operations. */
-            OPA_read_write_barrier();
-        }
-    }
-
     /* Note that the NOPRECEDE and NOSUCCEED must be specified by all processes
        in the window's group if any specify it */
     if (assert & MPI_MODE_NOPRECEDE)
@@ -1201,7 +1179,7 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
                             mpi_errno, MPI_ERR_RMA_SYNC, "**rmasync");
 
 	win_ptr->fence_issued = (assert & MPI_MODE_NOSUCCEED) ? 0 : 1;
-	goto fn_exit;
+	goto shm_barrier;
     }
     
     if (win_ptr->fence_issued == 0)
@@ -1269,7 +1247,7 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	   RMA ops on its window */  
             
 	/* first initialize the completion counter. */
-	win_ptr->my_counter = comm_size;
+	win_ptr->at_completion_counter += comm_size;
             
 	mpi_errno = MPIR_Reduce_scatter_block_impl(MPI_IN_PLACE, rma_target_proc, 1,
                                                    MPI_INT, MPI_SUM, comm_ptr, &errflag);
@@ -1286,8 +1264,8 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	/* Set the completion counter */
 	/* FIXME: MT: this needs to be done atomically because other
 	   procs have the address and could decrement it. */
-	win_ptr->my_counter = win_ptr->my_counter - comm_size + 
-	    rma_target_proc[0];  
+        win_ptr->at_completion_counter -= comm_size;
+        win_ptr->at_completion_counter += rma_target_proc[0];
 
     MPIR_T_PVAR_TIMER_START(RMA, rma_winfence_issue);
     MPIR_T_PVAR_COUNTER_INC(RMA, rma_winfence_issue_aux, total_op_count);
@@ -1380,11 +1358,11 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	
  finish_up:
 	/* wait for all operations from other processes to finish */
-	if (win_ptr->my_counter)
+	if (win_ptr->at_completion_counter)
 	{
 	    MPIR_T_PVAR_TIMER_START(RMA, rma_winfence_wait);
 	    MPID_Progress_start(&progress_state);
-	    while (win_ptr->my_counter)
+	    while (win_ptr->at_completion_counter)
 	    {
 		mpi_errno = MPID_Progress_wait(&progress_state);
 		/* --BEGIN ERROR HANDLING-- */
@@ -1405,6 +1383,28 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	}
 
         win_ptr->epoch_state = MPIDI_EPOCH_NONE;
+    }
+
+ shm_barrier:
+    if (!(assert & MPI_MODE_NOSUCCEED)) {
+        /* In a FENCE without MPI_MODE_NOSUCCEED (which means this FENCE
+           might start a new Active epoch), if SHM is allocated, perform
+           a barrier among processes on the same node, to prevent one
+           process modifying another process's memory before that process
+           starts an epoch. */
+
+        if (win_ptr->shm_allocated == TRUE) {
+            MPID_Comm *node_comm_ptr = win_ptr->comm_ptr->node_comm;
+
+            /* Ensure ordering of load/store operations. */
+            OPA_read_write_barrier();
+
+            mpi_errno = MPIR_Barrier_impl(node_comm_ptr, &errflag);
+            if (mpi_errno) {goto fn_fail;}
+
+            /* Ensure ordering of load/store operations. */
+            OPA_read_write_barrier();
+        }
     }
 
  fn_exit:
@@ -2292,7 +2292,7 @@ int MPIDI_Win_post(MPID_Group *post_grp_ptr, int assert, MPID_Win *win_ptr)
     }
         
     /* initialize the completion counter */
-    win_ptr->my_counter = post_grp_size;
+    win_ptr->at_completion_counter += post_grp_size;
         
     if ((assert & MPI_MODE_NOCHECK) == 0)
     {
@@ -2391,6 +2391,7 @@ static int recv_post_msgs(MPID_Win *win_ptr, int *ranks_in_win_grp, int local)
     MPI_Request *req;
     MPI_Status *status;
     MPID_Comm *comm_ptr = win_ptr->comm_ptr;
+    MPIDI_VC_t *orig_vc = NULL, *target_vc = NULL;
     MPIU_CHKLMEM_DECL(2);
     MPIDI_STATE_DECL(MPID_STATE_RECV_POST_MSGS);
 
@@ -2415,7 +2416,6 @@ static int recv_post_msgs(MPID_Win *win_ptr, int *ranks_in_win_grp, int local)
 
         if (local && win_ptr->shm_allocated == TRUE) {
             MPID_Request *req_ptr;
-            MPIDI_VC_t *orig_vc = NULL, *target_vc = NULL;
 
             MPIDI_Comm_get_vc(win_ptr->comm_ptr, rank, &orig_vc);
             MPIDI_Comm_get_vc(win_ptr->comm_ptr, src, &target_vc);
@@ -2430,10 +2430,16 @@ static int recv_post_msgs(MPID_Win *win_ptr, int *ranks_in_win_grp, int local)
         else if (!local) {
             MPID_Request *req_ptr;
 
-            mpi_errno = MPID_Irecv(NULL, 0, MPI_INT, src, SYNC_POST_TAG,
-                                   comm_ptr, MPID_CONTEXT_INTRA_PT2PT, &req_ptr);
-            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-            req[j++] = req_ptr->handle;
+            MPIDI_Comm_get_vc(win_ptr->comm_ptr, rank, &orig_vc);
+            MPIDI_Comm_get_vc(win_ptr->comm_ptr, src, &target_vc);
+
+            if (win_ptr->shm_allocated != TRUE ||
+                orig_vc->node_id != target_vc->node_id) {
+                mpi_errno = MPID_Irecv(NULL, 0, MPI_INT, src, SYNC_POST_TAG,
+                                       comm_ptr, MPID_CONTEXT_INTRA_PT2PT, &req_ptr);
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                req[j++] = req_ptr->handle;
+            }
         }
     }
 
@@ -2442,7 +2448,7 @@ static int recv_post_msgs(MPID_Win *win_ptr, int *ranks_in_win_grp, int local)
         if (mpi_errno && mpi_errno != MPI_ERR_IN_STATUS) MPIU_ERR_POP(mpi_errno);
         /* --BEGIN ERROR HANDLING-- */
         if (mpi_errno == MPI_ERR_IN_STATUS) {
-            for (i = 0; i < start_grp_size; i++) {
+            for (i = 0; i < j; i++) {
                 if (status[i].MPI_ERROR != MPI_SUCCESS) {
                     mpi_errno = status[i].MPI_ERROR;
                     MPIU_ERR_POP(mpi_errno);
@@ -2561,8 +2567,14 @@ int MPIDI_Win_start(MPID_Group *group_ptr, int assert, MPID_Win *win_ptr)
     mpi_errno = fill_ranks_in_win_grp(win_ptr, ranks_in_win_grp);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
-    mpi_errno = recv_post_msgs(win_ptr, ranks_in_win_grp, 1);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    /* If MPI_MODE_NOCHECK was not specified, we need to check if
+       Win_post was called on the target processes on SHM window.
+       Wait for a 0-byte sync message from each target process. */
+    if ((win_ptr->start_assert & MPI_MODE_NOCHECK) == 0)
+    {
+        mpi_errno = recv_post_msgs(win_ptr, ranks_in_win_grp, 1);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    }
 
     /* Ensure ordering of load/store operations */
     if (win_ptr->shm_allocated == TRUE) {
@@ -2736,7 +2748,7 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 	dst = ranks_in_win_grp[i];
 	if (dst == rank) {
 	    /* FIXME: MT: this has to be done atomically */
-	    win_ptr->my_counter -= 1;
+	    win_ptr->at_completion_counter -= 1;
 	}
 	else if (nops_to_proc[dst] == 0)
 	{
@@ -2830,13 +2842,13 @@ int MPIDI_Win_wait(MPID_Win *win_ptr)
         win_ptr->epoch_state = MPIDI_EPOCH_NONE;
 
     /* wait for all operations from other processes to finish */
-    if (win_ptr->my_counter)
+    if (win_ptr->at_completion_counter)
     {
 	MPID_Progress_state progress_state;
 	
 	MPIR_T_PVAR_TIMER_START(RMA, rma_winwait_wait);
 	MPID_Progress_start(&progress_state);
-	while (win_ptr->my_counter)
+	while (win_ptr->at_completion_counter)
 	{
 	    mpi_errno = MPID_Progress_wait(&progress_state);
 	    /* --BEGIN ERROR HANDLING-- */
@@ -2888,7 +2900,7 @@ int MPIDI_Win_test(MPID_Win *win_ptr, int *flag)
 	MPIU_ERR_POP(mpi_errno);
     }
 
-    *flag = (win_ptr->my_counter) ? 0 : 1;
+    *flag = (win_ptr->at_completion_counter) ? 0 : 1;
 
     if (*flag) {
         /* Track access epoch state */
@@ -4588,6 +4600,10 @@ int MPIDI_CH3_PktHandler_Get( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     req->dev.target_win_handle = get_pkt->target_win_handle;
     req->dev.source_win_handle = get_pkt->source_win_handle;
     req->dev.flags = get_pkt->flags;
+
+    /* here we increment the Active Target counter to guarantee the GET-like
+       operation are completed when counter reaches zero. */
+    win_ptr->at_completion_counter++;
     
     if (MPIR_DATATYPE_IS_PREDEFINED(get_pkt->datatype))
     {
@@ -4721,7 +4737,7 @@ int MPIDI_CH3_PktHandler_Accumulate( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     req = MPID_Request_create();
     MPIU_Object_set_ref(req, 1);
     *rreqp = req;
-    
+
     req->dev.user_count = accum_pkt->count;
     req->dev.op = accum_pkt->op;
     req->dev.real_user_buf = accum_pkt->addr;
@@ -4987,7 +5003,22 @@ int MPIDI_CH3_PktHandler_CAS( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     MPIU_ERR_CHKANDJUMP(mpi_errno != MPI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
 
     if (req != NULL) {
-        MPID_Request_release(req);
+        if (!MPID_Request_is_complete(req)) {
+            /* sending process is not completed, set proper OnDataAvail
+               (it is initialized to NULL by lower layer) */
+            req->dev.target_win_handle = cas_pkt->target_win_handle;
+            req->dev.flags = cas_pkt->flags;
+            req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_GetAccumRespComplete;
+
+            /* here we increment the Active Target counter to guarantee the GET-like
+               operation are completed when counter reaches zero. */
+            win_ptr->at_completion_counter++;
+
+            MPID_Request_release(req);
+            goto fn_exit;
+        }
+        else
+            MPID_Request_release(req);
     }
 
 
@@ -5335,6 +5366,7 @@ int MPIDI_CH3_PktHandler_LockPutUnlock( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     char *data_buf = NULL;
     MPIDI_msg_sz_t data_len;
     int mpi_errno = MPI_SUCCESS;
+    int (*fcn)( MPIDI_VC_t *, struct MPID_Request *, int * );
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_PKTHANDLER_LOCKPUTUNLOCK);
     
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PKTHANDLER_LOCKPUTUNLOCK);
@@ -5424,7 +5456,6 @@ int MPIDI_CH3_PktHandler_LockPutUnlock( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	req->dev.lock_queue_entry = new_ptr;
     }
 
-    int (*fcn)( MPIDI_VC_t *, struct MPID_Request *, int * );
     fcn = req->dev.OnDataAvail;
     mpi_errno = MPIDI_CH3U_Receive_data_found(req, data_buf, &data_len,
                                               &complete);
@@ -5499,6 +5530,10 @@ int MPIDI_CH3_PktHandler_LockGetUnlock( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_GetSendRespComplete;
 	req->dev.OnFinal     = MPIDI_CH3_ReqHandler_GetSendRespComplete;
 	req->kind = MPID_REQUEST_SEND;
+
+        /* here we increment the Active Target counter to guarantee the GET-like
+           operation are completed when counter reaches zero. */
+        win_ptr->at_completion_counter++;
 	
 	MPIDI_Pkt_init(get_resp_pkt, MPIDI_CH3_PKT_GET_RESP);
 	get_resp_pkt->request_handle = lock_get_unlock_pkt->request_handle;
@@ -6122,11 +6157,11 @@ int MPIDI_CH3_Finish_rma_op_target(MPIDI_VC_t *vc, MPID_Win *win_ptr, int is_rma
     if (flags & MPIDI_CH3_PKT_FLAG_RMA_AT_COMPLETE) {
         MPIU_Assert(win_ptr->current_lock_type == MPID_LOCK_NONE);
 
-        win_ptr->my_counter -= 1;
-        MPIU_Assert(win_ptr->my_counter >= 0);
+        win_ptr->at_completion_counter -= 1;
+        MPIU_Assert(win_ptr->at_completion_counter >= 0);
 
         /* Signal the local process when the op counter reaches 0. */
-        if (win_ptr->my_counter == 0)
+        if (win_ptr->at_completion_counter == 0)
             MPIDI_CH3_Progress_signal_completion();
     }
 
@@ -6150,6 +6185,10 @@ int MPIDI_CH3_Finish_rma_op_target(MPIDI_VC_t *vc, MPID_Win *win_ptr, int is_rma
         MPIDI_CH3_Progress_signal_completion();
     }
     else if (flags & MPIDI_CH3_PKT_FLAG_RMA_FLUSH) {
+        /* Ensure store instructions have been performed before flush call is
+         * finished on origin process. */
+        OPA_read_write_barrier();
+
         if (flags & MPIDI_CH3_PKT_FLAG_RMA_REQ_ACK) {
             MPIDI_CH3_Pkt_t upkt;
             MPIDI_CH3_Pkt_flush_t *flush_pkt = &upkt.flush;

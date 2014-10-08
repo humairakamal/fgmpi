@@ -248,8 +248,8 @@ int MPID_nem_mxm_send(MPIDI_VC_t * vc, const void *buf, int count, MPI_Datatype 
     sreq->ch.noncontig = FALSE;
 
     _dbg_mxm_output(5,
-                    "Send ========> Sending USER msg for req %p (context %d rank %d tag %d size %d) \n",
-                    sreq, comm->context_id + context_offset, comm->rank, tag, data_sz);
+                    "Send ========> Sending USER msg for req %p (context %d to %d tag %d size %d) \n",
+                    sreq, comm->context_id + context_offset, rank, tag, data_sz);
 
     vc_area = VC_BASE(vc);
     req_area = REQ_BASE(sreq);
@@ -350,8 +350,8 @@ int MPID_nem_mxm_ssend(MPIDI_VC_t * vc, const void *buf, int count, MPI_Datatype
     sreq->ch.noncontig = FALSE;
 
     _dbg_mxm_output(5,
-                    "sSend ========> Sending USER msg for req %p (context %d rank %d tag %d size %d) \n",
-                    sreq, comm->context_id + context_offset, comm->rank, tag, data_sz);
+                    "sSend ========> Sending USER msg for req %p (context %d to %d tag %d size %d) \n",
+                    sreq, comm->context_id + context_offset, rank, tag, data_sz);
 
     vc_area = VC_BASE(vc);
     req_area = REQ_BASE(sreq);
@@ -452,8 +452,8 @@ int MPID_nem_mxm_isend(MPIDI_VC_t * vc, const void *buf, int count, MPI_Datatype
     sreq->ch.noncontig = FALSE;
 
     _dbg_mxm_output(5,
-                    "iSend ========> Sending USER msg for req %p (context %d rank %d tag %d size %d) \n",
-                    sreq, comm->context_id + context_offset, comm->rank, tag, data_sz);
+                    "iSend ========> Sending USER msg for req %p (context %d to %d tag %d size %d) \n",
+                    sreq, comm->context_id + context_offset, rank, tag, data_sz);
 
     vc_area = VC_BASE(vc);
     req_area = REQ_BASE(sreq);
@@ -555,8 +555,8 @@ int MPID_nem_mxm_issend(MPIDI_VC_t * vc, const void *buf, int count, MPI_Datatyp
     sreq->ch.noncontig = FALSE;
 
     _dbg_mxm_output(5,
-                    "isSend ========> Sending USER msg for req %p (context %d rank %d tag %d size %d) \n",
-                    sreq, comm->context_id + context_offset, comm->rank, tag, data_sz);
+                    "isSend ========> Sending USER msg for req %p (context %d to %d tag %d size %d) \n",
+                    sreq, comm->context_id + context_offset, rank, tag, data_sz);
 
     vc_area = VC_BASE(vc);
     req_area = REQ_BASE(sreq);
@@ -577,6 +577,7 @@ int MPID_nem_mxm_issend(MPIDI_VC_t * vc, const void *buf, int count, MPI_Datatyp
             MPIDI_msg_sz_t last;
             MPI_Aint packsize = 0;
 
+            sreq->ch.noncontig = TRUE;
             sreq->dev.segment_ptr = MPID_Segment_alloc();
             MPIU_ERR_CHKANDJUMP1((sreq->dev.segment_ptr == NULL), mpi_errno, MPI_ERR_OTHER,
                                  "**nomem", "**nomem %s", "MPID_Segment_alloc");
@@ -593,7 +594,6 @@ int MPID_nem_mxm_issend(MPIDI_VC_t * vc, const void *buf, int count, MPI_Datatyp
                 req_area->iov_buf[0].ptr = sreq->dev.tmpbuf;
                 req_area->iov_buf[0].length = last;
             }
-            sreq->ch.noncontig = TRUE;
         }
     }
 
@@ -629,7 +629,6 @@ static int _mxm_handle_sreq(MPID_Request * req)
     vc_area = VC_BASE(req->ch.vc);
     req_area = REQ_BASE(req);
 
-    _dbg_mxm_output(5, "========> Completing SEND req %p status %d\n", req, req->status.MPI_ERROR);
     _dbg_mxm_out_buf(req_area->iov_buf[0].ptr,
                      (req_area->iov_buf[0].length >
                       16 ? 16 : req_area->iov_buf[0].length));
@@ -678,6 +677,10 @@ static void _mxm_send_completion_cb(void *context)
     _mxm_to_mpi_status(req_area->mxm_req->item.base.error, &req->status);
 
     list_enqueue(&vc_area->mxm_ep->free_queue, &req_area->mxm_req->queue);
+
+    _dbg_mxm_output(5, "========> %s SEND req %p status %d\n",
+                    (MPIR_STATUS_GET_CANCEL_BIT(req->status) ? "Canceling" : "Completing"),
+                    req, req->status.MPI_ERROR);
 
     if (likely(!MPIR_STATUS_GET_CANCEL_BIT(req->status))) {
         _mxm_handle_sreq(req);
@@ -750,7 +753,7 @@ static int _mxm_isend(MPID_nem_mxm_ep_t * ep, MPID_nem_mxm_req_area * req,
 
     ret = mxm_req_send(mxm_sreq);
     if (MXM_OK != ret) {
-        list_enqueue(&ep->free_queue, &req->mxm_req->queue);
+        list_enqueue(free_queue, &req->mxm_req->queue);
         mpi_errno = MPI_ERR_OTHER;
         goto fn_fail;
     }
@@ -795,6 +798,14 @@ static int _mxm_process_sdtype(MPID_Request ** sreq_p, MPI_Datatype datatype,
     last = sreq->dev.segment_size;
     MPID_Segment_pack_vector(sreq->dev.segment_ptr, sreq->dev.segment_first, &last, iov, &n_iov);
     MPIU_Assert(last == sreq->dev.segment_size);
+
+#if defined(MXM_DEBUG) && (MXM_DEBUG > 0)
+    _dbg_mxm_output(7, "Send Noncontiguous data vector %i entries (free slots : %i)\n", n_iov, MXM_REQ_DATA_MAX_IOV);
+    for(index = 0; index < n_iov; index++) {
+        _dbg_mxm_output(7, "======= Recv iov[%i] = ptr : %p, len : %i \n",
+                        index, iov[index].MPID_IOV_BUF, iov[index].MPID_IOV_LEN);
+    }
+#endif
 
     if (n_iov > MXM_MPICH_MAX_IOV) {
         *iov_buf = (mxm_req_buffer_t *) MPIU_Malloc(n_iov * sizeof(**iov_buf));

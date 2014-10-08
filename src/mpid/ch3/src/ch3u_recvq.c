@@ -192,7 +192,7 @@ int MPIDI_CH3U_Recvq_init(void)
         MPI_T_BIND_NO_OBJECT,
         (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
         "CH3", /* category name */
-        "number of search passes on the message receive queue");
+        "number of search passes on the posted message receive queue");
 
     MPIR_T_PVAR_COUNTER_REGISTER_STATIC(
         RECVQ,
@@ -202,7 +202,7 @@ int MPIDI_CH3U_Recvq_init(void)
         MPI_T_BIND_NO_OBJECT,
         (MPIR_T_PVAR_FLAG_READONLY | MPIR_T_PVAR_FLAG_CONTINUOUS),
         "CH3",
-        "number of search passes on the message receive queue");
+        "number of search passes on the unexpected message receive queue");
 
     MPIR_T_PVAR_TIMER_REGISTER_STATIC(
         RECVQ,
@@ -862,6 +862,7 @@ int MPIDI_CH3U_Recvq_DP(MPID_Request * rreq)
     cur_rreq = recvq_posted_head;
 #endif
     while (cur_rreq != NULL) {
+        MPIR_T_PVAR_COUNTER_INC(RECVQ, posted_recvq_match_attempts, 1);
 	if (cur_rreq == rreq) {
 	    if (prev_rreq != NULL) {
 		prev_rreq->dev.next = cur_rreq->dev.next;
