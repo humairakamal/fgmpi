@@ -8,32 +8,6 @@
 #include "mpiimpl.h"
 #include "datatype.h"
 
-/*
-=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
-
-categories:
-    - name        : FAULT_TOLERANCE
-      description : cvars that control fault tolerance behavior
-
-cvars:
-    - name        : MPIR_CVAR_ENABLE_COLL_FT_RET
-      category    : FAULT_TOLERANCE
-      type        : boolean
-      default     : true
-      class       : device
-      verbosity   : MPI_T_VERBOSITY_USER_BASIC
-      scope       : MPI_T_SCOPE_ALL_EQ
-      description : >-
-        DEPRECATED! Will be removed in MPICH-3.2
-        Collectives called on a communicator with a failed process
-        should not hang, however the result of the operation may be
-        invalid even though the function returns MPI_SUCCESS.  This
-        option enables an experimental feature that will return an error
-        if the result of the collective is invalid.
-
-=== END_MPI_T_CVAR_INFO_BLOCK ===
-*/
-
 #define COPY_BUFFER_SZ 16384
 
 /* These functions are used in the implementation of collective
@@ -293,7 +267,7 @@ int MPIC_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int t
     MPIU_ERR_CHKANDJUMP1((count < 0), mpi_errno, MPI_ERR_COUNT,
                          "**countneg", "**countneg %d", count);
 
-    if (*errflag && MPIR_CVAR_ENABLE_COLL_FT_RET)
+    if (*errflag)
         MPIR_TAG_SET_ERROR_BIT(tag);
 
     MPID_Comm_get_ptr(comm, comm_ptr);
@@ -352,22 +326,21 @@ int MPIC_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     if (request_ptr) {
         mpi_errno = MPIC_Wait(request_ptr);
-        if (mpi_errno == MPI_SUCCESS) {
-            *status = request_ptr->status;
-            mpi_errno = request_ptr->status.MPI_ERROR;
-        } else {
+        if (mpi_errno != MPI_SUCCESS)
             MPIU_ERR_POP(mpi_errno);
-        }
+
+        *status = request_ptr->status;
+        mpi_errno = status->MPI_ERROR;
         MPID_Request_release(request_ptr);
     }
 
-    if (!MPIR_CVAR_ENABLE_COLL_FT_RET) goto fn_exit;
-
     if (source != MPI_PROC_NULL) {
-        if (MPIR_TAG_CHECK_ERROR_BIT(status->MPI_TAG)) {
+        if (MPIX_ERR_REVOKED == MPIR_ERR_GET_CLASS(status->MPI_ERROR) ||
+            MPIX_ERR_PROC_FAILED == MPIR_ERR_GET_CLASS(status->MPI_ERROR) ||
+            MPIR_TAG_CHECK_ERROR_BIT(status->MPI_TAG)) {
             *errflag = TRUE;
             MPIR_TAG_CLEAR_ERROR_BIT(status->MPI_TAG);
-        } else if (MPIX_ERR_REVOKED != MPIR_ERR_GET_CLASS(status->MPI_ERROR)) {
+        } else if (MPI_SUCCESS == MPIR_ERR_GET_CLASS(status->MPI_ERROR)) {
             MPIU_Assert(status->MPI_TAG == tag);
         }
     }
@@ -407,7 +380,7 @@ int MPIC_Ssend(const void *buf, int count, MPI_Datatype datatype, int dest, int 
     context_id = (comm_ptr->comm_kind == MPID_INTRACOMM) ?
         MPID_CONTEXT_INTRA_COLL : MPID_CONTEXT_INTER_COLL;
 
-    if (*errflag && MPIR_CVAR_ENABLE_COLL_FT_RET)
+    if (*errflag)
         MPIR_TAG_SET_ERROR_BIT(tag);
 
     mpi_errno = MPID_Ssend(buf, count, datatype, dest, tag, comm_ptr,
@@ -459,8 +432,7 @@ int MPIC_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
         MPID_CONTEXT_INTRA_COLL : MPID_CONTEXT_INTER_COLL;
 
     if (status == MPI_STATUS_IGNORE) status = &mystatus;
-    if (MPIR_CVAR_ENABLE_COLL_FT_RET)
-        if (*errflag) MPIR_TAG_SET_ERROR_BIT(sendtag);
+    if (*errflag) MPIR_TAG_SET_ERROR_BIT(sendtag);
 
     mpi_errno = MPID_Irecv(recvbuf, recvcount, recvtype, source, recvtag,
                            comm_ptr, context_id, &recv_req_ptr);
@@ -480,13 +452,13 @@ int MPIC_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     MPID_Request_release(send_req_ptr);
     MPID_Request_release(recv_req_ptr);
 
-    if (!MPIR_CVAR_ENABLE_COLL_FT_RET) goto fn_exit;
-
     if (source != MPI_PROC_NULL) {
-        if (MPIR_TAG_CHECK_ERROR_BIT(status->MPI_TAG)) {
+        if (MPIX_ERR_REVOKED == MPIR_ERR_GET_CLASS(status->MPI_ERROR) ||
+            MPIX_ERR_PROC_FAILED == MPIR_ERR_GET_CLASS(status->MPI_ERROR) ||
+            MPIR_TAG_CHECK_ERROR_BIT(status->MPI_TAG)) {
             *errflag = TRUE;
             MPIR_TAG_CLEAR_ERROR_BIT(status->MPI_TAG);
-        } else if (MPIX_ERR_REVOKED != MPIR_ERR_GET_CLASS(status->MPI_ERROR)) {
+        } else if (MPI_SUCCESS == MPIR_ERR_GET_CLASS(status->MPI_ERROR)) {
             MPIU_Assert(status->MPI_TAG == recvtag);
         }
     }
@@ -536,8 +508,7 @@ int MPIC_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype,
                          "**countneg", "**countneg %d", count);
 
     if (status == MPI_STATUS_IGNORE) status = &mystatus;
-    if (MPIR_CVAR_ENABLE_COLL_FT_RET)
-        if (*errflag) MPIR_TAG_SET_ERROR_BIT(sendtag);
+    if (*errflag) MPIR_TAG_SET_ERROR_BIT(sendtag);
 
     MPID_Comm_get_ptr(comm, comm_ptr);
     context_id_offset = (comm_ptr->comm_kind == MPID_INTRACOMM) ?
@@ -595,14 +566,15 @@ int MPIC_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype,
     MPID_Request_release(sreq);
     MPID_Request_release(rreq);
 
-    if (!MPIR_CVAR_ENABLE_COLL_FT_RET) goto fn_exit;
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-    
+
     if (source != MPI_PROC_NULL) {
-        if (MPIR_TAG_CHECK_ERROR_BIT(status->MPI_TAG)) {
+        if (MPIX_ERR_REVOKED == MPIR_ERR_GET_CLASS(status->MPI_ERROR) ||
+            MPIX_ERR_PROC_FAILED == MPIR_ERR_GET_CLASS(status->MPI_ERROR) ||
+            MPIR_TAG_CHECK_ERROR_BIT(status->MPI_TAG)) {
             *errflag = TRUE;
             MPIR_TAG_CLEAR_ERROR_BIT(status->MPI_TAG);
-        } else if (MPIX_ERR_REVOKED != MPIR_ERR_GET_CLASS(status->MPI_ERROR)) {
+        } else if (MPI_SUCCESS == MPIR_ERR_GET_CLASS(status->MPI_ERROR)) {
             MPIU_Assert(status->MPI_TAG == recvtag);
         }
     }
@@ -636,7 +608,7 @@ int MPIC_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int 
     MPIU_ERR_CHKANDJUMP1((count < 0), mpi_errno, MPI_ERR_COUNT,
                          "**countneg", "**countneg %d", count);
 
-    if (*errflag && MPIR_CVAR_ENABLE_COLL_FT_RET)
+    if (*errflag)
         MPIR_TAG_SET_ERROR_BIT(tag);
 
     MPID_Comm_get_ptr(comm, comm_ptr);
@@ -717,8 +689,7 @@ int MPIC_Waitall(int numreq, MPI_Request requests[], MPI_Status statuses[], int 
     mpi_errno = MPIR_Waitall_impl(numreq, requests, statuses);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
-    if (*errflag || !MPIR_CVAR_ENABLE_COLL_FT_RET)
-        goto fn_exit;
+    if (*errflag) goto fn_exit;
 
     for (i = 0; i < numreq; ++i) {
         if (MPIR_TAG_CHECK_ERROR_BIT(statuses[i].MPI_TAG)) {

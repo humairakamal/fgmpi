@@ -20,7 +20,7 @@ static int handler_send_complete(const ptl_event_t *e)
 
     MPIDI_FUNC_ENTER(MPID_STATE_HANDLER_SEND_COMPLETE);
 
-    MPIU_Assert(e->type == PTL_EVENT_ACK || e->type == PTL_EVENT_PUT || e->type == PTL_EVENT_GET);
+    MPIU_Assert(e->type == PTL_EVENT_ACK || e->type == PTL_EVENT_GET);
 
     if (REQ_PTL(sreq)->md != PTL_INVALID_HANDLE) {
         ret = PtlMDRelease(REQ_PTL(sreq)->md);
@@ -202,7 +202,7 @@ static int send_msg(ptl_hdr_data_t ssend_flag, struct MPIDI_VC *vc, const void *
     MPIDI_Datatype_get_info(count, datatype, dt_contig, data_sz, dt_ptr, dt_true_lb);
     MPIU_DBG_MSG_FMT(CH3_CHANNEL, VERBOSE, (MPIU_DBG_FDEST, "count=%d datatype=%#x contig=%d data_sz=%lu", count, datatype, dt_contig, data_sz));
     
-    if (data_sz < PTL_LARGE_THRESHOLD) {
+    if (data_sz <= PTL_LARGE_THRESHOLD) {
         /* Small message.  Send all data eagerly */
         if (dt_contig) {
             MPIU_DBG_MSG(CH3_CHANNEL, VERBOSE, "Small contig message");
