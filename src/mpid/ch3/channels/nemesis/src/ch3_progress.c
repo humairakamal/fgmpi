@@ -523,6 +523,7 @@ int MPIDI_CH3I_Progress (MPID_Progress_state *progress_state, int is_blocking)
         }
 #endif /* HAVE_LIBHCOLL */
 
+#if !defined(FINEGRAIN_MPI)  /* FG: TODO? */
         /* make progress on RMA */
         if (num_active_issued_win > 0 || num_passive_win > 0) {
         mpi_errno = MPIDI_CH3I_RMA_Make_progress_global(&made_progress);
@@ -531,7 +532,8 @@ int MPIDI_CH3I_Progress (MPID_Progress_state *progress_state, int is_blocking)
         if (made_progress)
             MPIDI_CH3_Progress_signal_completion();
         }
-
+#endif
+        
         /* in the case of progress_wait, bail out if anything completed (CC-1) */
         if (is_blocking) {
             int completion_count = OPA_load_int(&MPIDI_CH3I_progress_completion_count);

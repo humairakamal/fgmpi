@@ -516,8 +516,10 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
   }
 #endif
 
+#if !defined(FINEGRAIN_MPI) /* FG: TODO? */
     mpi_errno = MPIDI_RMA_init();
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+#endif
 
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_INIT);

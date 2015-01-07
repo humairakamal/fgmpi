@@ -151,7 +151,7 @@ int MPI_Init( int *argc, char ***argv )
        }
 
        if(0 == INIT_INITIALIZED){
-           MPIR_Process.initialized = MPICH_PRE_INIT;
+           OPA_store_int(&MPIR_Process.mpich_state, MPICH_PRE_INIT);
            INIT_INITIALIZED = 1;
        }
 

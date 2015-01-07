@@ -698,20 +698,6 @@ MPID_Request * MPIDI_CH3U_Recvq_FDU_or_AEP(int source, int tag,
                 }
                 match.parts.rank = mask.parts.rank = 0;
             }
-            do {
-                MPIR_T_PVAR_COUNTER_INC(RECVQ, unexpected_recvq_match_attempts, 1);
-                if (MATCH_WITH_LEFT_MASK(rreq->dev.match, match, mask)) {
-                    if (prev_rreq != NULL) {
-                        prev_rreq->dev.next = rreq->dev.next;
-                    }
-                    else {
-                        recvq_unexpected_head = rreq->dev.next;
-                    }
-                    if (rreq->dev.next == NULL) {
-                        recvq_unexpected_tail = prev_rreq;
-                    }
-                    MPIR_T_PVAR_LEVEL_DEC(RECVQ, unexpected_recvq_length, 1);
-
 	    do {
             MPIR_T_PVAR_COUNTER_INC(RECVQ, unexpected_recvq_match_attempts, 1);
 		if (MATCH_WITH_LEFT_MASK(rreq->dev.match, match, mask)) {
@@ -732,7 +718,7 @@ MPID_Request * MPIDI_CH3U_Recvq_FDU_or_AEP(int source, int tag,
 			recvq_unexpected_tail = prev_rreq;
 #endif
 		    }
-            MPIR_T_PVAR_LEVEL_DEC(RECVQ, unexpected_recvq_length, 1);
+                    MPIR_T_PVAR_LEVEL_DEC(RECVQ, unexpected_recvq_length, 1);
 
             if (MPIDI_Request_get_msg_type(rreq) == MPIDI_REQUEST_EAGER_MSG)
                 MPIR_T_PVAR_LEVEL_DEC(RECVQ, unexpected_recvq_buffer_size, rreq->dev.tmpbuf_sz);
