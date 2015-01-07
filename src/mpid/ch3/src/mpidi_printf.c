@@ -143,20 +143,11 @@ void MPIDI_DBG_Print_packet(MPIDI_CH3_Pkt_t *pkt)
 	    case MPIDI_CH3_PKT_LOCK:
 		MPIDI_CH3_PktPrint_Lock( stdout, pkt );
 		break;
-	    case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK:
-		MPIDI_CH3_PktPrint_LockPutUnlock( stdout, pkt );
+	    case MPIDI_CH3_PKT_FLUSH_ACK:
+		MPIDI_CH3_PktPrint_FlushAck( stdout, pkt );
 		break;
-	    case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK:
-		MPIDI_CH3_PktPrint_LockAccumUnlock( stdout, pkt );
-		break;
-	    case MPIDI_CH3_PKT_LOCK_GET_UNLOCK:
-		MPIDI_CH3_PktPrint_LockGetUnlock( stdout, pkt );
-		break;
-	    case MPIDI_CH3_PKT_PT_RMA_DONE:
-		MPIDI_CH3_PktPrint_PtRMADone( stdout, pkt );
-		break;
-	    case MPIDI_CH3_PKT_LOCK_GRANTED:
-		MPIDI_CH3_PktPrint_LockGranted( stdout, pkt );
+	    case MPIDI_CH3_PKT_LOCK_ACK:
+		MPIDI_CH3_PktPrint_LockAck( stdout, pkt );
 		break;
 		/*
 	    case MPIDI_CH3_PKT_SHARED_LOCK_OPS_DONE:
@@ -342,38 +333,16 @@ const char *MPIDI_Pkt_GetDescString( MPIDI_CH3_Pkt_t *pkt )
 		       "LOCK - %d", 
 		       pkt->lock.target_win_handle );
 	break;
-    case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK:
-	MPIU_Snprintf( pktmsg, sizeof(pktmsg), 
-		       "PUT_UNLOCK - (%p,%d,0x%08X)", 
-		       pkt->lock_put_unlock.addr,
-		       pkt->lock_put_unlock.count,
-		       pkt->lock_put_unlock.target_win_handle );
-	break;
-    case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK:
-	MPIU_Snprintf( pktmsg, sizeof(pktmsg), 
-		       "LOCK_ACCUM_UNLOCK - (%p,%d,0x%08X)", 
-		       pkt->lock_accum_unlock.addr,
-		       pkt->lock_accum_unlock.count,
-		       pkt->lock_accum_unlock.target_win_handle );
-	break;
-    case MPIDI_CH3_PKT_LOCK_GET_UNLOCK:
-	MPIU_Snprintf( pktmsg, sizeof(pktmsg), 
-		       "LOCK_GET_UNLOCK - (%p,%d,0x%08X) req=%d", 
-		       pkt->lock_get_unlock.addr,
-		       pkt->lock_get_unlock.count,
-		       pkt->lock_get_unlock.target_win_handle, 
-		       pkt->lock_get_unlock.request_handle );
-	break;
-    case MPIDI_CH3_PKT_PT_RMA_DONE:
+    case MPIDI_CH3_PKT_FLUSH_ACK:
 	/* There is no rma_done packet type */
 	MPIU_Snprintf( pktmsg, sizeof(pktmsg), 
 		       "RMA_DONE - 0x%08X", 
-		       pkt->lock_accum_unlock.source_win_handle );
+		       pkt->flush_ack.source_win_handle );
 	break;
-    case MPIDI_CH3_PKT_LOCK_GRANTED:
+    case MPIDI_CH3_PKT_LOCK_ACK:
 	MPIU_Snprintf( pktmsg, sizeof(pktmsg), 
-		       "LOCK_GRANTED - 0x%08X", 
-		       pkt->lock_granted.source_win_handle );
+		       "LOCK_ACK - 0x%08X",
+		       pkt->lock_ack.source_win_handle );
 		break;
     case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
 	MPIU_Snprintf( pktmsg, sizeof(pktmsg), 

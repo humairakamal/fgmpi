@@ -60,7 +60,7 @@ static int MPIDI_CH3I_SHM_Wins_match(MPID_Win ** win_ptr, MPID_Win ** matched_wi
     MPID_Comm *node_comm_ptr = NULL, *shm_node_comm_ptr = NULL;
     int *node_ranks = NULL, *node_ranks_in_shm_node = NULL;
     MPID_Group *node_group_ptr = NULL, *shm_node_group_ptr = NULL;
-    int errflag = FALSE;
+    mpir_errflag_t errflag = MPIR_ERR_NONE;
     MPI_Aint *base_shm_offs;
 
     MPIDI_SHM_Win_t *elem = shm_wins_list;
@@ -266,7 +266,7 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
     MPI_Aint *node_sizes;
     void **node_shm_base_addrs;
     MPI_Aint *tmp_buf;
-    int errflag = FALSE;
+    mpir_errflag_t errflag = MPIR_ERR_NONE;
     int noncontig = FALSE;
     MPIU_CHKPMEM_DECL(6);
     MPIU_CHKLMEM_DECL(3);
@@ -277,24 +277,6 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
     if ((*win_ptr)->comm_ptr->node_comm == NULL) {
         mpi_errno = MPIDI_CH3U_Win_allocate_no_shm(size, disp_unit, info, comm_ptr, base_ptr, win_ptr);
         goto fn_exit;
-    }
-
-    /* If create flavor is MPI_WIN_FLAVOR_ALLOCATE, alloc_shared_noncontig is set to 1 by default. */
-    if ((*win_ptr)->create_flavor == MPI_WIN_FLAVOR_ALLOCATE)
-        (*win_ptr)->info_args.alloc_shared_noncontig = 1;
-
-    /* Check if we are allowed to allocate space non-contiguously */
-    if (info != NULL) {
-        int alloc_shared_nctg_flag = 0;
-        char alloc_shared_nctg_value[MPI_MAX_INFO_VAL+1];
-        MPIR_Info_get_impl(info, "alloc_shared_noncontig", MPI_MAX_INFO_VAL,
-                           alloc_shared_nctg_value, &alloc_shared_nctg_flag);
-        if (alloc_shared_nctg_flag == 1) {
-            if (!strncmp(alloc_shared_nctg_value, "true", strlen("true")))
-                (*win_ptr)->info_args.alloc_shared_noncontig = 1;
-            if (!strncmp(alloc_shared_nctg_value, "false", strlen("false")))
-                (*win_ptr)->info_args.alloc_shared_noncontig = 0;
-        }
     }
 
     /* see if we can allocate all windows contiguously */
@@ -337,11 +319,6 @@ static int MPIDI_CH3I_Win_allocate_shm(MPI_Aint size, int disp_unit, MPID_Info *
     MPIU_CHKPMEM_MALLOC((*win_ptr)->all_win_handles, MPI_Win *,
                         comm_size*sizeof(MPI_Win),
                         mpi_errno, "(*win_ptr)->all_win_handles");
-
-    MPIU_CHKPMEM_MALLOC((*win_ptr)->pt_rma_puts_accs, int *,
-                        comm_size*sizeof(int),
-                        mpi_errno, "(*win_ptr)->pt_rma_puts_accs");
-    for (i=0; i<comm_size; i++)	(*win_ptr)->pt_rma_puts_accs[i] = 0;
 
     /* get the sizes of the windows and window objectsof
        all processes.  allocate temp. buffer for communication */

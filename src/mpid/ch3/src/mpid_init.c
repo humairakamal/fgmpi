@@ -516,6 +516,9 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
   }
 #endif
 
+    mpi_errno = MPIDI_RMA_init();
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_INIT);
     return mpi_errno;

@@ -48,7 +48,7 @@ pkgconfigdir = @pkgconfigdir@
 errnames_txt_files = 
 
 external_subdirs = @mplsrcdir@ @opasrcdir@ @pclsrcdir@ @fgutilsrcdir@
-external_ldflags = -L@mpllibdir@ -L@opalibdir@ -L@pcllibdir@ -L@fgutillibdir@
+external_ldflags = @mpllibdir@ @opalibdir@ -L@pcllibdir@ -L@fgutillibdir@
 external_libs = @EXTERNAL_LIBS@
 mpi_convenience_libs =
 pmpi_convenience_libs = @mpllib@ @opalib@
@@ -151,6 +151,7 @@ if BUILD_PROFILING_LIB
 lib_LTLIBRARIES += lib/lib@PMPILIBNAME@.la
 lib_lib@PMPILIBNAME@_la_SOURCES = $(mpi_sources) $(mpi_f77_sources) $(mpi_core_sources)
 lib_lib@PMPILIBNAME@_la_LDFLAGS = $(external_ldflags) $(ABIVERSIONFLAGS)
+lib_lib@PMPILIBNAME@_la_CPPFLAGS = $(AM_CPPFLAGS) -DF77_USE_PMPI
 lib_lib@PMPILIBNAME@_la_LIBADD = $(external_libs) $(pmpi_convenience_libs) $(fgmpi_libs)
 EXTRA_lib_lib@PMPILIBNAME@_la_DEPENDENCIES = $(pmpi_convenience_libs)
 

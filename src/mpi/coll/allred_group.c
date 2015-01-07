@@ -9,7 +9,7 @@
 
 int MPIR_Allreduce_group_intra(void *sendbuf, void *recvbuf, int count,
                                MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr,
-                               MPID_Group *group_ptr, int tag, int *errflag);
+                               MPID_Group *group_ptr, int tag, mpir_errflag_t *errflag);
 
 /* Local utility macro: takes an two args and sets lvalue cr_ equal to the rank
  * in comm_ptr corresponding to rvalue gr_ */
@@ -27,7 +27,7 @@ int MPIR_Allreduce_group_intra(void *sendbuf, void *recvbuf, int count,
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Allreduce_group_intra(void *sendbuf, void *recvbuf, int count,
                                MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr,
-                               MPID_Group *group_ptr, int tag, int *errflag)
+                               MPID_Group *group_ptr, int tag, mpir_errflag_t *errflag)
 {
     MPI_Aint type_size;
     int mpi_errno = MPI_SUCCESS;
@@ -95,8 +95,8 @@ int MPIR_Allreduce_group_intra(void *sendbuf, void *recvbuf, int count,
                                      tag, comm, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
                 MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
 
@@ -113,8 +113,8 @@ int MPIR_Allreduce_group_intra(void *sendbuf, void *recvbuf, int count,
                                      MPI_STATUS_IGNORE, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
                 MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
 
@@ -162,8 +162,8 @@ int MPIR_Allreduce_group_intra(void *sendbuf, void *recvbuf, int count,
                                              MPI_STATUS_IGNORE, errflag);
                 if (mpi_errno) {
                     /* for communication errors, just record the error but continue */
-                    *errflag = TRUE;
-                    MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                    *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                    MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
                     MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
                 } else {
 
@@ -246,8 +246,8 @@ int MPIR_Allreduce_group_intra(void *sendbuf, void *recvbuf, int count,
                                              MPI_STATUS_IGNORE, errflag);
                 if (mpi_errno) {
                     /* for communication errors, just record the error but continue */
-                    *errflag = TRUE;
-                    MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                    *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                    MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
                     MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
                 }
 
@@ -312,8 +312,8 @@ int MPIR_Allreduce_group_intra(void *sendbuf, void *recvbuf, int count,
                                              MPI_STATUS_IGNORE, errflag);
                 if (mpi_errno) {
                     /* for communication errors, just record the error but continue */
-                    *errflag = TRUE;
-                    MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                    *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                    MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
                     MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
                 }
 
@@ -343,8 +343,8 @@ int MPIR_Allreduce_group_intra(void *sendbuf, void *recvbuf, int count,
         }
         if (mpi_errno) {
             /* for communication errors, just record the error but continue */
-            *errflag = TRUE;
-            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+            MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
             MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
         }
     }
@@ -353,8 +353,8 @@ int MPIR_Allreduce_group_intra(void *sendbuf, void *recvbuf, int count,
     MPIU_CHKLMEM_FREEALL();
     if (mpi_errno_ret)
         mpi_errno = mpi_errno_ret;
-    else if (*errflag)
-        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+    else if (*errflag != MPIR_ERR_NONE)
+        MPIU_ERR_SET(mpi_errno, *errflag, "**coll_fail");
     return (mpi_errno);
 
   fn_fail:
@@ -367,7 +367,7 @@ int MPIR_Allreduce_group_intra(void *sendbuf, void *recvbuf, int count,
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Allreduce_group(void *sendbuf, void *recvbuf, int count,
                          MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr,
-                         MPID_Group *group_ptr, int tag, int *errflag)
+                         MPID_Group *group_ptr, int tag, mpir_errflag_t *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
 

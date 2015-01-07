@@ -46,6 +46,7 @@ extern MPID_Request ** const MPID_Recvq_unexpected_tail_ptr;
 #endif
 
 OPA_int_t MPIDI_CH3I_progress_completion_count = OPA_INT_T_INITIALIZER(0);
+int num_active_issued_win = 0, num_passive_win = 0;
 
 /* NEMESIS MULTITHREADING: Extra Data Structures Added */
 #ifdef MPICH_IS_THREADED
@@ -522,6 +523,15 @@ int MPIDI_CH3I_Progress (MPID_Progress_state *progress_state, int is_blocking)
         }
 #endif /* HAVE_LIBHCOLL */
 
+        /* make progress on RMA */
+        if (num_active_issued_win > 0 || num_passive_win > 0) {
+        mpi_errno = MPIDI_CH3I_RMA_Make_progress_global(&made_progress);
+        if (mpi_errno)
+            MPIU_ERR_POP(mpi_errno);
+        if (made_progress)
+            MPIDI_CH3_Progress_signal_completion();
+        }
+
         /* in the case of progress_wait, bail out if anything completed (CC-1) */
         if (is_blocking) {
             int completion_count = OPA_load_int(&MPIDI_CH3I_progress_completion_count);
@@ -786,7 +796,9 @@ int MPID_nem_handle_pkt(MPIDI_VC_t *vc, char *buf, MPIDI_msg_sz_t buflen)
             {
                 size_t iov_len = iov->MPID_IOV_LEN;
 		MPIU_DBG_MSG_D(CH3_CHANNEL, VERBOSE, "        %d", (int)iov_len);
-                MPIU_Memcpy (iov->MPID_IOV_BUF, buf, iov_len);
+                if (rreq->dev.drop_data == FALSE) {
+                    MPIU_Memcpy (iov->MPID_IOV_BUF, buf, iov_len);
+                }
 
                 buflen -= iov_len;
                 buf    += iov_len;
@@ -799,7 +811,9 @@ int MPID_nem_handle_pkt(MPIDI_VC_t *vc, char *buf, MPIDI_msg_sz_t buflen)
                 if (buflen > 0)
                 {
 		    MPIU_DBG_MSG_D(CH3_CHANNEL, VERBOSE, "        " MPIDI_MSG_SZ_FMT, buflen);
-                    MPIU_Memcpy (iov->MPID_IOV_BUF, buf, buflen);
+                    if (rreq->dev.drop_data == FALSE) {
+                        MPIU_Memcpy (iov->MPID_IOV_BUF, buf, buflen);
+                    }
                     iov->MPID_IOV_BUF = (void *)((char *)iov->MPID_IOV_BUF + buflen);
                     iov->MPID_IOV_LEN -= buflen;
                     buflen = 0;

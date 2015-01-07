@@ -364,6 +364,7 @@ foreach $_ (@ARGV) {
 #
 # The Type_create_f90_xxx routines are only available as part of the
 # extended Fortran support, and are excluded from the f77 routines.
+# Aint_add/diff do not have the ierror argument
 %special_routines = ( 'Init' => 1, 'Init_thread' => 1, 'Pcontrol' => '1',
 		      'Address' => 1, 'Get_address' => 1,
 		      'Keyval_create' => 1, 'Status_f2c' => 1,
@@ -371,6 +372,8 @@ foreach $_ (@ARGV) {
 		      'Type_create_f90_integer' => 1,
 		      'Type_create_f90_real' => 1,
 		      'Type_create_f90_complex' => 1,
+		      'Aint_add' => 1,
+		      'Aint_diff' => 1,
 		      );
 
 # Some routines have special needs and must call a different routine.  For
@@ -1367,11 +1370,13 @@ sub print_name_map_block {
 #define ${lcprefix}${lcname}_ p${lcprefix}${lcname}_
 #endif /* Test on name mapping */
 
+#ifdef F77_USE_PMPI
 /* This defines the routine that we call, which must be the PMPI version
    since we're renaming the Fortran entry as the pmpi version.  The MPI name
    must be undefined first to prevent any conflicts with previous renamings. */
 #undef ${ucprefix}${routine_name}
 #define ${ucprefix}${routine_name} P${ucprefix}${routine_name} 
+#endif
 
 #else
 ";
@@ -4340,6 +4345,55 @@ sub build_specials {
     }
     $returnType = "void";
 
+    # MPIX_Aint_add/diff do not have the ierror argument.
+    $OUTFD = "AINTADD";
+    $filename = "aint_addf.c";
+    open( $OUTFD, ">$filename.new" ) || die "Cannot open $filename.new\n";
+    $files[$#files+1] = $filename;
+    $returnType = "MPI_Aint";
+    &set_weak_decl( "MPIX_Aint_add", "MPI_Aint *, MPI_Aint *", "MPI_Aint" );
+    &set_weak_decl( "PMPIX_Aint_add", "MPI_Aint *, MPI_Aint *", "MPI_Aint" );
+    &print_header( "mpix_", "MPIX_Aint_add", "aint_add", "MPI_Aint *, MPI_Aint *");
+    &print_routine_type_decl( $OUTFD, "mpix_", "aint_add" );
+    print $OUTFD "(MPI_Aint *base, MPI_Aint *disp)\n";
+    print $OUTFD "{\n";
+    print $OUTFD "    return MPIX_Aint_add(*base, *disp);\n";
+    print $OUTFD "}\n";
+    close ($OUTFD);
+    &ReplaceIfDifferent( $filename, $filename . ".new" );
+    if ($build_prototypes) {
+        print PROTOFD "extern ";
+        &print_routine_type_decl( PROTOFD, "mpix_", "aint_add" );
+        print PROTOFD "( MPI_Aint *, MPI_Aint * )";
+        &print_attr( PROTOFD, "mpix_"."aint_add_" );
+        print PROTOFD ";\n";
+    }
+    $returnType = "void";
+
+    $OUTFD = "AINTDIFF";
+    $filename = "aint_difff.c";
+    open( $OUTFD, ">$filename.new" ) || die "Cannot open $filename.new\n";
+    $files[$#files+1] = $filename;
+    $returnType = "MPI_Aint";
+    &set_weak_decl( "MPIX_Aint_diff", "MPI_Aint *, MPI_Aint *", "MPI_Aint" );
+    &set_weak_decl( "PMPIX_Aint_diff", "MPI_Aint *, MPI_Aint *", "MPI_Aint" );
+    &print_header( "mpix_", "MPIX_Aint_diff", "aint_diff", "MPI_Aint *, MPI_Aint *");
+    &print_routine_type_decl( $OUTFD, "mpix_", "aint_diff" );
+    print $OUTFD "(MPI_Aint *addr1, MPI_Aint *addr2)\n";
+    print $OUTFD "{\n";
+    print $OUTFD "    return MPIX_Aint_diff(*addr1, *addr2);\n";
+    print $OUTFD "}\n";
+    close ($OUTFD);
+    &ReplaceIfDifferent( $filename, $filename . ".new" );
+    if ($build_prototypes) {
+        print PROTOFD "extern ";
+        &print_routine_type_decl( PROTOFD, "mpix_", "aint_diff" );
+        print PROTOFD "( MPI_Aint *, MPI_Aint * )";
+        &print_attr( PROTOFD, "mpix_"."aint_diff_" );
+        print PROTOFD ";\n";
+    }
+    $returnType = "void";
+
     $OUTFD = "KEYVALCREATEF";
     $filename = "keyval_createf.c";
     open ($OUTFD, ">$filename.new" ) || die "Cannot open $filename.new\n";
@@ -5327,12 +5381,10 @@ extern FORT_DLL_SPEC int FORT_CALL mpi_conversion_fn_null_ ( void*v1, MPI_Fint*v
 
 #endif
 
-#ifndef MPICH_MPI_FROM_PMPI
 /* This isn't a callable function */
 FORT_DLL_SPEC int FORT_CALL mpi_conversion_fn_null_ ( void*v1, MPI_Fint*v2, MPI_Fint*v3, void*v4, MPI_Offset*v5, MPI_Fint *v6, MPI_Fint*v7, MPI_Fint *ierr ) {
     return 0;
 }
-#endif
 
 ";
 

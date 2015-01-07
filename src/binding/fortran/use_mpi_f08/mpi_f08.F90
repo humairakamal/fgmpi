@@ -1557,11 +1557,11 @@ interface MPI_Comm_set_attr
 end interface MPI_Comm_set_attr
 
 interface MPI_Comm_set_info
-    subroutine MPI_Comm_set_info_f08(comm, info_used, ierror)
+    subroutine MPI_Comm_set_info_f08(comm, info, ierror)
         use :: mpi_f08_types, only : MPI_Comm, MPI_Info
         implicit none
         type(MPI_Comm), intent(in) :: comm
-        type(MPI_Info), intent(in) :: info_used
+        type(MPI_Info), intent(in) :: info
         integer, optional, intent(out) :: ierror
     end subroutine MPI_Comm_set_info_f08
 end interface MPI_Comm_set_info
@@ -4090,17 +4090,91 @@ interface MPI_Ineighbor_alltoallw
 end interface MPI_Ineighbor_alltoallw
 
 interface MPI_Wtick
-    function  MPI_Wtick_f08()
+    function  MPI_Wtick_f08() result(res)
         implicit none
-        double precision :: MPI_Wtick_f08
+        double precision :: res
     end function MPI_Wtick_f08
 end interface MPI_Wtick
 
 interface MPI_Wtime
-    function MPI_Wtime_f08()
+    function MPI_Wtime_f08() result(res)
         implicit none
-        double precision :: MPI_Wtime_f08
+        double precision :: res
     end function MPI_Wtime_f08
 end interface MPI_Wtime
+
+interface MPIX_Aint_add
+    function MPIX_Aint_add_f08(base, disp) result(res)
+        use :: mpi_f08_compile_constants, only : MPI_ADDRESS_KIND
+        implicit none
+        integer(MPI_ADDRESS_KIND), intent(in) :: base, disp
+        integer(MPI_ADDRESS_KIND) :: res
+    end function MPIX_Aint_add_f08
+end interface MPIX_Aint_add
+
+interface MPIX_Aint_diff
+    function MPIX_Aint_diff_f08(addr1, addr2) result(res)
+        use :: mpi_f08_compile_constants, only : MPI_ADDRESS_KIND
+        implicit none
+        integer(MPI_ADDRESS_KIND), intent(in) :: addr1, addr2
+        integer(MPI_ADDRESS_KIND) :: res
+    end function MPIX_Aint_diff_f08
+end interface MPIX_Aint_diff
+
+interface MPIX_File_iread_all
+    subroutine MPIX_File_iread_all_f08ts(fh, buf, count, datatype, request, ierror)
+        use :: mpi_f08_types, only : MPI_File, MPI_Datatype, MPI_Request
+        implicit none
+        type(MPI_File), intent(in) :: fh
+        type(*), dimension(..) :: buf
+        integer, intent(in) :: count
+        type(MPI_Datatype), intent(in) :: datatype
+        type(MPI_Request), intent(out) :: request
+        integer, optional, intent(out) :: ierror
+    end subroutine MPIX_File_iread_all_f08ts
+end interface MPIX_File_iread_all
+
+interface MPIX_File_iwrite_all
+    subroutine MPIX_File_iwrite_all_f08ts(fh, buf, count, datatype, request, ierror)
+        use :: mpi_f08_types, only : MPI_File, MPI_Datatype, MPI_Request
+        implicit none
+        type(MPI_File), intent(in) :: fh
+        type(*), dimension(..), intent(in) :: buf
+        integer, intent(in) :: count
+        type(MPI_Datatype), intent(in) :: datatype
+        type(MPI_Request), intent(out) :: request
+        integer, optional, intent(out) :: ierror
+    end subroutine MPIX_File_iwrite_all_f08ts
+end interface MPIX_File_iwrite_all
+
+interface MPIX_File_iread_at_all
+    subroutine MPIX_File_iread_at_all_f08ts(fh, offset, buf, count, datatype, request, ierror)
+        use :: mpi_f08_types, only : MPI_File, MPI_Datatype, MPI_Request
+        use :: mpi_f08_compile_constants, only : MPI_OFFSET_KIND
+        implicit none
+        type(MPI_File), intent(in) :: fh
+        integer(MPI_OFFSET_KIND), intent(in) :: offset
+        type(*), dimension(..) :: buf
+        integer, intent(in) :: count
+        type(MPI_Datatype), intent(in) :: datatype
+        type(MPI_Request), intent(out) :: request
+        integer, optional, intent(out) :: ierror
+    end subroutine MPIX_File_iread_at_all_f08ts
+end interface MPIX_File_iread_at_all
+
+interface MPIX_File_iwrite_at_all
+    subroutine MPIX_File_iwrite_at_all_f08ts(fh, offset, buf, count, datatype, request, ierror)
+        use :: mpi_f08_types, only : MPI_File, MPI_Datatype, MPI_Request
+        use :: mpi_f08_compile_constants, only : MPI_OFFSET_KIND
+        implicit none
+        type(MPI_File), intent(in) :: fh
+        integer(MPI_OFFSET_KIND), intent(in) :: offset
+        type(*), dimension(..) :: buf
+        integer, intent(in) :: count
+        type(MPI_Datatype), intent(in) :: datatype
+        type(MPI_Request), intent(out) :: request
+        integer, optional, intent(out) :: ierror
+    end subroutine MPIX_File_iwrite_at_all_f08ts
+end interface MPIX_File_iwrite_at_all
 
 end module mpi_f08

@@ -39,7 +39,8 @@ static inline void MPID_nem_mpich_send_seg (MPID_Segment *segment, MPIDI_msg_sz_
     (!MPID_nem_local_lmt_pending &&             \
      !MPIDI_CH3I_shm_active_send &&             \
      !MPIDI_CH3I_Sendq_head(MPIDI_CH3I_shm_sendq) &&       \
-     !MPIDU_Sched_are_pending())
+     !MPIDU_Sched_are_pending() &&              \
+     !num_active_issued_win && !num_passive_win)
 
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_mpich_send_header

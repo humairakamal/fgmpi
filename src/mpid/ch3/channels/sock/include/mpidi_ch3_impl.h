@@ -10,7 +10,6 @@
 #include "mpidimpl.h"
 #include "ch3usock.h"
 
-
 /* This is all socket connection definitions */
 
     /* MT - not thread safe! */

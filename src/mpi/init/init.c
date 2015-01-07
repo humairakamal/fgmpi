@@ -165,7 +165,7 @@ int MPI_Init( int *argc, char ***argv )
     {
         MPID_BEGIN_ERROR_CHECKS;
         {
-            if (MPIR_Process.initialized != MPICH_PRE_INIT) {
+            if (OPA_load_int(&MPIR_Process.mpich_state) != MPICH_PRE_INIT) {
 #if defined(FINEGRAIN_MPI)
                 if(1 == IS_SPAWNER){
                     MPIU_Assert( (FGP_POST_INIT == FGP_init_state) ||

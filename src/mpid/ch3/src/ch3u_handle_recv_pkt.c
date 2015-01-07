@@ -148,7 +148,9 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
         {
             MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"Copying contiguous data to user buffer");
             /* copy data out of the receive buffer */
-            MPIU_Memcpy((char*)(rreq->dev.user_buf) + dt_true_lb, buf, data_sz);
+            if (rreq->dev.drop_data == FALSE) {
+                MPIU_Memcpy((char*)(rreq->dev.user_buf) + dt_true_lb, buf, data_sz);
+            }
             *buflen = data_sz;
             *complete = TRUE;
         }
@@ -164,10 +166,8 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
             *complete = FALSE;
         }
         
-	/* FIXME: We want to set the OnDataAvail to the appropriate 
-	   function, which depends on whether this is an RMA 
-	   request or a pt-to-pt request. */
-	rreq->dev.OnDataAvail = 0;
+        /* Trigger OnFinal when receiving the last segment */
+        rreq->dev.OnDataAvail = rreq->dev.OnFinal;
     }
     else {
 	/* user buffer is not contiguous or is too small to hold
@@ -206,7 +206,8 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
             }
             /* --END ERROR HANDLING-- */
             *buflen = data_sz;
-            rreq->dev.OnDataAvail = 0;
+            /* Trigger OnFinal when receiving the last segment */
+            rreq->dev.OnDataAvail = rreq->dev.OnFinal;
             *complete = TRUE;
         }
         else
@@ -580,22 +581,18 @@ int MPIDI_CH3_PktHandler_Init( MPIDI_CH3_PktHandler_Fcn *pktArray[],
 	MPIDI_CH3_PktHandler_GetResp;
     pktArray[MPIDI_CH3_PKT_LOCK] =
 	MPIDI_CH3_PktHandler_Lock;
-    pktArray[MPIDI_CH3_PKT_LOCK_GRANTED] =
-	MPIDI_CH3_PktHandler_LockGranted;
+    pktArray[MPIDI_CH3_PKT_LOCK_ACK] =
+	MPIDI_CH3_PktHandler_LockAck;
+    pktArray[MPIDI_CH3_PKT_LOCK_OP_ACK] =
+	MPIDI_CH3_PktHandler_LockOpAck;
     pktArray[MPIDI_CH3_PKT_UNLOCK] =
         MPIDI_CH3_PktHandler_Unlock;
     pktArray[MPIDI_CH3_PKT_FLUSH] =
         MPIDI_CH3_PktHandler_Flush;
-    pktArray[MPIDI_CH3_PKT_PT_RMA_DONE] = 
-	MPIDI_CH3_PktHandler_PtRMADone;
-    pktArray[MPIDI_CH3_PKT_LOCK_PUT_UNLOCK] = 
-	MPIDI_CH3_PktHandler_LockPutUnlock;
-    pktArray[MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK] =
-	MPIDI_CH3_PktHandler_LockAccumUnlock;
-    pktArray[MPIDI_CH3_PKT_LOCK_GET_UNLOCK] = 
-	MPIDI_CH3_PktHandler_LockGetUnlock;
-    pktArray[MPIDI_CH3_PKT_ACCUM_IMMED] = 
-	MPIDI_CH3_PktHandler_Accumulate_Immed;
+    pktArray[MPIDI_CH3_PKT_FLUSH_ACK] =
+	MPIDI_CH3_PktHandler_FlushAck;
+    pktArray[MPIDI_CH3_PKT_DECR_AT_COUNTER] =
+        MPIDI_CH3_PktHandler_DecrAtCnt;
     pktArray[MPIDI_CH3_PKT_CAS] =
         MPIDI_CH3_PktHandler_CAS;
     pktArray[MPIDI_CH3_PKT_CAS_RESP] =
@@ -605,7 +602,7 @@ int MPIDI_CH3_PktHandler_Init( MPIDI_CH3_PktHandler_Fcn *pktArray[],
     pktArray[MPIDI_CH3_PKT_FOP_RESP] =
         MPIDI_CH3_PktHandler_FOPResp;
     pktArray[MPIDI_CH3_PKT_GET_ACCUM] =
-        MPIDI_CH3_PktHandler_Accumulate;
+        MPIDI_CH3_PktHandler_GetAccumulate;
     pktArray[MPIDI_CH3_PKT_GET_ACCUM_RESP] =
         MPIDI_CH3_PktHandler_Get_AccumResp;
     /* End of default RMA operations */

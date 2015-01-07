@@ -206,11 +206,68 @@ typedef struct MPIDI_VC * MPID_VCR;
 #   define MPIDI_REQUEST_SEQNUM
 #endif
 
-/* We start with an arbitrarily chosen number (42), to help with
- * debugging when a packet type is not initialized or wrongly
+/* Here we add RMA sync types to specify types
+ * of synchronizations the origin is going to
+ * perform to the target. */
+
+/* There are four kinds of synchronizations: NONE,
+ * FLUSH_LOCAL, FLUSH, UNLOCK.
+ * (1) NONE means there is no special synchronization,
+ * origin just issues as many operations as it can,
+ * excluding the last operation which is a piggyback
+ * candidate;
+ * (2) FLUSH_LOCAL means origin wants to do a
+ * FLUSH_LOCAL sync and issues out all pending
+ * operations including the piggyback candidate;
+ * (3) FLUSH means origin wants to do a FLUSH sync
+ * and issues out all pending operations including
+ * the last op piggybacked with a FLUSH flag to
+ * detect remote completion;
+ * (4) UNLOCK means origin issues all pending operations
+ * incuding the last op piggybacked with an UNLOCK
+ * flag to release the lock on target and detect remote
+ * completion.
+ * Note that FLUSH_LOCAL is a superset of NONE, FLUSH
+ * is a superset of FLUSH_LOCAL, and UNLOCK is a superset
+ * of FLUSH.
+ */
+/* We start with an arbitrarily chosen number (58), to help with
+ * debugging when a sync type is not initialized or wrongly
+ * initialized. */
+enum MPIDI_RMA_sync_types {
+    MPIDI_RMA_SYNC_NONE = 58,
+    MPIDI_RMA_SYNC_FLUSH_LOCAL,
+    MPIDI_RMA_SYNC_FLUSH,
+    MPIDI_RMA_SYNC_UNLOCK
+};
+
+/* We start with an arbitrarily chosen number (63), to help with
+ * debugging when a window state is not initialized or wrongly
+ * initialized. */
+enum MPIDI_RMA_states {
+    /* window-wide states */
+    MPIDI_RMA_NONE = 63,
+    MPIDI_RMA_FENCE_ISSUED,           /* access / exposure */
+    MPIDI_RMA_FENCE_GRANTED,          /* access / exposure */
+    MPIDI_RMA_PSCW_ISSUED,            /* access */
+    MPIDI_RMA_PSCW_GRANTED,           /* access */
+    MPIDI_RMA_PSCW_EXPO,              /* exposure */
+    MPIDI_RMA_PER_TARGET,             /* access */
+    MPIDI_RMA_LOCK_ALL_CALLED,        /* access */
+    MPIDI_RMA_LOCK_ALL_ISSUED,        /* access */
+    MPIDI_RMA_LOCK_ALL_GRANTED,       /* access */
+
+    /* target-specific states */
+    MPIDI_RMA_LOCK_CALLED,            /* access */
+    MPIDI_RMA_LOCK_ISSUED,            /* access */
+    MPIDI_RMA_LOCK_GRANTED,           /* access */
+};
+
+/* We start with an arbitrarily chosen number (19), to help with
+ * debugging when a lock state is not initialized or wrongly
  * initialized. */
 enum MPIDI_CH3_Lock_states {
-    MPIDI_CH3_WIN_LOCK_NONE = 42,
+    MPIDI_CH3_WIN_LOCK_NONE = 19,
     MPIDI_CH3_WIN_LOCK_CALLED,
     MPIDI_CH3_WIN_LOCK_REQUESTED,
     MPIDI_CH3_WIN_LOCK_GRANTED,
@@ -224,22 +281,12 @@ enum MPIDI_Win_info_arv_vals_accumulate_ordering {
     MPIDI_ACC_ORDER_WAW = 8
 };
 
-enum MPIDI_Win_info_arg_vals_accumulate_ops {
-    MPIDI_ACC_OPS_SAME_OP,
-    MPIDI_ACC_OPS_SAME_OP_NO_OP
-};
-
-/* We start with an arbitrarily chosen number (42), to help with
- * debugging when a packet type is not initialized or wrongly
+/* We start with an arbitrarily chosen number (11), to help with
+ * debugging when an window info is not initialized or wrongly
  * initialized. */
-enum MPIDI_Win_epoch_states {
-    MPIDI_EPOCH_NONE = 42,
-    MPIDI_EPOCH_FENCE,
-    MPIDI_EPOCH_POST,
-    MPIDI_EPOCH_START,
-    MPIDI_EPOCH_PSCW,           /* Both post and start have been called. */
-    MPIDI_EPOCH_LOCK,
-    MPIDI_EPOCH_LOCK_ALL
+enum MPIDI_Win_info_arg_vals_accumulate_ops {
+    MPIDI_ACC_OPS_SAME_OP = 11,
+    MPIDI_ACC_OPS_SAME_OP_NO_OP
 };
 
 struct MPIDI_Win_info_args {
@@ -253,20 +300,13 @@ struct MPIDI_Win_info_args {
 
 struct MPIDI_RMA_op;            /* forward decl from mpidrma.h */
 
-struct MPIDI_Win_target_state {
-    struct MPIDI_RMA_Op *rma_ops_list;
-                                /* List of outstanding RMA operations */
-    volatile enum MPIDI_CH3_Lock_states remote_lock_state;
-                                /* Indicates the state of the target
-                                   process' "lock" for passive target
-                                   RMA. */
-    int remote_lock_mode;       /* Indicates the access mode
-                                   (shared/exclusive) of the target
-                                   process for passive target RMA. Valid
-                                   whenever state != NONE. */
-    int remote_lock_assert;     /* Assertion value provided in the call
-                                   to Lock */
-};
+typedef struct MPIDI_RMA_Pkt_orderings {
+    int flush_remote; /* ordered FLUSH, for remote completion */
+    /* FIXME: in future we should also add local completin
+       ordering: WAW, WAR, RAW, RAR. */
+} MPIDI_RMA_Pkt_orderings_t;
+
+extern MPIDI_RMA_Pkt_orderings_t *MPIDI_RMA_Pkt_orderings;
 
 #define MPIDI_DEV_WIN_DECL                                               \
     volatile int at_completion_counter;  /* completion counter for operations \
@@ -282,33 +322,45 @@ struct MPIDI_Win_target_state {
     volatile int current_lock_type;   /* current lock type on this window (as target)   \
                               * (none, shared, exclusive) */             \
     volatile int shared_lock_ref_cnt;                                    \
-    struct MPIDI_Win_lock_queue volatile *lock_queue;  /* list of unsatisfied locks */  \
+    struct MPIDI_RMA_Lock_entry volatile *lock_queue;  /* list of unsatisfied locks */  \
+    struct MPIDI_RMA_Lock_entry volatile *lock_queue_tail; /* tail of unstaisfied locks. */ \
                                                                          \
-    int *pt_rma_puts_accs;  /* array containing the no. of passive target\
-                               puts/accums issued from this process to other \
-                               processes. */                             \
-    volatile int my_pt_rma_puts_accs;  /* no. of passive target puts/accums  \
-                                          that this process has          \
-                                          completed as target */         \
     MPI_Aint *sizes;      /* array of sizes of all windows */            \
     struct MPIDI_Win_info_args info_args;                                \
-    struct MPIDI_Win_target_state *targets; /* Target state and ops      \
-                                               lists for passive target  \
-                                               mode of operation */      \
-    struct MPIDI_RMA_Op *at_rma_ops_list; /* Ops list for active target  \
-                                             mode of operation. */       \
-    enum MPIDI_Win_epoch_states epoch_state;                             \
-    int epoch_count;                                                     \
-    int fence_issued;   /* Indicates if fence has been called, and if an \
-                           active target fence epoch is possible. This   \
-                           is maintained separately from the epoch state;\
-                           this state must be updated collectively (in   \
-                           fence) to ensure that the fence state across  \
-                           all processes remains consistent. */          \
-    MPID_Group *start_group_ptr; /* group passed in MPI_Win_start */     \
-    int start_assert;   /* assert passed to MPI_Win_start */             \
     int shm_allocated; /* flag: TRUE iff this window has a shared memory \
                           region associated with it */                   \
+    struct MPIDI_RMA_Op *op_pool_start; /* start pointer used for freeing */\
+    struct MPIDI_RMA_Op *op_pool;  /* pool of operations */              \
+    struct MPIDI_RMA_Op *op_pool_tail; /* tail pointer to pool of operations. */ \
+    struct MPIDI_RMA_Target *target_pool_start; /* start pointer used for freeing */\
+    struct MPIDI_RMA_Target *target_pool; /* pool of targets */          \
+    struct MPIDI_RMA_Target *target_pool_tail; /* tail pointer to pool of targets */\
+    struct MPIDI_RMA_Slot *slots;                                        \
+    int num_slots;                                                       \
+    struct {                                                             \
+        enum MPIDI_RMA_states access_state;                              \
+        enum MPIDI_RMA_states exposure_state;                            \
+    } states;                                                            \
+    int non_empty_slots;                                                 \
+    int accumulated_ops_cnt; /* keep track of number of accumulated posted RMA operations \
+                            in current epoch to control when to poke     \
+                            progress engine in RMA operation routines. */\
+    int active_req_cnt; /* keep track of number of active requests in    \
+                           current epoch, i.e., number of issued but     \
+                           incomplete RMA operations. */                 \
+    MPI_Request fence_sync_req;                                          \
+    MPI_Request *start_req;                                              \
+    int *start_ranks_in_win_grp;                                         \
+    int start_grp_size;                                                  \
+    int lock_all_assert;                                                 \
+    int lock_epoch_count; /* number of lock access epoch on this process */ \
+    int outstanding_locks; /* when issuing multiple lock requests in     \
+                            MPI_WIN_LOCK_ALL, this counter keeps track   \
+                            of number of locks not being granted yet. */ \
+    struct MPIDI_RMA_Lock_entry *lock_entry_pool_start;                  \
+    struct MPIDI_RMA_Lock_entry *lock_entry_pool;                        \
+    struct MPIDI_RMA_Lock_entry *lock_entry_pool_tail;                   \
+    int current_lock_data_bytes;                                         \
 
 #ifdef MPIDI_CH3_WIN_DECL
 #define MPID_DEV_WIN_DECL \
@@ -332,6 +384,7 @@ typedef struct MPIDI_Request {
     void        *user_buf;
     int          user_count;
     MPI_Datatype datatype;
+    int drop_data;
 
     /* segment, segment_first, and segment_size are used when processing 
        non-contiguous datatypes */
@@ -392,15 +445,17 @@ typedef struct MPIDI_Request {
     MPI_Op op;
     /* For accumulate, since data is first read into a tmp_buf */
     void *real_user_buf;
+    void *final_user_buf;
     /* For derived datatypes at target */
     struct MPIDI_RMA_dtype_info *dtype_info;
     void *dataloop;
-    /* req. handle needed to implement derived datatype gets  */
+    /* req. handle needed to implement derived datatype gets.
+     * It also used for remembering user request of request-based RMA operations. */
     MPI_Request request_handle;
     MPI_Win     target_win_handle;
     MPI_Win     source_win_handle;
     MPIDI_CH3_Pkt_flags_t flags; /* flags that were included in the original RMA packet header */
-    struct MPIDI_Win_lock_queue *lock_queue_entry; /* for single lock-put-unlock optimization */
+    struct MPIDI_RMA_Lock_entry *lock_queue_entry;
     MPI_Request resp_request_handle; /* Handle for get_accumulate response */
 
     MPIDI_REQUEST_SEQNUM
@@ -456,4 +511,8 @@ MPID_REQUEST_DECL
 /* Tell the RMA code to use a table of RMA functions provided by the 
    ADI */
 #define USE_MPID_RMA_TABLE
+
+int MPIDI_RMA_init(void);
+void MPIDI_RMA_finalize(void);
+
 #endif /* !defined(MPICH_MPIDPRE_H_INCLUDED) */

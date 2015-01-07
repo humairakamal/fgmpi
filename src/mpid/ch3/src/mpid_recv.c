@@ -41,8 +41,8 @@ int MPID_Recv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
 
     /* Check to make sure the communicator hasn't already been revoked */
     if (comm->revoked &&
-            MPIR_AGREE_TAG != MPIR_TAG_MASK_ERROR_BIT(tag & ~MPIR_Process.tagged_coll_mask) &&
-            MPIR_SHRINK_TAG != MPIR_TAG_MASK_ERROR_BIT(tag & ~MPIR_Process.tagged_coll_mask)) {
+            MPIR_AGREE_TAG != MPIR_TAG_MASK_ERROR_BITS(tag & ~MPIR_Process.tagged_coll_mask) &&
+            MPIR_SHRINK_TAG != MPIR_TAG_MASK_ERROR_BITS(tag & ~MPIR_Process.tagged_coll_mask)) {
         MPIU_ERR_SETANDJUMP(mpi_errno,MPIX_ERR_REVOKED,"**revoked");
     }
 
@@ -75,6 +75,7 @@ int MPID_Recv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
 	    if (MPIDI_Request_get_sync_send_flag(rreq))
 	    {
 		MPIDI_Comm_get_vc_set_active(comm, rreq->dev.match.parts.rank, &vc);
+        MPIU_ERR_CHKANDJUMP1(vc->state == MPIDI_VC_STATE_MORIBUND, mpi_errno, MPIX_ERR_PROC_FAILED, "**comm_fail", "**comm_fail %d", rreq->dev.match.parts.rank);
 		mpi_errno = MPIDI_CH3_EagerSyncAck( vc, rreq );
 		if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 	    }
@@ -126,6 +127,7 @@ int MPID_Recv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
 	else if (MPIDI_Request_get_msg_type(rreq) == MPIDI_REQUEST_RNDV_MSG)
 	{
 	    MPIDI_Comm_get_vc_set_active(comm, rreq->dev.match.parts.rank, &vc);
+        MPIU_ERR_CHKANDJUMP1(vc->state == MPIDI_VC_STATE_MORIBUND, mpi_errno, MPIX_ERR_PROC_FAILED, "**comm_fail", "**comm_fail %d", rreq->dev.match.parts.rank);
 	    mpi_errno = vc->rndvRecv_fn( vc, rreq );
 	    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 	    if (HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN)
