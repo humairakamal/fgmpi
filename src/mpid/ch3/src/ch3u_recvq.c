@@ -1193,7 +1193,7 @@ int MPIDI_CH3U_Clean_recvq(MPID_Comm *comm_ptr)
                             "cleaning up unexpected collective pkt rank=%d tag=%d contextid=%d",
                             rreq->dev.match.parts.rank, rreq->dev.match.parts.tag, rreq->dev.match.parts.context_id));
 #if defined(FINEGRAIN_MPI)
-            dequeue_and_set_error(&rreq, prev_rreq, &FG_recvq_unexpected_head[index], &FG_recvq_unexpected_tail[index], &error, MPI_PROC_NULL);
+                dequeue_and_set_error(&rreq, prev_rreq, &FG_recvq_unexpected_head[index], &FG_recvq_unexpected_tail[index], &error, MPI_PROC_NULL);
 #else
                 dequeue_and_set_error(&rreq, prev_rreq, &recvq_unexpected_head, &recvq_unexpected_tail, &error, MPI_PROC_NULL);
 #endif
@@ -1212,7 +1212,11 @@ int MPIDI_CH3U_Clean_recvq(MPID_Comm *comm_ptr)
                     MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                                 "cleaning up unexpected pt2pt pkt rank=%d tag=%d contextid=%d",
                                 rreq->dev.match.parts.rank, rreq->dev.match.parts.tag, rreq->dev.match.parts.context_id));
+#if defined(FINEGRAIN_MPI)
+                    dequeue_and_set_error(&rreq, prev_rreq, &FG_recvq_unexpected_head[index], &FG_recvq_unexpected_tail[index], &error, MPI_PROC_NULL);
+#else
                     dequeue_and_set_error(&rreq, prev_rreq, &recvq_unexpected_head, &recvq_unexpected_tail, &error, MPI_PROC_NULL);
+#endif
                     continue;
                 }
             }
@@ -1226,7 +1230,11 @@ int MPIDI_CH3U_Clean_recvq(MPID_Comm *comm_ptr)
                     MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                                 "cleaning up unexpected collective pkt rank=%d tag=%d contextid=%d",
                                 rreq->dev.match.parts.rank, rreq->dev.match.parts.tag, rreq->dev.match.parts.context_id));
+#if defined(FINEGRAIN_MPI)
+                    dequeue_and_set_error(&rreq, prev_rreq, &FG_recvq_unexpected_head[index], &FG_recvq_unexpected_tail[index], &error, MPI_PROC_NULL);
+#else
                     dequeue_and_set_error(&rreq, prev_rreq, &recvq_unexpected_head, &recvq_unexpected_tail, &error, MPI_PROC_NULL);
+#endif
                     continue;
                 }
             }
@@ -1240,7 +1248,11 @@ int MPIDI_CH3U_Clean_recvq(MPID_Comm *comm_ptr)
                     MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                                 "cleaning up unexpected pt2pt pkt rank=%d tag=%d contextid=%d",
                                 rreq->dev.match.parts.rank, rreq->dev.match.parts.tag, rreq->dev.match.parts.context_id));
+#if defined(FINEGRAIN_MPI)
+                    dequeue_and_set_error(&rreq, prev_rreq, &FG_recvq_unexpected_head[index], &FG_recvq_unexpected_tail[index], &error, MPI_PROC_NULL);
+#else
                     dequeue_and_set_error(&rreq, prev_rreq, &recvq_unexpected_head, &recvq_unexpected_tail, &error, MPI_PROC_NULL);
+#endif
                     continue;
                 }
             }
@@ -1255,7 +1267,7 @@ int MPIDI_CH3U_Clean_recvq(MPID_Comm *comm_ptr)
                                 "cleaning up unexpected collective pkt rank=%d tag=%d contextid=%d",
                                 rreq->dev.match.parts.rank, rreq->dev.match.parts.tag, rreq->dev.match.parts.context_id));
 #if defined(FINEGRAIN_MPI)
-            dequeue_and_set_error(&rreq, prev_rreq, &FG_recvq_unexpected_head[index], &FG_recvq_unexpected_tail[index], &error, MPI_PROC_NULL);
+                    dequeue_and_set_error(&rreq, prev_rreq, &FG_recvq_unexpected_head[index], &FG_recvq_unexpected_tail[index], &error, MPI_PROC_NULL);
 #else
                     dequeue_and_set_error(&rreq, prev_rreq, &recvq_unexpected_head, &recvq_unexpected_tail, &error, MPI_PROC_NULL);
 #endif
@@ -1324,7 +1336,11 @@ int MPIDI_CH3U_Clean_recvq(MPID_Comm *comm_ptr)
                     MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                                 "cleaning up posted pt2pt pkt rank=%d tag=%d contextid=%d",
                                 rreq->dev.match.parts.rank, rreq->dev.match.parts.tag, rreq->dev.match.parts.context_id));
+#if defined(FINEGRAIN_MPI)
+                    dequeue_and_set_error(&rreq, prev_rreq, &FG_recvq_posted_head[index], &FG_recvq_posted_tail[index], &error, MPI_PROC_NULL);
+#else
                     dequeue_and_set_error(&rreq, prev_rreq, &recvq_posted_head, &recvq_posted_tail, &error, MPI_PROC_NULL);
+#endif
                     continue;
                 }
             }
@@ -1337,7 +1353,11 @@ int MPIDI_CH3U_Clean_recvq(MPID_Comm *comm_ptr)
                     MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                                 "cleaning up posted collective pkt rank=%d tag=%d contextid=%d",
                                 rreq->dev.match.parts.rank, rreq->dev.match.parts.tag, rreq->dev.match.parts.context_id));
+#if defined(FINEGRAIN_MPI)
+                    dequeue_and_set_error(&rreq, prev_rreq, &FG_recvq_posted_head[index], &FG_recvq_posted_tail[index], &error, MPI_PROC_NULL);
+#else
                     dequeue_and_set_error(&rreq, prev_rreq, &recvq_posted_head, &recvq_posted_tail, &error, MPI_PROC_NULL);
+#endif
                     continue;
                 }
             }
@@ -1351,7 +1371,11 @@ int MPIDI_CH3U_Clean_recvq(MPID_Comm *comm_ptr)
                     MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                                 "cleaning up posted pt2pt pkt rank=%d tag=%d contextid=%d",
                                 rreq->dev.match.parts.rank, rreq->dev.match.parts.tag, rreq->dev.match.parts.context_id));
+#if defined(FINEGRAIN_MPI)
+                    dequeue_and_set_error(&rreq, prev_rreq, &FG_recvq_posted_head[index], &FG_recvq_posted_tail[index], &error, MPI_PROC_NULL);
+#else
                     dequeue_and_set_error(&rreq, prev_rreq, &recvq_posted_head, &recvq_posted_tail, &error, MPI_PROC_NULL);
+#endif
                     continue;
                 }
             }

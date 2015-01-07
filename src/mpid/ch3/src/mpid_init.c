@@ -298,15 +298,15 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     MPIU_Assert( (vcrt_world != NULL) && (vcr_world != NULL) );
     comm->vcrt = vcrt_world;
     comm->vcr  = vcr_world;
-    if(FGP_WITHIN_INIT == FGP_init_state) {
-        MPID_Dev_comm_create_hook (comm); /* FG: TODO MPIDI_CH3I_comm_create */
+    if(FGP_WITHIN_INIT == FGP_init_state) { /* FG: TODO IMPORTANT */
         world_ch3i_ptr = &(comm->dev);
-        mpi_errno = MPIR_Comm_commit(comm); /*FG: TODO IMPORTANT */
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        printf("MPID_CONTEXT_PREFIX_SHIFT=%d, MPIR_Process.icomm_world->context_id=%d\n", MPID_CONTEXT_PREFIX_SHIFT, MPIR_Process.icomm_world->context_id);
     }
     else {
         //MPIR_Copy_ch3i_comm_ch(comm, world_ch3i_ptr); /* FG: TODO IMPORTANT. defintion changed! */
     }
+    mpi_errno = MPIR_Comm_commit(comm); /*FG: TODO IMPORTANT */
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     //world_co_shared_vars->ch3i_ptr = world_ch3i_ptr; /* FG: TODO IMPORTANT */
 #else
     mpi_errno = MPID_VCRT_Create(comm->remote_size, &comm->vcrt);
@@ -373,7 +373,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     
     MPID_VCR_Dup(&pg->vct[pg_rank], &comm->vcr[0]);
 
-    mpi_errno = MPIR_Comm_commit(comm);
+    //    mpi_errno = MPIR_Comm_commit(comm); /* FG:TODO IMPORTANT  Needs comm->co_shared_vars */
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     /* Currently, mpidpre.h always defines MPID_NEEDS_ICOMM_WORLD. */
@@ -406,7 +406,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     comm->vcrt = MPIR_Process.comm_world->vcrt;
     comm->vcr  = MPIR_Process.comm_world->vcr;
     
-    mpi_errno = MPIR_Comm_commit(comm); /* FG: TODO IMPORTANT */
+    //    mpi_errno = MPIR_Comm_commit(comm); /* FG: TODO IMPORTANT segfault -nfg 30K*/
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 #endif
 

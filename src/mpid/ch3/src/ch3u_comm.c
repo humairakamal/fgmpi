@@ -274,7 +274,10 @@ int comm_created(MPID_Comm *comm, void *param)
     /* Initialize the last acked failure to -1 */
     comm->dev.last_ack_rank = -1;
 
+#if !defined(FINEGRAIN_MPI) /* FG: TODO. This is temporary. Need to add reference counting
+                               if that communicator has already been added to the list */
     COMM_ADD(comm);
+#endif
 
  fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_COMM_CREATED);
@@ -294,7 +297,10 @@ int comm_destroyed(MPID_Comm *comm, void *param)
 
     MPIDI_FUNC_ENTER(MPID_STATE_COMM_DESTROYED);
 
+#if !defined(FINEGRAIN_MPI) /* FG: TODO. This is temporary. Need to subtract through
+                               reference counts corresponding to COMM_ADD() in comm_created() */
     COMM_DEL(comm);
+#endif
     comm->dev.next = NULL;
     comm->dev.prev = NULL;
 
@@ -373,7 +379,7 @@ int MPIDI_CH3I_Comm_handle_failed_procs(MPID_Group *new_failed_procs)
         if (!comm->dev.anysource_enabled)
             continue;
 
-        mpi_errno = nonempty_intersection(comm, new_failed_procs, &flag);
+        mpi_errno = nonempty_intersection(comm, new_failed_procs, &flag); /* FG: TODO uses group->lrank_to_pid */
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
         if (flag) {
