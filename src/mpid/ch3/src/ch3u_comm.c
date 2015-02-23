@@ -390,11 +390,9 @@ int MPIDI_CH3I_Comm_handle_failed_procs(MPID_Group *new_failed_procs)
         }
     }
 
-    /* Now that we've marked communicators with disable anysource, we
-       complete-with-an-error all anysource receives posted on those
-       communicators */
-    mpi_errno = MPIDI_CH3U_Complete_disabled_anysources();
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    /* Signal that something completed here to allow the progress engine to
+     * break out and return control to the user. */
+    MPIDI_CH3_Progress_signal_completion();
 
  fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_COMM_HANDLE_FAILED_PROCS);

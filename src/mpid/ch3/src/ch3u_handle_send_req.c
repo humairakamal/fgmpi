@@ -49,7 +49,6 @@ int MPIDI_CH3_ReqHandler_GetSendComplete( MPIDI_VC_t *vc ATTRIBUTE((unused)),
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Win *win_ptr;
-    MPI_Win source_win_handle = sreq->dev.source_win_handle;
     MPIDI_CH3_Pkt_flags_t flags = sreq->dev.flags;
 
     /* NOTE: It is possible that this request is already completed before
@@ -84,8 +83,8 @@ int MPIDI_CH3_ReqHandler_GetSendComplete( MPIDI_VC_t *vc ATTRIBUTE((unused)),
        because inside finish_op_on_target() we may call this request handler
        on the same request again (in release_lock()). Marking this request as
        completed will prevent us from processing the same request twice. */
-    mpi_errno = finish_op_on_target(win_ptr, vc, MPIDI_CH3_PKT_GET,
-                                    flags, source_win_handle);
+    mpi_errno = finish_op_on_target(win_ptr, vc, TRUE /* has response data */,
+                                    flags, MPI_WIN_NULL);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     *complete = TRUE;
@@ -106,7 +105,6 @@ int MPIDI_CH3_ReqHandler_GaccumSendComplete( MPIDI_VC_t *vc,
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Win *win_ptr;
-    MPI_Win source_win_handle = rreq->dev.source_win_handle;
     MPIDI_CH3_Pkt_flags_t flags = rreq->dev.flags;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_REQHANDLER_GACCUMSENDCOMPLETE);
 
@@ -149,8 +147,8 @@ int MPIDI_CH3_ReqHandler_GaccumSendComplete( MPIDI_VC_t *vc,
        because inside finish_op_on_target() we may call this request handler
        on the same request again (in release_lock()). Marking this request as
        completed will prevent us from processing the same request twice. */
-    mpi_errno = finish_op_on_target(win_ptr, vc, MPIDI_CH3_PKT_GET_ACCUM,
-                                    flags, source_win_handle);
+    mpi_errno = finish_op_on_target(win_ptr, vc, TRUE /* has response data */,
+                                    flags, MPI_WIN_NULL);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     *complete = TRUE;
@@ -174,7 +172,6 @@ int MPIDI_CH3_ReqHandler_CASSendComplete( MPIDI_VC_t *vc,
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Win *win_ptr;
-    MPI_Win source_win_handle = rreq->dev.source_win_handle;
     MPIDI_CH3_Pkt_flags_t flags = rreq->dev.flags;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_REQHANDLER_CASSENDCOMPLETE);
 
@@ -217,8 +214,8 @@ int MPIDI_CH3_ReqHandler_CASSendComplete( MPIDI_VC_t *vc,
        because inside finish_op_on_target() we may call this request handler
        on the same request again (in release_lock()). Marking this request as
        completed will prevent us from processing the same request twice. */
-    mpi_errno = finish_op_on_target(win_ptr, vc, MPIDI_CH3_PKT_CAS,
-                                    flags, source_win_handle);
+    mpi_errno = finish_op_on_target(win_ptr, vc, TRUE/* has response data */,
+                                    flags, MPI_WIN_NULL);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     *complete = TRUE;
@@ -240,7 +237,6 @@ int MPIDI_CH3_ReqHandler_FOPSendComplete( MPIDI_VC_t *vc,
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Win *win_ptr;
-    MPI_Win source_win_handle = rreq->dev.source_win_handle;
     MPIDI_CH3_Pkt_flags_t flags = rreq->dev.flags;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_REQHANDLER_FOPSENDCOMPLETE);
 
@@ -283,8 +279,8 @@ int MPIDI_CH3_ReqHandler_FOPSendComplete( MPIDI_VC_t *vc,
        because inside finish_op_on_target() we may call this request handler
        on the same request again (in release_lock()). Marking this request as
        completed will prevent us from processing the same request twice. */
-    mpi_errno = finish_op_on_target(win_ptr, vc, MPIDI_CH3_PKT_FOP,
-                                    flags, source_win_handle);
+    mpi_errno = finish_op_on_target(win_ptr, vc, TRUE /* has response data */,
+                                    flags, MPI_WIN_NULL);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     *complete = TRUE;

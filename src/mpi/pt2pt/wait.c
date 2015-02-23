@@ -43,15 +43,20 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
 
     MPID_Request_get_ptr(*request, request_ptr);
 
-    if (MPID_Request_is_pending_failure(request_ptr)) {
-        mpi_errno = request_ptr->status.MPI_ERROR;
-        goto fn_fail;
-    }
-
     if (!MPID_Request_is_complete(request_ptr))
     {
 	MPID_Progress_state progress_state;
-	    
+
+        /* If this is an anysource request including a communicator with
+         * anysource disabled, convert the call to an MPI_Test instead so we
+         * don't get stuck in the progress engine. */
+        if (unlikely(MPIR_CVAR_ENABLE_FT &&
+                    MPID_Request_is_anysource(request_ptr) &&
+                    !MPID_Comm_AS_enabled(request_ptr->comm))) {
+            mpi_errno = MPIR_Test_impl(request, &active_flag, status);
+            goto fn_exit;
+        }
+
 	MPID_Progress_start(&progress_state);
         while (!MPID_Request_is_complete(request_ptr))
 	{
@@ -76,6 +81,17 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
                 MPIU_ERR_POP(mpi_errno);
 		/* --END ERROR HANDLING-- */
 	    }
+
+            if (unlikely(
+                        MPIR_CVAR_ENABLE_FT &&
+                        MPID_Request_is_anysource(request_ptr) &&
+                        !MPID_Request_is_complete(request_ptr) &&
+                        !MPID_Comm_AS_enabled(request_ptr->comm))) {
+                MPID_Progress_end(&progress_state);
+                MPIU_ERR_SET(mpi_errno, MPIX_ERR_PROC_FAILED_PENDING, "**failure_pending");
+                if (status != MPI_STATUS_IGNORE) status->MPI_ERROR = mpi_errno;
+                goto fn_fail;
+            }
 	}
 	MPID_Progress_end(&progress_state);
     }

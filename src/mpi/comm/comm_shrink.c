@@ -29,6 +29,8 @@
 #pragma _HP_SECONDARY_DEF PMPIX_Comm_shrink  MPIX_Comm_shrink
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPIX_Comm_shrink as PMPIX_Comm_shrink
+#elif defined(HAVE_WEAK_ATTRIBUTE)
+int MPIX_Comm_shrink(MPI_Comm comm, MPI_Comm *newcomm) __attribute__((weak,alias("PMPIX_Comm_shrink")));
 #endif
 /* -- End Profiling Symbol Block */
 
@@ -81,7 +83,16 @@ int MPIR_Comm_shrink(MPID_Comm *comm_ptr, MPID_Comm **newcomm_ptr)
             new_group_ptr, MPIR_SHRINK_TAG, &errflag);
         MPIR_Group_release(new_group_ptr);
 
-        if (errflag) MPIU_Object_set_ref(new_group_ptr, 0);
+        if (errflag) {
+            if (*newcomm_ptr != NULL && MPIU_Object_get_ref(*newcomm_ptr) > 0) {
+                MPIU_Object_set_ref(*newcomm_ptr, 1);
+                MPIR_Comm_release(*newcomm_ptr, 0);
+            }
+            if (MPIU_Object_get_ref(new_group_ptr) > 0) {
+                MPIU_Object_set_ref(new_group_ptr, 1);
+                MPIR_Group_release(new_group_ptr);
+            }
+        }
     } while (errflag && ++attempts < 5);
 
     if (errflag && attempts >= 5) goto fn_fail;

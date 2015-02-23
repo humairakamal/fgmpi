@@ -71,6 +71,7 @@ contention_putget 4
 put_base 2
 put_bottom 2
 win_flavors 4 mpiversion=3.0
+win_flavors 3 mpiversion=3.0
 manyrma2 2 timeLimit=500
 manyrma2_shm 2 timeLimit=500
 manyrma3 2
@@ -81,6 +82,7 @@ win_shared_noncontig 4 mpiversion=3.0
 win_shared_noncontig_put 4 mpiversion=3.0
 win_zero 4 mpiversion=3.0
 @largetest@win_large_shm 4 mpiversion=3.0
+@largetest@win_large_shm 3 mpiversion=3.0
 win_dynamic_acc 4 mpiversion=3.0
 get_acc_local 1 mpiversion=3.0
 linked_list 4 mpiversion=3.0
@@ -126,6 +128,9 @@ win_shared_zerobyte 4 mpiversion=3.0
 win_shared_put_flush_get 4 mpiversion=3.0
 get-struct 2
 at_complete 2
+atomic_rmw_fop 3
+atomic_rmw_cas 3
+atomic_rmw_gacc 3
 @mpix@ aint 2 strict=false
 
 ## This test is not strictly correct.  This was meant to test out the

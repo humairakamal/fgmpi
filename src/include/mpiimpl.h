@@ -724,14 +724,6 @@ extern MPID_Errhandler MPID_Errhandler_direct[];
     } while (0)
 /* ------------------------------------------------------------------------- */
 
-/* Define a typedef for the errflag value used by many internal functions.
- * If an error needs to be returned, these values can be used to signal such.
- * More details can be found further down in the code with the bitmasking logic */
-typedef enum {MPIR_ERR_NONE = MPI_SUCCESS,
-              MPIR_ERR_PROC_FAILED = MPIX_ERR_PROC_FAILED,
-              MPIR_ERR_OTHER = MPI_ERR_OTHER}
-mpir_errflag_t;
-
 /* ------------------------------------------------------------------------- */
 /* Keyvals and attributes */
 /*TKyOverview.tex
@@ -1535,6 +1527,9 @@ typedef struct MPID_Request {
     struct MPID_Grequest_fns *greq_fns;
 
     struct MPIR_Sendq *dbg_next;
+
+    /* Errflag for NBC requests. Not used by other requests. */
+    mpir_errflag_t errflag;
 
     /* Other, device-specific information */
 #ifdef MPID_DEV_REQUEST_DECL
@@ -3477,6 +3472,31 @@ int MPID_Cancel_send(MPID_Request *);
 int MPID_Cancel_recv(MPID_Request *);
 
 /*@
+  MPID_Comm_AS_enabled - Query whether anysource operations are enabled for a communicator
+
+  Input Parameter:
+  communicator - Communicator being queried
+
+  Return Value:
+  0 - The communicator will not currently permit anysource operations
+  1 - The communicator will currently permit anysource operations
+  @*/
+int MPID_Comm_AS_enabled(MPID_Comm *);
+
+/*@
+  MPID_Request_is_anysource - Query whether the request is an anysource receive
+
+  Input Parameter:
+  request - Receive request being queried
+
+  Return Value:
+  0 - The request is not anysource
+  1 - The request is anysource
+
+  @*/
+int MPID_Request_is_anysource(MPID_Request *);
+
+/*@
   MPID_Aint_add - Returns the sum of base and disp
 
   Input Parameters:
@@ -3703,23 +3723,6 @@ void MPID_Request_set_completed(MPID_Request *);
   Request
 @*/
 void MPID_Request_release(MPID_Request *);
-
-/*@
-  MPID_Request_is_pending_failure - Check if a request is pending because of a process failures
-
-  Input Parameter:
-  request - request to check
-
-  Return value:
-  0 - The request is not pending because of a failure
-  Non-zero - The request is pending because of a failure
-
-  Notes:
-  This routine checks to see if the communicator used in the request can
-  participate in MPI_ANY_SOURCE operations and if this request is already
-  pending due to a process failure.
-@*/
-int MPID_Request_is_pending_failure(MPID_Request *);
 
 typedef struct MPID_Grequest_class {
      MPIU_OBJECT_HEADER; /* adds handle and ref_count fields */
@@ -4009,29 +4012,31 @@ int MPID_VCR_Get_lpid(MPID_VCR vcr, int * lpid_ptr);
    MPID_CONTEXT_INTRA(INTER)_COLL. */
 int MPIR_Localcopy(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                    void *recvbuf, int recvcount, MPI_Datatype recvtype);
-int MPIC_Wait(MPID_Request * request_ptr);
+int MPIC_Wait(MPID_Request * request_ptr, mpir_errflag_t *errflag);
 int MPIC_Probe(int source, int tag, MPI_Comm comm, MPI_Status *status);
 
 /* FT versions of te MPIC_ functions */
 int MPIC_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
-                 MPI_Comm comm, mpir_errflag_t *errflag);
+                 MPID_Comm *comm_ptr, mpir_errflag_t *errflag);
 int MPIC_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
-                 MPI_Comm comm, MPI_Status *status, mpir_errflag_t *errflag);
+                 MPID_Comm *comm_ptr, MPI_Status *status, mpir_errflag_t *errflag);
 int MPIC_Ssend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
-                  MPI_Comm comm, mpir_errflag_t *errflag);
+                  MPID_Comm *comm_ptr, mpir_errflag_t *errflag);
 int MPIC_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                      int dest, int sendtag, void *recvbuf, int recvcount,
                      MPI_Datatype recvtype, int source, int recvtag,
-                     MPI_Comm comm, MPI_Status *status, mpir_errflag_t *errflag);
+                     MPID_Comm *comm_ptr, MPI_Status *status, mpir_errflag_t *errflag);
 int MPIC_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype,
                              int dest, int sendtag,
                              int source, int recvtag,
-                             MPI_Comm comm, MPI_Status *status, mpir_errflag_t *errflag);
+                             MPID_Comm *comm_ptr, MPI_Status *status, mpir_errflag_t *errflag);
 int MPIC_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
-                  MPI_Comm comm, MPI_Request *request, mpir_errflag_t *errflag);
+                  MPID_Comm *comm_ptr, MPID_Request **request, mpir_errflag_t *errflag);
+int MPIC_Issend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+                  MPID_Comm *comm_ptr, MPID_Request **request, mpir_errflag_t *errflag);
 int MPIC_Irecv(void *buf, int count, MPI_Datatype datatype, int source,
-                  int tag, MPI_Comm comm, MPI_Request *request);
-int MPIC_Waitall(int numreq, MPI_Request requests[], MPI_Status statuses[], mpir_errflag_t *errflag);
+                  int tag, MPID_Comm *comm_ptr, MPID_Request **request);
+int MPIC_Waitall(int numreq, MPID_Request *requests[], MPI_Status statuses[], mpir_errflag_t *errflag);
 
 
 void MPIR_MAXF  ( void *, void *, int *, MPI_Datatype * ) ;
@@ -4490,7 +4495,7 @@ int MPIR_Cart_map_impl(const MPID_Comm *comm_ptr, int ndims, const int dims[],
                        const int periodic[], int *newrank);
 int MPIR_Close_port_impl(const char *port_name);
 int MPIR_Open_port_impl(MPID_Info *info_ptr, char *port_name);
-void MPIR_Info_get_impl(MPID_Info *info_ptr, const char *key, int valuelen, char *value, int *flag);
+int MPIR_Info_get_impl(MPID_Info *info_ptr, const char *key, int valuelen, char *value, int *flag);
 void MPIR_Info_get_nkeys_impl(MPID_Info *info_ptr, int *nkeys);
 int MPIR_Info_get_nthkey_impl(MPID_Info *info, int n, char *key);
 void MPIR_Info_get_valuelen_impl(MPID_Info *info_ptr, const char *key, int *valuelen, int *flag);
@@ -4586,6 +4591,8 @@ void MPIR_Type_lb_impl(MPI_Datatype datatype, MPI_Aint *displacement);
 int MPIR_Ibsend_impl(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
                      MPID_Comm *comm_ptr, MPI_Request *request);
 int MPIR_Test_impl(MPI_Request *request, int *flag, MPI_Status *status);
+int MPIR_Testall_impl(int count, MPI_Request array_of_requests[], int *flag,
+                      MPI_Status array_of_statuses[]);
 int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status);
 int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
                       MPI_Status array_of_statuses[]);
@@ -4623,6 +4630,30 @@ static inline int MPIR_Request_complete_fastpath(MPI_Request *request, MPID_Requ
 
     /* avoid normal fn_exit/fn_fail jump pattern to reduce jumps and compiler confusion */
     return mpi_errno;
+}
+
+/* Pull the error status out of the tag space and put it into an errflag. */
+#undef FUNCNAME
+#define FUNCNAME MPIR_process_status
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+static inline void MPIR_Process_status(MPI_Status *status, mpir_errflag_t *errflag)
+{
+    if (MPI_PROC_NULL != status->MPI_SOURCE &&
+        (MPIX_ERR_REVOKED == MPIR_ERR_GET_CLASS(status->MPI_ERROR) ||
+        MPIX_ERR_PROC_FAILED == MPIR_ERR_GET_CLASS(status->MPI_ERROR) ||
+        MPIR_TAG_CHECK_ERROR_BIT(status->MPI_TAG)) && !*errflag) {
+        /* If the receive was completed within the MPID_Recv, handle the
+        * errflag here. */
+        if (MPIR_TAG_CHECK_PROC_FAILURE_BIT(status->MPI_TAG) ||
+            MPIX_ERR_PROC_FAILED == MPIR_ERR_GET_CLASS(status->MPI_ERROR)) {
+            *errflag = MPIR_ERR_PROC_FAILED;
+            MPIR_TAG_CLEAR_ERROR_BITS(status->MPI_TAG);
+        } else {
+            *errflag = MPIR_ERR_OTHER;
+            MPIR_TAG_CLEAR_ERROR_BITS(status->MPI_TAG);
+        }
+    }
 }
 
 extern const char MPIR_Version_string[];

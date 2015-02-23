@@ -328,7 +328,12 @@ static inline int issue_ops_target(MPID_Win * win_ptr, MPIDI_RMA_Target_t *targe
             /* piggyback on first OP. */
             if (target->access_state == MPIDI_RMA_LOCK_CALLED) {
                 MPIU_Assert(curr_op->piggyback_lock_candidate);
-                flags |= MPIDI_CH3_PKT_FLAG_RMA_LOCK;
+                if (target->lock_type == MPI_LOCK_SHARED)
+                    flags |= MPIDI_CH3_PKT_FLAG_RMA_LOCK_SHARED;
+                else {
+                    MPIU_Assert(target->lock_type == MPI_LOCK_EXCLUSIVE);
+                    flags |= MPIDI_CH3_PKT_FLAG_RMA_LOCK_EXCLUSIVE;
+                }
                 target->access_state = MPIDI_RMA_LOCK_ISSUED;
             }
             first_op = 0;
@@ -361,12 +366,15 @@ static inline int issue_ops_target(MPID_Win * win_ptr, MPIDI_RMA_Target_t *targe
             win_ptr->active_req_cnt++;
 
         if (curr_op->pkt.type == MPIDI_CH3_PKT_PUT ||
-            curr_op->pkt.type == MPIDI_CH3_PKT_ACCUMULATE) {
+            curr_op->pkt.type == MPIDI_CH3_PKT_PUT_IMMED ||
+            curr_op->pkt.type == MPIDI_CH3_PKT_ACCUMULATE ||
+            curr_op->pkt.type == MPIDI_CH3_PKT_ACCUMULATE_IMMED) {
             target->put_acc_issued = 1; /* set PUT_ACC_FLAG when sending
                                            PUT/ACC operation. */
         }
 
-        if (flags & MPIDI_CH3_PKT_FLAG_RMA_LOCK) {
+        if (flags & MPIDI_CH3_PKT_FLAG_RMA_LOCK_SHARED ||
+            flags & MPIDI_CH3_PKT_FLAG_RMA_LOCK_EXCLUSIVE) {
             /* If this operation is piggybacked with LOCK,
                do not move it out of pending list, and do
                not complete the user request, because we
@@ -395,7 +403,9 @@ static inline int issue_ops_target(MPID_Win * win_ptr, MPIDI_RMA_Target_t *targe
                                           &(target->dt_op_list_tail), curr_op);
             }
             else if (curr_op->pkt.type == MPIDI_CH3_PKT_PUT ||
-                     curr_op->pkt.type == MPIDI_CH3_PKT_ACCUMULATE) {
+                     curr_op->pkt.type == MPIDI_CH3_PKT_PUT_IMMED ||
+                     curr_op->pkt.type == MPIDI_CH3_PKT_ACCUMULATE ||
+                     curr_op->pkt.type == MPIDI_CH3_PKT_ACCUMULATE_IMMED) {
                 MPIDI_CH3I_RMA_Ops_append(&(target->write_op_list),
                                           &(target->write_op_list_tail), curr_op);
             }

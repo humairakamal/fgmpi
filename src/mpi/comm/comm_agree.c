@@ -15,6 +15,8 @@
 #pragma _HP_SECONDARY_DEF PMPIX_Comm_agree  MPIX_Comm_agree
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPIX_Comm_agree as PMPIX_Comm_agree
+#elif defined(HAVE_WEAK_ATTRIBUTE)
+int MPIX_Comm_agree(MPI_Comm comm, int *flag) __attribute__((weak,alias("PMPIX_Comm_agree")));
 #endif
 /* -- End Profiling Symbol Block */
 
@@ -48,7 +50,7 @@ int MPIR_Comm_agree(MPID_Comm *comm_ptr, int *flag)
 
     /* First decide on the group of failed procs. */
     mpi_errno = MPID_Comm_get_all_failed_procs(comm_ptr, &global_failed, MPIR_AGREE_TAG);
-    if (mpi_errno) errflag = 1;
+    if (mpi_errno) errflag = MPIR_ERR_PROC_FAILED;
 
     mpi_errno = MPIR_Group_compare_impl(failed_grp, global_failed, &result);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);

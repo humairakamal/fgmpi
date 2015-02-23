@@ -66,12 +66,14 @@ int MPIR_Test_impl(MPI_Request *request, int *flag, MPI_Status *status)
 	*flag = TRUE;
 	if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 	/* Fall through to the exit */
-    } else if (MPID_Request_is_pending_failure(request_ptr)) {
-        *flag = TRUE;
-        mpi_errno = request_ptr->status.MPI_ERROR;
+    } else if (unlikely(
+                MPIR_CVAR_ENABLE_FT &&
+                MPID_Request_is_anysource(request_ptr) &&
+                !MPID_Comm_AS_enabled(request_ptr->comm))) {
+        MPIU_ERR_SET(mpi_errno, MPIX_ERR_PROC_FAILED_PENDING, "**failure_pending");
+        if (status != MPI_STATUS_IGNORE) status->MPI_ERROR = mpi_errno;
         goto fn_fail;
     }
-        
  fn_exit:
     return mpi_errno;
  fn_fail:

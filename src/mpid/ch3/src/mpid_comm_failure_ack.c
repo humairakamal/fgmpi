@@ -149,36 +149,23 @@ int MPID_Comm_failed_bitarray(MPID_Comm *comm_ptr, uint32_t **bitarray, int acke
 }
 
 #undef FUNCNAME
-#define FUNCNAME MPID_Request_is_pending_failure
+#define FUNCNAME MPID_Comm_AS_enabled
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPID_Request_is_pending_failure(MPID_Request *request_ptr)
-{
+int MPID_Comm_AS_enabled(MPID_Comm *comm_ptr) {
+    return comm_ptr->dev.anysource_enabled;
+}
+
+
+#undef FUNCNAME
+#define FUNCNAME MPID_Request_is_anysource
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPID_Request_is_anysource(MPID_Request *request_ptr) {
     int ret = 0;
-    MPIDI_STATE_DECL(MPID_STATE_REQUEST_IS_PENDING_FAILURE);
-    MPIDI_FUNC_ENTER(MPID_STATE_REQUEST_IS_PENDING_FAILURE);
 
-    if (NULL == request_ptr || NULL == request_ptr->comm) {
-        goto fn_exit;
-    }
+    if (request_ptr->kind == MPID_REQUEST_RECV)
+        ret = request_ptr->dev.match.parts.rank == MPI_ANY_SOURCE;
 
-    if (request_ptr->dev.match.parts.rank != MPI_ANY_SOURCE) {
-        goto fn_exit;
-    }
-
-    /* If the request is pending and the communicator has MPI_ANY_SOURCE
-     * enabled, then we can mark the request as not pending and let the
-     * request continue. */
-    if (MPIDI_CH3I_Comm_AS_enabled(request_ptr->comm)) {
-        request_ptr->status.MPI_ERROR = MPI_SUCCESS;
-        goto fn_exit;
-    }
-
-    /* Otherwise, the request shouldn't go into the progress engine. */
-    ret = 1;
-
-fn_exit:
-    MPIU_DBG_MSG_S(CH3_OTHER, VERBOSE, "Request is%spending failure", ret ? " " : " not ");
-    MPIDI_FUNC_EXIT(MPID_STATE_REQUEST_IS_PENDING_FAILURE);
     return ret;
 }

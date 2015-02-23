@@ -800,10 +800,16 @@ void MPIDI_print_statistics() {
        (MPIDI_Process.mp_printenv)) {
        if (MPIDI_Process.mp_statistics) {
            MPIDI_Statistics_write(stdout);
-           if (mpid_statp) MPIU_Free(mpid_statp);
+           if (mpid_statp) {
+               MPIU_Free(mpid_statp);
+               mpid_statp=NULL;
+           }
        }
     if (MPIDI_Process.mp_printenv) {
-        if (mpich_env)  MPIU_Free(mpich_env);
+        if (mpich_env) {
+            MPIU_Free(mpich_env);
+            mpich_env=NULL;
+        }
     }
   }
 }
@@ -1914,6 +1920,34 @@ void MPIDI_collsel_pami_tune_cleanup()
 {
   MPIDI_collsel_free_advisor_params(&MPIDI_Collsel_advisor_params);
 }
+
+
+
+/**********************************************************/
+/*                 CUDA Utilities                         */
+/**********************************************************/
+
+inline bool MPIDI_cuda_is_device_buf(const void* ptr)
+{
+    bool result = false;
+#if CUDA_AWARE_SUPPORT
+    struct cudaPointerAttributes cuda_attr;
+    cudaError_t e= cudaPointerGetAttributes  ( & cuda_attr, ptr);
+
+    if (e != cudaSuccess)
+        result = false;
+    else if (cuda_attr.memoryType ==  cudaMemoryTypeDevice)
+        result = true;
+    else
+        result = false;
+#endif
+    return result;
+}
+
+
+/**********************************************************/
+/*                End CUDA Utilities                      */
+/**********************************************************/
 
 #if defined(MPID_USE_NODE_IDS)
 #undef FUNCNAME
