@@ -140,7 +140,7 @@ int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int ta
 #if defined(FINEGRAIN_MPI)
       if ( Is_within_same_HWP(dest, comm_ptr, NULL) )
       {
-           while((*(request_ptr)->cc_ptr) != 0)
+           while(!MPID_Request_is_complete(request_ptr))
            {
                FG_Yield();
            }
@@ -163,7 +163,7 @@ int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int ta
 #if defined(FINEGRAIN_MPI)
             /* FG: TODO Remove? The following is likely ineffective and is not
                being called because there is a FG_Yield() inside MPIDI_CH3I_Progress(). */
-            if( ((*(request_ptr)->cc_ptr) != 0) )
+            if(!MPID_Request_is_complete(request_ptr))
             {
                 FG_Yield();
             }

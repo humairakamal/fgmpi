@@ -158,7 +158,7 @@ int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
              full message has not been received, then request_ptr->cc_ptr
              will not be zero and the receiver will block again.
           */
-          while((*(request_ptr)->cc_ptr) != 0)
+          while(!MPID_Request_is_complete(request_ptr))
           {
               scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
               FG_Yield_on_event(tye);
@@ -183,7 +183,7 @@ int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
 	    }
 
 #if defined(FINEGRAIN_MPI)
-            if((*(request_ptr)->cc_ptr) != 0)
+            if(!MPID_Request_is_complete(request_ptr))
             {
                 scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
                 FG_Yield_on_event(tye);
