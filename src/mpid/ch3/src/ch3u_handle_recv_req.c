@@ -29,6 +29,9 @@ int MPIDI_CH3U_Handle_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq,
     reqFn = rreq->dev.OnDataAvail;
     if (!reqFn) {
 	MPIU_Assert(MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_RECV);
+#if defined(FINEGRAIN_MPI)
+        FG_Notify_on_event(rreq->dev.match.parts.dest_rank, UNBLOCK);
+#endif
 	MPIDI_CH3U_Request_complete(rreq);
 	*complete = TRUE;
     }
@@ -64,6 +67,9 @@ int MPIDI_CH3_ReqHandler_RecvComplete( MPIDI_VC_t *vc ATTRIBUTE((unused)),
 				       MPID_Request *rreq, 
 				       int *complete )
 {
+#if defined(FINEGRAIN_MPI)
+    FG_Notify_on_event(rreq->dev.match.parts.dest_rank, UNBLOCK);
+#endif
     /* mark data transfer as complete and decrement CC */
     MPIDI_CH3U_Request_complete(rreq);
     *complete = TRUE;
@@ -662,7 +668,10 @@ int MPIDI_CH3_ReqHandler_UnpackUEBufComplete( MPIDI_VC_t *vc ATTRIBUTE((unused))
 	/* The receive has not been posted yet.  MPID_{Recv/Irecv}() 
 	   is responsible for unpacking the buffer. */
     }
-    
+
+#if defined(FINEGRAIN_MPI)
+    FG_Notify_on_event(rreq->dev.match.parts.dest_rank, UNBLOCK);
+#endif
     /* mark data transfer as complete and decrement CC */
     MPIDI_CH3U_Request_complete(rreq);
     *complete = TRUE;
@@ -702,6 +711,9 @@ int MPIDI_CH3_ReqHandler_UnpackSRBufComplete( MPIDI_VC_t *vc,
 	    vc, rreq, complete );
     }
     else {
+#if defined(FINEGRAIN_MPI)
+        FG_Notify_on_event(rreq->dev.match.parts.dest_rank, UNBLOCK);
+#endif
 	/* mark data transfer as complete and decrement CC */
 	MPIDI_CH3U_Request_complete(rreq);
 	*complete = TRUE;

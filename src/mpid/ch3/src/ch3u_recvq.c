@@ -892,6 +892,9 @@ int MPIDI_CH3U_Recvq_DP(MPID_Request * rreq)
 	    dequeue_failed = MPIDI_POSTED_RECV_DEQUEUE_HOOK(rreq);
             if (!dequeue_failed)
                 found = TRUE;
+#if defined(FINEGRAIN_MPI)
+            FG_Notify_on_event(rreq->dev.match.parts.dest_rank, UNBLOCK);
+#endif
 	    break;
 	}
 	
@@ -996,15 +999,17 @@ MPID_Request * MPIDI_CH3U_Recvq_FDP_or_AEU(MPIDI_Message_match * match,
 	    }
         MPIR_T_PVAR_LEVEL_DEC(RECVQ, posted_recvq_length, 1);
 
-#if defined(FINEGRAIN_MPI)
-        /* FG: TODO Zerocopy */
-#endif
             /* give channel a chance to match the request, try again if so */
 	    channel_matched = MPIDI_POSTED_RECV_DEQUEUE_HOOK(rreq);
             if (channel_matched) /* FG: TODO Double-check */
                 goto top_loop;
             
-	    found = TRUE;                
+	    found = TRUE;
+
+#if defined(FINEGRAIN_MPI)
+            /* FG: TODO Zerocopy */
+            FG_Notify_on_event(match->parts.dest_rank, UNBLOCK);
+#endif
 	    goto lock_exit;
 	}
 	prev_rreq = rreq;

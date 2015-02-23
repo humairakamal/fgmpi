@@ -152,8 +152,17 @@ int MPI_Finalize( void )
        be called at most once in any program) */
     MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_FINALIZE_FUNC_ENTER(MPID_STATE_MPI_FINALIZE);
-    
+
     /* ... body of routine ... */
+
+#if defined(FINEGRAIN_MPI) /* FG: TODO MPI_Finalize() */
+       FGP_finalizations++;
+
+        if (IS_SPAWNER){
+            //            FG_Finalize();
+        }
+        goto fn_exit;
+#endif
 
     /* If the user requested for asynchronous progress, we need to
      * shutdown the progress thread */
