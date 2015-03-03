@@ -453,7 +453,7 @@ typedef int (MPI_Copy_function) ( MPI_Comm, int, void *, void *, void *, int * )
 typedef int (MPI_Delete_function) ( MPI_Comm, int, void *, void * );
 
 #define MPI_VERSION    3
-#define MPI_SUBVERSION 0
+#define MPI_SUBVERSION 1
 #define MPICH_NAME     3
 #define MPICH         1
 #define MPICH_HAS_C2F  1
@@ -865,12 +865,14 @@ typedef int (MPIX_Grequest_wait_function)(int, void **, double, MPI_Status *);
 #define MPI_T_ERR_PVAR_NO_STARTSTOP 70  /* Pvar can't be started or stopped */
 #define MPI_T_ERR_PVAR_NO_WRITE     71  /* Pvar can't be written or reset */
 #define MPI_T_ERR_PVAR_NO_ATOMIC    72  /* Pvar can't be R/W atomically */
+#define MPI_T_ERR_INVALID_NAME      73  /* Name doesn't match */
+#define MPI_T_ERR_INVALID           74  /* Generic error code for MPI_T added in MPI-3.1 */
 
 
 #define MPI_ERR_LASTCODE    0x3fffffff  /* Last valid error code for a 
 					   predefined error class */
 /* WARNING: this is also defined in mpishared.h.  Update both locations */
-#define MPICH_ERR_LAST_CLASS 72     /* It is also helpful to know the
+#define MPICH_ERR_LAST_CLASS 74     /* It is also helpful to know the
 				       last valid class */
 
 #define MPICH_ERR_FIRST_MPIX 100 /* Define a gap here because sock is
@@ -1530,6 +1532,9 @@ int MPI_T_category_get_cvars(int cat_index, int len, int indices[]);
 int MPI_T_category_get_pvars(int cat_index, int len, int indices[]);
 int MPI_T_category_get_categories(int cat_index, int len, int indices[]);
 int MPI_T_category_changed(int *stamp);
+int MPI_T_cvar_get_index(const char *name, int *cvar_index);
+int MPI_T_pvar_get_index(const char *name, int var_class, int *pvar_index);
+int MPI_T_category_get_index(const char *name, int *cat_index);
 /* End Skip Prototypes */
 
 
@@ -1542,8 +1547,8 @@ int MPIX_Comm_shrink(MPI_Comm comm, MPI_Comm *newcomm);
 int MPIX_Comm_agree(MPI_Comm comm, int *flag);
 
 /* MPI_Aint addressing arithmetic */
-MPI_Aint MPIX_Aint_add(MPI_Aint base, MPI_Aint disp);
-MPI_Aint MPIX_Aint_diff(MPI_Aint addr1, MPI_Aint addr2);
+MPI_Aint MPI_Aint_add(MPI_Aint base, MPI_Aint disp);
+MPI_Aint MPI_Aint_diff(MPI_Aint addr1, MPI_Aint addr2);
 
 /* End Prototypes */
 #endif /* MPICH_SUPPRESS_PROTOTYPES */
@@ -2173,6 +2178,9 @@ int PMPI_T_category_get_cvars(int cat_index, int len, int indices[]);
 int PMPI_T_category_get_pvars(int cat_index, int len, int indices[]);
 int PMPI_T_category_get_categories(int cat_index, int len, int indices[]);
 int PMPI_T_category_changed(int *stamp);
+int PMPI_T_cvar_get_index(const char *name, int *cvar_index);
+int PMPI_T_pvar_get_index(const char *name, int var_class, int *pvar_index);
+int PMPI_T_category_get_index(const char *name, int *cat_index);
 /* End Skip Prototypes */
 
 
@@ -2185,8 +2193,8 @@ int PMPIX_Comm_shrink(MPI_Comm comm, MPI_Comm *newcomm);
 int PMPIX_Comm_agree(MPI_Comm comm, int *flag);
 
 /* MPI_Aint addressing arithmetic */
-MPI_Aint PMPIX_Aint_add(MPI_Aint base, MPI_Aint disp);
-MPI_Aint PMPIX_Aint_diff(MPI_Aint addr1, MPI_Aint addr2);
+MPI_Aint PMPI_Aint_add(MPI_Aint base, MPI_Aint disp);
+MPI_Aint PMPI_Aint_diff(MPI_Aint addr1, MPI_Aint addr2);
 
 #endif  /* MPI_BUILD_PROFILING */
 /* End of MPI bindings */
