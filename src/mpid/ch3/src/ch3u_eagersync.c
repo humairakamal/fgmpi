@@ -39,6 +39,10 @@ int MPIDI_CH3_EagerSyncNoncontigSend( MPID_Request **sreq_p,
     MPIDI_CH3_Pkt_eager_sync_send_t * const es_pkt = &upkt.eager_sync_send;
     MPIDI_VC_t * vc;
     MPID_Request *sreq = *sreq_p;
+#if defined(FINEGRAIN_MPI)
+    int destpid=-1, destworldrank=-1;
+    MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
+#endif
 
     /* MT FIXME what are the two operations we are waiting for?  the send and
      * the sync response? */
@@ -47,13 +51,20 @@ int MPIDI_CH3_EagerSyncNoncontigSend( MPID_Request **sreq_p,
     sreq->dev.OnFinal = 0;
 
     MPIDI_Pkt_init(es_pkt, MPIDI_CH3_PKT_EAGER_SYNC_SEND);
+#if defined(FINEGRAIN_MPI)
+    es_pkt->match.parts.dest_rank = destworldrank;
+#endif
     es_pkt->match.parts.rank = comm->rank;
     es_pkt->match.parts.tag = tag;
     es_pkt->match.parts.context_id = comm->context_id + context_offset;
     es_pkt->sender_req_id = sreq->handle;
     es_pkt->data_sz = data_sz;
 
+#if defined(FINEGRAIN_MPI)
+    MPIDI_Comm_get_vc_set_active_direct(comm, destpid, &vc);
+#else
     MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
+#endif
     
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(es_pkt, seqnum);
@@ -125,6 +136,10 @@ int MPIDI_CH3_EagerSyncZero(MPID_Request **sreq_p, int rank, int tag,
     MPIDI_CH3_Pkt_eager_sync_send_t * const es_pkt = &upkt.eager_sync_send;
     MPIDI_VC_t * vc;
     MPID_Request *sreq = *sreq_p;
+#if defined(FINEGRAIN_MPI)
+    int destpid=-1, destworldrank=-1;
+    MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
+#endif
     
     MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"sending zero length message");
     
@@ -135,13 +150,20 @@ int MPIDI_CH3_EagerSyncZero(MPID_Request **sreq_p, int rank, int tag,
     sreq->dev.OnDataAvail = 0;
     
     MPIDI_Pkt_init(es_pkt, MPIDI_CH3_PKT_EAGER_SYNC_SEND);
+#if defined(FINEGRAIN_MPI)
+    es_pkt->match.parts.dest_rank = destworldrank;
+#endif
     es_pkt->match.parts.rank = comm->rank;
     es_pkt->match.parts.tag = tag;
     es_pkt->match.parts.context_id = comm->context_id + context_offset;
     es_pkt->sender_req_id = sreq->handle;
     es_pkt->data_sz = 0;
-    
+
+#if defined(FINEGRAIN_MPI)
+    MPIDI_Comm_get_vc_set_active_direct(comm, destpid, &vc);
+#else
     MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
+#endif
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(es_pkt, seqnum);
     MPIDI_Request_set_seqnum(sreq, seqnum);
@@ -153,7 +175,7 @@ int MPIDI_CH3_EagerSyncZero(MPID_Request **sreq_p, int rank, int tag,
     /* --BEGIN ERROR HANDLING-- */
     if (mpi_errno != MPI_SUCCESS)
     {
-	MPID_Request_release(sreq);
+	MPID_Request_release(sreq); /* FG: TODO? */
 	*sreq_p = NULL;
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|eagermsg");
     }

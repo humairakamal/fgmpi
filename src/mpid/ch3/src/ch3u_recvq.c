@@ -831,8 +831,7 @@ int MPIDI_CH3U_Recvq_DP(MPID_Request * rreq)
     MPID_Request * prev_rreq;
     int dequeue_failed;
 #if defined(FINEGRAIN_MPI)
-    int nfg, index = 0;
-    MPIX_Get_collocated_size(&nfg);
+    int fg_offset;
 #endif
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3U_RECVQ_DP);
 
@@ -845,9 +844,8 @@ int MPIDI_CH3U_Recvq_DP(MPID_Request * rreq)
     MPIU_THREAD_CS_ENTER(MSGQUEUE,);
     MPIR_T_PVAR_TIMER_START(RECVQ, time_failed_matching_postedq);
 #if defined(FINEGRAIN_MPI)
-    for (index=0; index<nfg; index++) {
-        cur_rreq = FG_recvq_posted_head[index];
-        prev_rreq = NULL;
+    GET_MATCH_QUEUE_INDEX(rreq->dev.match.parts.dest_rank, &fg_offset);
+    cur_rreq = FG_recvq_posted_head[fg_offset];
 #else
     cur_rreq = recvq_posted_head;
 #endif
@@ -859,14 +857,14 @@ int MPIDI_CH3U_Recvq_DP(MPID_Request * rreq)
 	    }
 	    else {
 #if defined(FINEGRAIN_MPI)
-                FG_recvq_posted_head[index] = cur_rreq->dev.next;
+                FG_recvq_posted_head[fg_offset] = cur_rreq->dev.next;
 #else
 		recvq_posted_head = cur_rreq->dev.next;
 #endif
 	    }
 	    if (cur_rreq->dev.next == NULL) {
 #if defined(FINEGRAIN_MPI)
-                FG_recvq_posted_tail[index] = prev_rreq;
+                FG_recvq_posted_tail[fg_offset] = prev_rreq;
 #else
 		recvq_posted_tail = prev_rreq;
 #endif
@@ -886,9 +884,7 @@ int MPIDI_CH3U_Recvq_DP(MPID_Request * rreq)
 	prev_rreq = cur_rreq;
 	cur_rreq = cur_rreq->dev.next;
     }
-#if defined(FINEGRAIN_MPI)
-    }
-#endif
+
     if (!found)
         MPIR_T_PVAR_TIMER_END(RECVQ, time_failed_matching_postedq);
 
