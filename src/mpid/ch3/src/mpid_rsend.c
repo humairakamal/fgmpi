@@ -50,7 +50,7 @@ int MPID_Rsend(const void * buf, int count, MPI_Datatype datatype, int rank, int
         MPIU_ERR_SETANDJUMP(mpi_errno,MPIX_ERR_REVOKED,"**revoked");
     }
 
-#if defined(FINEGRAIN_MPI) /* FG: TODO REMAINING OF THIS FUNCTION */
+#if defined(FINEGRAIN_MPI)
     MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
     if (COMPARE_RANKS(rank,comm,destpid) && comm->comm_kind != MPID_INTERCOMM)
     {
@@ -68,7 +68,11 @@ int MPID_Rsend(const void * buf, int count, MPI_Datatype datatype, int rank, int
 	goto fn_exit;
     }
 
+#if defined(FINEGRAIN_MPI)
+    MPIDI_Comm_get_vc_set_active_direct(comm, destpid, &vc);
+#else
     MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
+#endif
 
 #ifdef ENABLE_COMM_OVERRIDES
     if (vc->comm_ops && vc->comm_ops->rsend)
@@ -88,6 +92,9 @@ int MPID_Rsend(const void * buf, int count, MPI_Datatype datatype, int rank, int
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"sending zero length message");
     
 	MPIDI_Pkt_init(ready_pkt, MPIDI_CH3_PKT_READY_SEND);
+#if defined(FINEGRAIN_MPI)
+        ready_pkt->match.parts.dest_rank = destworldrank;
+#endif
 	ready_pkt->match.parts.rank = comm->rank;
 	ready_pkt->match.parts.tag = tag;
 	ready_pkt->match.parts.context_id = comm->context_id + context_offset;

@@ -35,7 +35,7 @@ typedef struct MPIDI_RMA_dtype_info {   /* for derived datatypes */
     void *dataloop;             /* pointer needed to update pointers
                                  * within dataloop on remote side */
     int dataloop_depth;
-    int eltype;
+    int basic_type;
     MPI_Aint ub, lb, true_ub, true_lb;
     int has_sticky_ub, has_sticky_lb;
 } MPIDI_RMA_dtype_info;
@@ -60,7 +60,9 @@ typedef struct MPIDI_RMA_Op {
     int result_count;
     MPI_Datatype result_datatype;
 
-    struct MPID_Request *request;
+    struct MPID_Request **reqs;
+    int reqs_size;
+
     MPIDI_RMA_dtype_info dtype_info;
     void *dataloop;
 
@@ -70,6 +72,9 @@ typedef struct MPIDI_RMA_Op {
     MPIDI_RMA_Pool_type_t pool_type;
     int is_dt;
     int piggyback_lock_candidate;
+
+    int issued_stream_count;    /* when >= 0, it specifies number of stream units that have been issued;
+                                 * when < 0, it means all stream units of this operation haven been issued. */
 
     MPID_Request *ureq;
 } MPIDI_RMA_Op_t;
@@ -83,13 +88,13 @@ typedef struct MPIDI_RMA_Target {
     struct MPIDI_RMA_Target *next;
     int target_rank;
     enum MPIDI_RMA_states access_state;
-    int lock_type; /* NONE, SHARED, EXCLUSIVE */
+    int lock_type;              /* NONE, SHARED, EXCLUSIVE */
     int lock_mode;              /* e.g., MODE_NO_CHECK */
     int accumulated_ops_cnt;
     int disable_flush_local;
     int win_complete_flag;
-    int put_acc_issued; /* indicate if PUT/ACC is issued in this epoch
-                           after the previous synchronization calls. */
+    int put_acc_issued;         /* indicate if PUT/ACC is issued in this epoch
+                                 * after the previous synchronization calls. */
 
     /* The target structure is free to be cleaned up when all of the
      * following conditions hold true:
@@ -130,11 +135,11 @@ extern MPIDI_RMA_Win_list_t *MPIDI_RMA_Win_list, *MPIDI_RMA_Win_list_tail;
 
 typedef struct MPIDI_RMA_Lock_entry {
     struct MPIDI_RMA_Lock_entry *next;
-    MPIDI_CH3_Pkt_t pkt;    /* all information for this request packet */
+    MPIDI_CH3_Pkt_t pkt;        /* all information for this request packet */
     MPIDI_VC_t *vc;
-    void *data;             /* for queued PUTs / ACCs / GACCs, data is copied here */
-    int data_size;
-    int all_data_recved;    /* indicate if all data has been received */
+    void *data;                 /* for queued PUTs / ACCs / GACCs, data is copied here */
+    int buf_size;
+    int all_data_recved;        /* indicate if all data has been received */
 } MPIDI_RMA_Lock_entry_t;
 
 typedef MPIDI_RMA_Op_t *MPIDI_RMA_Ops_list_t;

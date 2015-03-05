@@ -24,27 +24,33 @@
 
 #define MPID_Datatype_add_ref(datatype_ptr) MPIU_Object_add_ref((datatype_ptr))
 
-#define MPID_Datatype_get_basic_type(a,eltype_) do {                    \
+#define MPID_Datatype_get_basic_type(a,basic_type_) do {                    \
     void *ptr;								\
     switch (HANDLE_GET_KIND(a)) {					\
         case HANDLE_KIND_DIRECT:					\
             ptr = MPID_Datatype_direct+HANDLE_INDEX(a);			\
-            eltype_ = ((MPID_Datatype *) ptr)->eltype;			\
+            basic_type_ = ((MPID_Datatype *) ptr)->basic_type;			\
             break;							\
         case HANDLE_KIND_INDIRECT:					\
             ptr = ((MPID_Datatype *)					\
 		   MPIU_Handle_get_ptr_indirect(a,&MPID_Datatype_mem));	\
-            eltype_ = ((MPID_Datatype *) ptr)->eltype;			\
+            basic_type_ = ((MPID_Datatype *) ptr)->basic_type;			\
             break;							\
         case HANDLE_KIND_BUILTIN:					\
-            eltype_ = a;						\
+            basic_type_ = a;						\
             break;							\
         case HANDLE_KIND_INVALID:					\
         default:							\
-	    eltype_ = 0;						\
+	    basic_type_ = 0;						\
 	    break;							\
  									\
     }									\
+    /* This macro returns the builtin type, if 'basic_type' is not      \
+     * a builtin type, it must be a pair type composed of different     \
+     * builtin types, so we return MPI_DATATYPE_NULL here.              \
+     */                                                                 \
+    if (HANDLE_GET_KIND(basic_type_) != HANDLE_KIND_BUILTIN)                \
+        basic_type_ = MPI_DATATYPE_NULL;                                    \
  } while(0)
 
 /* MPID_Datatype_release decrements the reference count on the MPID_Datatype
@@ -368,13 +374,18 @@ typedef struct MPID_Datatype {
     int is_committed;
 
     /* element information; used for accumulate and get elements
-     *
-     * if type is composed of more than one element type, then
-     * eltype == MPI_DATATYPE_NULL and element_size == -1
+     * basic_type: describes basic type (predefined type). If the
+     *             type is composed of the same basic type, it is
+     *             set to that type, otherwise it is set to MPI_DATATYPE_NULL.
+     * n_builtin_elements: refers to the number of builtin type elements.
+     * builtin_element_size: refers to the size of builtin type. If the
+     *                       type is composed of the same builtin type,
+     *                       it is set to size of that type, otherwise it
+     *                       is set to -1.
      */
-    int      eltype;
-    MPI_Aint n_elements;
-    MPI_Aint element_size;
+    int      basic_type;
+    MPI_Aint n_builtin_elements;
+    MPI_Aint builtin_element_size;
 
     /* information on contiguity of type, for processing shortcuts.
      *

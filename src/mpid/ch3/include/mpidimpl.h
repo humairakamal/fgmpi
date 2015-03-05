@@ -506,16 +506,17 @@ extern MPID_Request ** FG_recvq_unexpected_tail;
 #define MPIDI_REQUEST_TYPE_SSEND 3
 /* We need a BSEND type for persistent bsends (see mpid_startall.c) */
 #define MPIDI_REQUEST_TYPE_BSEND 4
-#define MPIDI_REQUEST_TYPE_PUT_RESP 5
-#define MPIDI_REQUEST_TYPE_GET_RESP 6
-#define MPIDI_REQUEST_TYPE_ACCUM_RESP 7
-#define MPIDI_REQUEST_TYPE_PUT_RESP_DERIVED_DT 8
-#define MPIDI_REQUEST_TYPE_GET_RESP_DERIVED_DT 9
-#define MPIDI_REQUEST_TYPE_ACCUM_RESP_DERIVED_DT 10
-#define MPIDI_REQUEST_TYPE_PT_SINGLE_PUT 11
-#define MPIDI_REQUEST_TYPE_PT_SINGLE_ACCUM 12
-#define MPIDI_REQUEST_TYPE_GET_ACCUM_RESP 13
-#define MPIDI_REQUEST_TYPE_GET_ACCUM_RESP_DERIVED_DT 14
+#define MPIDI_REQUEST_TYPE_PUT_RECV 5                    /* target is receiving PUT data */
+#define MPIDI_REQUEST_TYPE_GET_RESP 6                    /* target is sending GET response data */
+#define MPIDI_REQUEST_TYPE_ACCUM_RECV 7                  /* target is receiving ACC data */
+#define MPIDI_REQUEST_TYPE_PUT_RECV_DERIVED_DT 8         /* target is receiving derived DT info for PUT data */
+#define MPIDI_REQUEST_TYPE_GET_RECV_DERIVED_DT 9         /* target is receiving derived DT info for GET data */
+#define MPIDI_REQUEST_TYPE_ACCUM_RECV_DERIVED_DT 10      /* target is receiving derived DT info for ACC data */
+#define MPIDI_REQUEST_TYPE_GET_ACCUM_RECV 11             /* target is receiving GACC data */
+#define MPIDI_REQUEST_TYPE_GET_ACCUM_RECV_DERIVED_DT 12  /* target is receiving derived DT info for GACC data */
+#define MPIDI_REQUEST_TYPE_GET_ACCUM_RESP 13             /* target is sending GACC response data */
+#define MPIDI_REQUEST_TYPE_FOP_RECV 14                   /* target is receiving FOP data */
+#define MPIDI_REQUEST_TYPE_FOP_RESP 15                   /* target is sending FOP response data */
 
 
 #define MPIDI_Request_get_type(req_)						\
@@ -1233,13 +1234,24 @@ typedef struct {
     int (*allocate_shm)(MPI_Aint, int, MPID_Info *, MPID_Comm *, void *, MPID_Win **);
     int (*create_dynamic)(MPID_Info *, MPID_Comm *, MPID_Win **);
     int (*detect_shm)(MPID_Win **);
+    int (*gather_info)(void *, MPI_Aint, int, MPID_Info *, MPID_Comm *, MPID_Win **);
 } MPIDI_CH3U_Win_fns_t;
 
 extern MPIDI_CH3U_Win_fns_t MPIDI_CH3U_Win_fns;
 
+typedef struct {
+    int (*win_init)(MPI_Aint, int, int, int, MPID_Info *, MPID_Comm *, MPID_Win **);
+    int (*win_free)(MPID_Win **);
+} MPIDI_CH3U_Win_hooks_t;
+
+extern MPIDI_CH3U_Win_hooks_t MPIDI_CH3U_Win_hooks;
+
 /* CH3 and Channel window functions initializers */
 int MPIDI_Win_fns_init(MPIDI_CH3U_Win_fns_t *win_fns);
 int MPIDI_CH3_Win_fns_init(MPIDI_CH3U_Win_fns_t *win_fns);
+
+/* Channel window hooks initializer */
+int MPIDI_CH3_Win_hooks_init(MPIDI_CH3U_Win_hooks_t *win_hooks);
 
 /* Default window creation functions provided by CH3 */
 int MPIDI_CH3U_Win_create(void *, MPI_Aint, int, MPID_Info *, MPID_Comm *,
@@ -1253,7 +1265,7 @@ int MPIDI_CH3U_Win_create_dynamic(MPID_Info *info, MPID_Comm *comm, MPID_Win **w
 
 /* MPI RMA Utility functions */
 
-int MPIDI_CH3U_Win_create_gather(void *, MPI_Aint, int, MPID_Info *, MPID_Comm *,
+int MPIDI_CH3U_Win_gather_info(void *, MPI_Aint, int, MPID_Info *, MPID_Comm *,
                                  MPID_Win **);
 
 
@@ -1333,6 +1345,19 @@ int MPIDI_Win_sync(MPID_Win *win);
 
 void *MPIDI_Alloc_mem(size_t size, MPID_Info *info_ptr);
 int MPIDI_Free_mem(void *ptr);
+
+#ifdef MPIDI_CH3I_HAS_ALLOC_MEM
+void* MPIDI_CH3I_Alloc_mem(size_t size, MPID_Info *info_ptr);
+/* fallback to MPIU_Malloc if channel does not have its own RMA memory allocator */
+#else
+#define MPIDI_CH3I_Alloc_mem(size, info_ptr)    MPIU_Malloc(size)
+#endif
+
+#ifdef MPIDI_CH3I_HAS_FREE_MEM
+int MPIDI_CH3I_Free_mem(void *ptr);
+#else
+#define MPIDI_CH3I_Free_mem(ptr)    MPIU_Free(ptr);
+#endif
 
 /* Pvars */
 void MPIDI_CH3_RMA_Init_sync_pvars(void);

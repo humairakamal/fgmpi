@@ -10,6 +10,9 @@
 #include "mpl_utlist.h"
 #include "mpid_rma_types.h"
 
+/* define ACC stream size as the SRBuf size */
+#define MPIDI_CH3U_Acc_stream_size MPIDI_CH3U_SRBuf_size
+
 /* =========================================================== */
 /*                    auxiliary functions                      */
 /* =========================================================== */
@@ -44,10 +47,10 @@ static inline int immed_copy(void *src, void *dest, size_t len)
         MPIU_Memcpy(dest, (void *) src, len);
     }
 
- fn_exit:
+  fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_IMMED_COPY);
     return mpi_errno;
- fn_fail:
+  fn_fail:
     goto fn_exit;
 }
 
@@ -58,7 +61,7 @@ static inline int immed_copy(void *src, void *dest, size_t len)
 #define FUNCNAME fill_in_derived_dtp_info
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-static int fill_in_derived_dtp_info(MPIDI_RMA_Op_t *rma_op, MPID_Datatype *dtp)
+static int fill_in_derived_dtp_info(MPIDI_RMA_Op_t * rma_op, MPID_Datatype * dtp)
 {
     int mpi_errno = MPI_SUCCESS;
     MPIU_CHKPMEM_DECL(1);
@@ -73,7 +76,7 @@ static int fill_in_derived_dtp_info(MPIDI_RMA_Op_t *rma_op, MPID_Datatype *dtp)
     rma_op->dtype_info.extent = dtp->extent;
     rma_op->dtype_info.dataloop_size = dtp->dataloop_size;
     rma_op->dtype_info.dataloop_depth = dtp->dataloop_depth;
-    rma_op->dtype_info.eltype = dtp->eltype;
+    rma_op->dtype_info.basic_type = dtp->basic_type;
     rma_op->dtype_info.dataloop = dtp->dataloop;
     rma_op->dtype_info.ub = dtp->ub;
     rma_op->dtype_info.lb = dtp->lb;
@@ -82,33 +85,29 @@ static int fill_in_derived_dtp_info(MPIDI_RMA_Op_t *rma_op, MPID_Datatype *dtp)
     rma_op->dtype_info.has_sticky_ub = dtp->has_sticky_ub;
     rma_op->dtype_info.has_sticky_lb = dtp->has_sticky_lb;
 
-    MPIU_CHKPMEM_MALLOC(rma_op->dataloop, void *, dtp->dataloop_size,
-                        mpi_errno, "dataloop");
+    MPIU_Assert(rma_op->dataloop == NULL);
+    MPIU_CHKPMEM_MALLOC(rma_op->dataloop, void *, dtp->dataloop_size, mpi_errno, "dataloop");
 
     MPIU_Memcpy(rma_op->dataloop, dtp->dataloop, dtp->dataloop_size);
     /* The dataloop can have undefined padding sections, so we need to let
      * valgrind know that it is OK to pass this data to writev later on. */
     MPL_VG_MAKE_MEM_DEFINED(rma_op->dataloop, dtp->dataloop_size);
 
- fn_exit:
+  fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_FILL_IN_DERIVED_DTP_INFO);
     MPIU_CHKPMEM_COMMIT();
     return mpi_errno;
- fn_fail:
+  fn_fail:
     MPIU_CHKPMEM_REAP();
     goto fn_exit;
 }
 
 
-/* create_datatype() creates a new struct datatype for the dtype_info
-   and the dataloop of the target datatype together with the user data */
 #undef FUNCNAME
 #define FUNCNAME create_datatype
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-static int create_datatype(const MPIDI_RMA_dtype_info * dtype_info,
-                           const void *dataloop, MPI_Aint dataloop_sz,
-                           const void *o_addr, int o_count, MPI_Datatype o_datatype,
+static int create_datatype(int *ints, MPI_Aint * displaces, MPI_Datatype * datatypes,
                            MPID_Datatype ** combined_dtp)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -116,38 +115,19 @@ static int create_datatype(const MPIDI_RMA_dtype_info * dtype_info,
      * blocklens array with count prepended to it.  So blocklens
      * points to the 2nd element of ints to avoid having to copy
      * blocklens into ints later. */
-    int ints[4];
     int *blocklens = &ints[1];
-    MPI_Aint displaces[3];
-    MPI_Datatype datatypes[3];
-    const int count = 3;
     MPI_Datatype combined_datatype;
+    int count = ints[0];
     MPIDI_STATE_DECL(MPID_STATE_CREATE_DATATYPE);
 
     MPIDI_FUNC_ENTER(MPID_STATE_CREATE_DATATYPE);
-
-    /* create datatype */
-    displaces[0] = MPIU_PtrToAint(dtype_info);
-    blocklens[0] = sizeof(*dtype_info);
-    datatypes[0] = MPI_BYTE;
-
-    displaces[1] = MPIU_PtrToAint(dataloop);
-    MPIU_Assign_trunc(blocklens[1], dataloop_sz, int);
-    datatypes[1] = MPI_BYTE;
-
-    displaces[2] = MPIU_PtrToAint(o_addr);
-    blocklens[2] = o_count;
-    datatypes[2] = o_datatype;
 
     mpi_errno = MPID_Type_struct(count, blocklens, displaces, datatypes, &combined_datatype);
     if (mpi_errno)
         MPIU_ERR_POP(mpi_errno);
 
-    ints[0] = count;
-
     MPID_Datatype_get_ptr(combined_datatype, *combined_dtp);
-    mpi_errno = MPID_Datatype_set_contents(*combined_dtp, MPI_COMBINER_STRUCT,
-                                           count + 1,       /* ints (cnt,blklen) */
+    mpi_errno = MPID_Datatype_set_contents(*combined_dtp, MPI_COMBINER_STRUCT, count + 1,       /* ints (cnt,blklen) */
                                            count,       /* aints (disps) */
                                            count,       /* types */
                                            ints, displaces, datatypes);
@@ -185,11 +165,20 @@ static int create_datatype(const MPIDI_RMA_dtype_info * dtype_info,
 #define FUNCNAME issue_from_origin_buffer
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-static int issue_from_origin_buffer(MPIDI_RMA_Op_t *rma_op, MPID_IOV *iov, MPIDI_VC_t *vc)
+static int issue_from_origin_buffer(MPIDI_RMA_Op_t * rma_op, MPIDI_VC_t * vc,
+                                    MPID_Request ** req_ptr)
 {
     MPI_Aint origin_type_size;
     MPI_Datatype target_datatype;
     MPID_Datatype *target_dtp = NULL, *origin_dtp = NULL;
+    int is_origin_contig;
+    MPID_IOV iov[MPID_IOV_LIMIT];
+    MPID_Request *req = NULL;
+    int count;
+    int *ints = NULL;
+    int *blocklens = NULL;
+    MPI_Aint *displaces = NULL;
+    MPI_Datatype *datatypes = NULL;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_ISSUE_FROM_ORIGIN_BUFFER);
 
@@ -202,7 +191,8 @@ static int issue_from_origin_buffer(MPIDI_RMA_Op_t *rma_op, MPID_IOV *iov, MPIDI
 
         /* Fill derived datatype info. */
         mpi_errno = fill_in_derived_dtp_info(rma_op, target_dtp);
-        if (mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);
+        if (mpi_errno != MPI_SUCCESS)
+            MPIU_ERR_POP(mpi_errno);
 
         /* Set dataloop size in pkt header */
         MPIDI_CH3_PKT_RMA_SET_DATALOOP_SIZE(rma_op->pkt, target_dtp->dataloop_size, mpi_errno);
@@ -214,43 +204,63 @@ static int issue_from_origin_buffer(MPIDI_RMA_Op_t *rma_op, MPID_IOV *iov, MPIDI
     }
 
     MPID_Datatype_get_size_macro(rma_op->origin_datatype, origin_type_size);
+    MPID_Datatype_is_contig(rma_op->origin_datatype, &is_origin_contig);
+
+    iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) & (rma_op->pkt);
+    iov[0].MPID_IOV_LEN = sizeof(rma_op->pkt);
 
     if (target_dtp == NULL) {
         /* basic datatype on target */
-        if (origin_dtp == NULL) {
+        if (is_origin_contig) {
             /* basic datatype on origin */
             int iovcnt = 2;
+
+            iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) ((char *) rma_op->origin_addr);
+            iov[1].MPID_IOV_LEN = rma_op->origin_count * origin_type_size;
+
             MPIU_THREAD_CS_ENTER(CH3COMM, vc);
-            mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, iovcnt, &rma_op->request);
+            mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, iovcnt, &req);
             MPIU_THREAD_CS_EXIT(CH3COMM, vc);
             MPIU_ERR_CHKANDJUMP(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
+
+            if (origin_dtp != NULL) {
+                if (req == NULL) {
+                    MPID_Datatype_release(origin_dtp);
+                }
+                else {
+                    /* this will cause the datatype to be freed when the request
+                     * is freed. */
+                    req->dev.datatype_ptr = origin_dtp;
+                }
+            }
         }
         else {
             /* derived datatype on origin */
-            rma_op->request = MPID_Request_create();
-            MPIU_ERR_CHKANDJUMP(rma_op->request == NULL, mpi_errno, MPI_ERR_OTHER, "**nomemreq");
+            req = MPID_Request_create();
+            MPIU_ERR_CHKANDJUMP(req == NULL, mpi_errno, MPI_ERR_OTHER, "**nomemreq");
 
-            MPIU_Object_set_ref(rma_op->request, 2);
-            rma_op->request->kind = MPID_REQUEST_SEND;
+            MPIU_Object_set_ref(req, 2);
+            req->kind = MPID_REQUEST_SEND;
 
-            rma_op->request->dev.segment_ptr = MPID_Segment_alloc();
-            MPIU_ERR_CHKANDJUMP1(rma_op->request->dev.segment_ptr == NULL, mpi_errno,
+            req->dev.segment_ptr = MPID_Segment_alloc();
+            MPIU_ERR_CHKANDJUMP1(req->dev.segment_ptr == NULL, mpi_errno,
                                  MPI_ERR_OTHER, "**nomem", "**nomem %s", "MPID_Segment_alloc");
 
-            rma_op->request->dev.datatype_ptr = origin_dtp;
-            /* this will cause the datatype to be freed when the request
-             * is freed. */
+            if (origin_dtp != NULL) {
+                req->dev.datatype_ptr = origin_dtp;
+                /* this will cause the datatype to be freed when the request
+                 * is freed. */
+            }
             MPID_Segment_init(rma_op->origin_addr, rma_op->origin_count,
-                              rma_op->origin_datatype, rma_op->request->dev.segment_ptr, 0);
-            rma_op->request->dev.segment_first = 0;
-            rma_op->request->dev.segment_size = rma_op->origin_count * origin_type_size;
+                              rma_op->origin_datatype, req->dev.segment_ptr, 0);
+            req->dev.segment_first = 0;
+            req->dev.segment_size = rma_op->origin_count * origin_type_size;
 
-            rma_op->request->dev.OnFinal = 0;
-            rma_op->request->dev.OnDataAvail = 0;
+            req->dev.OnFinal = 0;
+            req->dev.OnDataAvail = 0;
 
             MPIU_THREAD_CS_ENTER(CH3COMM, vc);
-            mpi_errno = vc->sendNoncontig_fn(vc, rma_op->request,
-                                             iov[0].MPID_IOV_BUF, iov[0].MPID_IOV_LEN);
+            mpi_errno = vc->sendNoncontig_fn(vc, req, iov[0].MPID_IOV_BUF, iov[0].MPID_IOV_LEN);
             MPIU_THREAD_CS_EXIT(CH3COMM, vc);
             MPIU_ERR_CHKANDJUMP(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
         }
@@ -259,42 +269,62 @@ static int issue_from_origin_buffer(MPIDI_RMA_Op_t *rma_op, MPID_IOV *iov, MPIDI
         /* derived datatype on target */
         MPID_Datatype *combined_dtp = NULL;
 
-        rma_op->request = MPID_Request_create();
-        if (rma_op->request == NULL) {
+        req = MPID_Request_create();
+        if (req == NULL) {
             MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomemreq");
         }
 
-        MPIU_Object_set_ref(rma_op->request, 2);
-        rma_op->request->kind = MPID_REQUEST_SEND;
+        MPIU_Object_set_ref(req, 2);
+        req->kind = MPID_REQUEST_SEND;
 
-        rma_op->request->dev.segment_ptr = MPID_Segment_alloc();
-        MPIU_ERR_CHKANDJUMP1(rma_op->request->dev.segment_ptr == NULL, mpi_errno, MPI_ERR_OTHER,
+        req->dev.segment_ptr = MPID_Segment_alloc();
+        MPIU_ERR_CHKANDJUMP1(req->dev.segment_ptr == NULL, mpi_errno, MPI_ERR_OTHER,
                              "**nomem", "**nomem %s", "MPID_Segment_alloc");
 
         /* create a new datatype containing the dtype_info, dataloop, and origin data */
 
-        mpi_errno = create_datatype(&rma_op->dtype_info, rma_op->dataloop,
-                                    target_dtp->dataloop_size,
-                                    rma_op->origin_addr, rma_op->origin_count,
-                                    rma_op->origin_datatype,
-                                    &combined_dtp);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        count = 3;
+        ints = (int *) MPIU_Malloc(sizeof(int) * (count + 1));
+        blocklens = &ints[1];
+        displaces = (MPI_Aint *) MPIU_Malloc(sizeof(MPI_Aint) * count);
+        datatypes = (MPI_Datatype *) MPIU_Malloc(sizeof(MPI_Datatype) * count);
 
-        rma_op->request->dev.datatype_ptr = combined_dtp;
+        ints[0] = count;
+
+        displaces[0] = MPIU_PtrToAint(&(rma_op->dtype_info));
+        blocklens[0] = sizeof(MPIDI_RMA_dtype_info);
+        datatypes[0] = MPI_BYTE;
+
+        displaces[1] = MPIU_PtrToAint(rma_op->dataloop);
+        MPIU_Assign_trunc(blocklens[1], target_dtp->dataloop_size, int);
+        datatypes[1] = MPI_BYTE;
+
+        displaces[2] = MPIU_PtrToAint(rma_op->origin_addr);
+        blocklens[2] = rma_op->origin_count;
+        datatypes[2] = rma_op->origin_datatype;
+
+        mpi_errno = create_datatype(ints, displaces, datatypes, &combined_dtp);
+        if (mpi_errno)
+            MPIU_ERR_POP(mpi_errno);
+
+        req->dev.datatype_ptr = combined_dtp;
         /* combined_datatype will be freed when request is freed */
 
-        MPID_Segment_init(MPI_BOTTOM, 1, combined_dtp->handle, rma_op->request->dev.segment_ptr, 0);
-        rma_op->request->dev.segment_first = 0;
-        rma_op->request->dev.segment_size = combined_dtp->size;
+        MPID_Segment_init(MPI_BOTTOM, 1, combined_dtp->handle, req->dev.segment_ptr, 0);
+        req->dev.segment_first = 0;
+        req->dev.segment_size = combined_dtp->size;
 
-        rma_op->request->dev.OnFinal = 0;
-        rma_op->request->dev.OnDataAvail = 0;
+        req->dev.OnFinal = 0;
+        req->dev.OnDataAvail = 0;
 
         MPIU_THREAD_CS_ENTER(CH3COMM, vc);
-        mpi_errno = vc->sendNoncontig_fn(vc, rma_op->request,
-                                         iov[0].MPID_IOV_BUF, iov[0].MPID_IOV_LEN);
+        mpi_errno = vc->sendNoncontig_fn(vc, req, iov[0].MPID_IOV_BUF, iov[0].MPID_IOV_LEN);
         MPIU_THREAD_CS_EXIT(CH3COMM, vc);
         MPIU_ERR_CHKANDJUMP(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
+
+        MPIU_Free(ints);
+        MPIU_Free(displaces);
+        MPIU_Free(datatypes);
 
         /* we're done with the datatypes */
         if (origin_dtp != NULL)
@@ -302,16 +332,238 @@ static int issue_from_origin_buffer(MPIDI_RMA_Op_t *rma_op, MPID_IOV *iov, MPIDI
         MPID_Datatype_release(target_dtp);
     }
 
- fn_exit:
+    (*req_ptr) = req;
+
+  fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_ISSUE_FROM_ORIGIN_BUFFER);
     return mpi_errno;
- fn_fail:
-    if (rma_op->request) {
-        if (rma_op->request->dev.datatype_ptr)
-            MPID_Datatype_release(rma_op->request->dev.datatype_ptr);
-        MPID_Request_release(rma_op->request);
+  fn_fail:
+    if ((*req_ptr)) {
+        if ((*req_ptr)->dev.datatype_ptr)
+            MPID_Datatype_release((*req_ptr)->dev.datatype_ptr);
+        MPID_Request_release((*req_ptr));
     }
-    rma_op->request = NULL;
+    (*req_ptr) = NULL;
+    goto fn_exit;
+}
+
+
+#undef FUNCNAME
+#define FUNCNAME issue_from_origin_buffer_stream
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static int issue_from_origin_buffer_stream(MPIDI_RMA_Op_t * rma_op, MPIDI_VC_t * vc,
+                                           MPIDI_msg_sz_t stream_offset, MPIDI_msg_sz_t stream_size,
+                                           MPID_Request ** req_ptr)
+{
+    MPI_Datatype target_datatype;
+    MPID_Datatype *target_dtp = NULL, *origin_dtp = NULL;
+    int is_origin_contig;
+    MPID_IOV iov[MPID_IOV_LIMIT];
+    MPID_Request *req = NULL;
+    int count;
+    int *ints = NULL;
+    int *blocklens = NULL;
+    MPI_Aint *displaces = NULL;
+    MPI_Datatype *datatypes = NULL;
+    int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPID_STATE_ISSUE_FROM_ORIGIN_BUFFER_STREAM);
+
+    MPIDI_FUNC_ENTER(MPID_STATE_ISSUE_FROM_ORIGIN_BUFFER_STREAM);
+
+    /* Judge if target datatype is derived datatype. */
+    MPIDI_CH3_PKT_RMA_GET_TARGET_DATATYPE(rma_op->pkt, target_datatype, mpi_errno);
+    if (!MPIR_DATATYPE_IS_PREDEFINED(target_datatype)) {
+        MPID_Datatype_get_ptr(target_datatype, target_dtp);
+
+        if (rma_op->dataloop == NULL) {
+            /* Fill derived datatype info. */
+            mpi_errno = fill_in_derived_dtp_info(rma_op, target_dtp);
+            if (mpi_errno != MPI_SUCCESS)
+                MPIU_ERR_POP(mpi_errno);
+
+            /* Set dataloop size in pkt header */
+            MPIDI_CH3_PKT_RMA_SET_DATALOOP_SIZE(rma_op->pkt, target_dtp->dataloop_size, mpi_errno);
+        }
+    }
+
+    /* Judge if origin datatype is derived datatype. */
+    if (!MPIR_DATATYPE_IS_PREDEFINED(rma_op->origin_datatype)) {
+        MPID_Datatype_get_ptr(rma_op->origin_datatype, origin_dtp);
+    }
+
+    MPID_Datatype_is_contig(rma_op->origin_datatype, &is_origin_contig);
+
+    iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) & (rma_op->pkt);
+    iov[0].MPID_IOV_LEN = sizeof(rma_op->pkt);
+
+    if (target_dtp == NULL) {
+        /* basic datatype on target */
+        if (is_origin_contig) {
+            /* basic datatype on origin */
+            int iovcnt = 2;
+
+            iov[1].MPID_IOV_BUF =
+                (MPID_IOV_BUF_CAST) ((char *) rma_op->origin_addr + stream_offset);
+            iov[1].MPID_IOV_LEN = stream_size;
+
+            MPIU_THREAD_CS_ENTER(CH3COMM, vc);
+            mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, iovcnt, &req);
+            MPIU_THREAD_CS_EXIT(CH3COMM, vc);
+            MPIU_ERR_CHKANDJUMP(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
+
+            if (origin_dtp != NULL) {
+                if (req == NULL) {
+                    MPID_Datatype_release(origin_dtp);
+                }
+                else {
+                    /* this will cause the datatype to be freed when the request
+                     * is freed. */
+                    req->dev.datatype_ptr = origin_dtp;
+                }
+            }
+        }
+        else {
+            /* derived datatype on origin */
+            req = MPID_Request_create();
+            MPIU_ERR_CHKANDJUMP(req == NULL, mpi_errno, MPI_ERR_OTHER, "**nomemreq");
+
+            MPIU_Object_set_ref(req, 2);
+            req->kind = MPID_REQUEST_SEND;
+
+            req->dev.segment_ptr = MPID_Segment_alloc();
+            MPIU_ERR_CHKANDJUMP1(req->dev.segment_ptr == NULL, mpi_errno,
+                                 MPI_ERR_OTHER, "**nomem", "**nomem %s", "MPID_Segment_alloc");
+
+            if (origin_dtp != NULL) {
+                req->dev.datatype_ptr = origin_dtp;
+                /* this will cause the datatype to be freed when the request
+                 * is freed. */
+            }
+            MPID_Segment_init(rma_op->origin_addr, rma_op->origin_count,
+                              rma_op->origin_datatype, req->dev.segment_ptr, 0);
+            req->dev.segment_first = stream_offset;
+            req->dev.segment_size = stream_offset + stream_size;
+
+            req->dev.OnFinal = 0;
+            req->dev.OnDataAvail = 0;
+
+            MPIU_THREAD_CS_ENTER(CH3COMM, vc);
+            mpi_errno = vc->sendNoncontig_fn(vc, req, iov[0].MPID_IOV_BUF, iov[0].MPID_IOV_LEN);
+            MPIU_THREAD_CS_EXIT(CH3COMM, vc);
+            MPIU_ERR_CHKANDJUMP(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
+        }
+    }
+    else {
+        /* derived datatype on target */
+        MPID_Datatype *combined_dtp = NULL;
+        MPID_Segment *segp = NULL;
+        DLOOP_VECTOR *dloop_vec = NULL;
+        MPID_Datatype *dtp = NULL;
+        int vec_len, i;
+        MPIDI_msg_sz_t first = stream_offset;
+        MPIDI_msg_sz_t last = stream_offset + stream_size;
+
+        req = MPID_Request_create();
+        if (req == NULL) {
+            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomemreq");
+        }
+
+        MPIU_Object_set_ref(req, 2);
+        req->kind = MPID_REQUEST_SEND;
+
+        req->dev.segment_ptr = MPID_Segment_alloc();
+        MPIU_ERR_CHKANDJUMP1(req->dev.segment_ptr == NULL, mpi_errno, MPI_ERR_OTHER,
+                             "**nomem", "**nomem %s", "MPID_Segment_alloc");
+
+        /* create a new datatype containing the dtype_info, dataloop, and origin data */
+        segp = MPID_Segment_alloc();
+        MPIU_ERR_CHKANDJUMP1(segp == NULL, mpi_errno, MPI_ERR_OTHER,
+                             "**nomem", "**nomem %s", "MPID_Segment_alloc");
+
+        MPID_Segment_init(rma_op->origin_addr, rma_op->origin_count, rma_op->origin_datatype, segp,
+                          0);
+
+        MPID_Datatype_get_ptr(rma_op->origin_datatype, dtp);
+        vec_len = dtp->max_contig_blocks * rma_op->origin_count + 1;
+        dloop_vec = (DLOOP_VECTOR *) MPIU_Malloc(vec_len * sizeof(DLOOP_VECTOR));
+        /* --BEGIN ERROR HANDLING-- */
+        if (!dloop_vec) {
+            mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE,
+                                             FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);
+            goto fn_fail;
+        }
+        /* --END ERROR HANDLING-- */
+
+        MPID_Segment_pack_vector(segp, first, &last, dloop_vec, &vec_len);
+
+        count = 2 + vec_len;
+
+        ints = (int *) MPIU_Malloc(sizeof(int) * (count + 1));
+        blocklens = &ints[1];
+        displaces = (MPI_Aint *) MPIU_Malloc(sizeof(MPI_Aint) * count);
+        datatypes = (MPI_Datatype *) MPIU_Malloc(sizeof(MPI_Datatype) * count);
+
+        ints[0] = count;
+
+        displaces[0] = MPIU_PtrToAint(&(rma_op->dtype_info));
+        blocklens[0] = sizeof(MPIDI_RMA_dtype_info);
+        datatypes[0] = MPI_BYTE;
+
+        displaces[1] = MPIU_PtrToAint(rma_op->dataloop);
+        MPIU_Assign_trunc(blocklens[1], target_dtp->dataloop_size, int);
+        datatypes[1] = MPI_BYTE;
+
+        for (i = 0; i < vec_len; i++) {
+            displaces[i + 2] = MPIU_PtrToAint(dloop_vec[i].DLOOP_VECTOR_BUF);
+            MPIU_Assign_trunc(blocklens[i + 2], dloop_vec[i].DLOOP_VECTOR_LEN, int);
+            datatypes[i + 2] = MPI_BYTE;
+        }
+
+        MPID_Segment_free(segp);
+        MPIU_Free(dloop_vec);
+
+        mpi_errno = create_datatype(ints, displaces, datatypes, &combined_dtp);
+        if (mpi_errno)
+            MPIU_ERR_POP(mpi_errno);
+
+        req->dev.datatype_ptr = combined_dtp;
+        /* combined_datatype will be freed when request is freed */
+
+        MPID_Segment_init(MPI_BOTTOM, 1, combined_dtp->handle, req->dev.segment_ptr, 0);
+        req->dev.segment_first = 0;
+        req->dev.segment_size = combined_dtp->size;
+
+        req->dev.OnFinal = 0;
+        req->dev.OnDataAvail = 0;
+
+        MPIU_THREAD_CS_ENTER(CH3COMM, vc);
+        mpi_errno = vc->sendNoncontig_fn(vc, req, iov[0].MPID_IOV_BUF, iov[0].MPID_IOV_LEN);
+        MPIU_THREAD_CS_EXIT(CH3COMM, vc);
+        MPIU_ERR_CHKANDJUMP(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
+
+        MPIU_Free(ints);
+        MPIU_Free(displaces);
+        MPIU_Free(datatypes);
+
+        /* we're done with the datatypes */
+        if (origin_dtp != NULL)
+            MPID_Datatype_release(origin_dtp);
+        MPID_Datatype_release(target_dtp);
+    }
+
+    (*req_ptr) = req;
+
+  fn_exit:
+    MPIDI_FUNC_EXIT(MPID_STATE_ISSUE_FROM_ORIGIN_BUFFER_STREAM);
+    return mpi_errno;
+  fn_fail:
+    if ((*req_ptr)) {
+        if ((*req_ptr)->dev.datatype_ptr)
+            MPID_Datatype_release((*req_ptr)->dev.datatype_ptr);
+        MPID_Request_release((*req_ptr));
+    }
+    (*req_ptr) = NULL;
     goto fn_exit;
 }
 
@@ -321,44 +573,45 @@ static int issue_from_origin_buffer(MPIDI_RMA_Op_t *rma_op, MPID_IOV *iov, MPIDI
 #define FUNCNAME issue_put_op
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-static int issue_put_op(MPIDI_RMA_Op_t * rma_op, MPID_Win *win_ptr,
-                        MPIDI_RMA_Target_t *target_ptr,
-                        MPIDI_CH3_Pkt_flags_t flags)
+static int issue_put_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
+                        MPIDI_RMA_Target_t * target_ptr, MPIDI_CH3_Pkt_flags_t flags)
 {
     MPIDI_VC_t *vc = NULL;
-    MPI_Aint origin_type_size;
     MPID_Comm *comm_ptr = win_ptr->comm_ptr;
     MPIDI_CH3_Pkt_put_t *put_pkt = &rma_op->pkt.put;
-    MPID_IOV iov[MPID_IOV_LIMIT];
+    MPID_Request *curr_req = NULL;
+    int i, curr_req_index = 0;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_ISSUE_PUT_OP);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_ISSUE_PUT_OP);
 
-    rma_op->request = NULL;
-
     put_pkt->flags |= flags;
-
-    MPID_Datatype_get_size_macro(rma_op->origin_datatype, origin_type_size);
 
     MPIDI_Comm_get_vc_set_active(comm_ptr, rma_op->target_rank, &vc);
 
     if (rma_op->pkt.type == MPIDI_CH3_PKT_PUT_IMMED) {
         /* All origin data is in packet header, issue the header. */
         MPIU_THREAD_CS_ENTER(CH3COMM, vc);
-        mpi_errno = MPIDI_CH3_iStartMsg(vc, put_pkt, sizeof(*put_pkt), &(rma_op->request));
+        mpi_errno = MPIDI_CH3_iStartMsg(vc, put_pkt, sizeof(*put_pkt), &curr_req);
         MPIU_THREAD_CS_EXIT(CH3COMM, vc);
         MPIU_ERR_CHKANDJUMP(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
     }
     else {
-        /* We still need to issue from origin buffer. */
-        iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) put_pkt;
-        iov[0].MPID_IOV_LEN = sizeof(*put_pkt);
-        iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) ((char *)rma_op->origin_addr);
-        iov[1].MPID_IOV_LEN = rma_op->origin_count * origin_type_size;
+        mpi_errno = issue_from_origin_buffer(rma_op, vc, &curr_req);
+        if (mpi_errno != MPI_SUCCESS)
+            MPIU_ERR_POP(mpi_errno);
+    }
 
-        mpi_errno = issue_from_origin_buffer(rma_op, iov, vc);
-        if (mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);
+    if (curr_req != NULL) {
+        rma_op->reqs_size = 1;
+
+        rma_op->reqs = (MPID_Request **) MPIU_Malloc(sizeof(MPID_Request *) * rma_op->reqs_size);
+        for (i = 0; i < rma_op->reqs_size; i++)
+            rma_op->reqs[i] = NULL;
+
+        rma_op->reqs[curr_req_index] = curr_req;
+        win_ptr->active_req_cnt++;
     }
 
   fn_exit:
@@ -366,6 +619,11 @@ static int issue_put_op(MPIDI_RMA_Op_t * rma_op, MPID_Win *win_ptr,
     return mpi_errno;
     /* --BEGIN ERROR HANDLING-- */
   fn_fail:
+    if (rma_op->reqs != NULL) {
+        MPIU_Free(rma_op->reqs);
+    }
+    rma_op->reqs = NULL;
+    rma_op->reqs_size = 0;
     goto fn_exit;
     /* --END ERROR HANDLING-- */
 }
@@ -376,50 +634,147 @@ static int issue_put_op(MPIDI_RMA_Op_t * rma_op, MPID_Win *win_ptr,
 #define FUNCNAME issue_acc_op
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-static int issue_acc_op(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr,
-                        MPIDI_RMA_Target_t *target_ptr,
-                        MPIDI_CH3_Pkt_flags_t flags)
+static int issue_acc_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
+                        MPIDI_RMA_Target_t * target_ptr, MPIDI_CH3_Pkt_flags_t flags)
 {
     MPIDI_VC_t *vc = NULL;
-    MPI_Aint origin_type_size;
     MPID_Comm *comm_ptr = win_ptr->comm_ptr;
     MPIDI_CH3_Pkt_accum_t *accum_pkt = &rma_op->pkt.accum;
-    MPID_IOV iov[MPID_IOV_LIMIT];
+    int i, j;
+    MPI_Aint stream_elem_count, stream_unit_count;
+    MPI_Aint predefined_dtp_size, predefined_dtp_extent, predefined_dtp_count;
+    MPI_Aint total_len, rest_len;
+    MPI_Aint origin_dtp_size;
+    MPID_Datatype *origin_dtp_ptr = NULL;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_ISSUE_ACC_OP);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_ISSUE_ACC_OP);
 
-    rma_op->request = NULL;
-
-    accum_pkt->flags |= flags;
-
-    MPID_Datatype_get_size_macro(rma_op->origin_datatype, origin_type_size);
-
     MPIDI_Comm_get_vc_set_active(comm_ptr, rma_op->target_rank, &vc);
 
     if (rma_op->pkt.type == MPIDI_CH3_PKT_ACCUMULATE_IMMED) {
+        MPID_Request *curr_req = NULL;
+
+        accum_pkt->flags |= flags;
+
         /* All origin data is in packet header, issue the header. */
         MPIU_THREAD_CS_ENTER(CH3COMM, vc);
-        mpi_errno = MPIDI_CH3_iStartMsg(vc, accum_pkt, sizeof(*accum_pkt), &(rma_op->request));
+        mpi_errno = MPIDI_CH3_iStartMsg(vc, accum_pkt, sizeof(*accum_pkt), &curr_req);
         MPIU_THREAD_CS_EXIT(CH3COMM, vc);
         MPIU_ERR_CHKANDJUMP(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
+
+        if (curr_req != NULL) {
+            MPIU_Assert(rma_op->reqs_size == 0 && rma_op->reqs == NULL);
+
+            rma_op->reqs_size = 1;
+
+            rma_op->reqs =
+                (MPID_Request **) MPIU_Malloc(sizeof(MPID_Request *) * rma_op->reqs_size);
+            for (i = 0; i < rma_op->reqs_size; i++)
+                rma_op->reqs[i] = NULL;
+
+            rma_op->reqs[0] = curr_req;
+            win_ptr->active_req_cnt++;
+        }
+        goto fn_exit;
+    }
+
+    /* Get total length of origin data */
+    MPID_Datatype_get_size_macro(rma_op->origin_datatype, origin_dtp_size);
+    total_len = origin_dtp_size * rma_op->origin_count;
+
+    /* Get size and count for predefined datatype elements */
+    if (MPIR_DATATYPE_IS_PREDEFINED(rma_op->origin_datatype)) {
+        predefined_dtp_size = origin_dtp_size;
+        predefined_dtp_count = rma_op->origin_count;
+        MPID_Datatype_get_extent_macro(rma_op->origin_datatype, predefined_dtp_extent);
     }
     else {
-        /* We still need to issue from origin buffer. */
-        iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) accum_pkt;
-        iov[0].MPID_IOV_LEN = sizeof(*accum_pkt);
-        iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) ((char *)rma_op->origin_addr);
-        iov[1].MPID_IOV_LEN = rma_op->origin_count * origin_type_size;
-
-        mpi_errno = issue_from_origin_buffer(rma_op, iov, vc);
-        if (mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);
+        MPID_Datatype_get_ptr(rma_op->origin_datatype, origin_dtp_ptr);
+        MPIU_Assert(origin_dtp_ptr != NULL && origin_dtp_ptr->basic_type != MPI_DATATYPE_NULL);
+        MPID_Datatype_get_size_macro(origin_dtp_ptr->basic_type, predefined_dtp_size);
+        predefined_dtp_count = total_len / predefined_dtp_size;
+        MPID_Datatype_get_extent_macro(origin_dtp_ptr->basic_type, predefined_dtp_extent);
     }
+    MPIU_Assert(predefined_dtp_count > 0 && predefined_dtp_size > 0 && predefined_dtp_extent > 0);
 
- fn_exit:
+    /* Calculate number of predefined elements in each stream unit, and
+     * total number of stream units. */
+    stream_elem_count = MPIDI_CH3U_Acc_stream_size / predefined_dtp_extent;
+    stream_unit_count = (predefined_dtp_count - 1) / stream_elem_count + 1;
+    MPIU_Assert(stream_elem_count > 0 && stream_unit_count > 0);
+
+    rest_len = total_len;
+    MPIU_Assert(rma_op->issued_stream_count >= 0);
+    for (j = 0; j < stream_unit_count; j++) {
+        MPIDI_msg_sz_t stream_offset, stream_size;
+        MPID_Request *curr_req = NULL;
+
+        if (j < rma_op->issued_stream_count)
+            continue;
+
+        accum_pkt->flags |= flags;
+
+        if (j != 0) {
+            accum_pkt->flags &= ~MPIDI_CH3_PKT_FLAG_RMA_LOCK_SHARED;
+            accum_pkt->flags &= ~MPIDI_CH3_PKT_FLAG_RMA_LOCK_EXCLUSIVE;
+        }
+        if (j != stream_unit_count - 1) {
+            accum_pkt->flags &= ~MPIDI_CH3_PKT_FLAG_RMA_UNLOCK;
+            accum_pkt->flags &= ~MPIDI_CH3_PKT_FLAG_RMA_FLUSH;
+            accum_pkt->flags &= ~MPIDI_CH3_PKT_FLAG_RMA_DECR_AT_COUNTER;
+        }
+
+        stream_offset = j * stream_elem_count * predefined_dtp_size;
+        stream_size = MPIR_MIN(stream_elem_count * predefined_dtp_size, rest_len);
+        rest_len -= stream_size;
+
+        accum_pkt->info.metadata.stream_offset = stream_offset;
+
+        mpi_errno =
+            issue_from_origin_buffer_stream(rma_op, vc, stream_offset, stream_size, &curr_req);
+        if (mpi_errno != MPI_SUCCESS)
+            MPIU_ERR_POP(mpi_errno);
+
+        if (curr_req != NULL) {
+            if (rma_op->reqs_size == 0) {
+                MPIU_Assert(rma_op->reqs == NULL);
+                rma_op->reqs_size = stream_unit_count;
+
+                rma_op->reqs =
+                    (MPID_Request **) MPIU_Malloc(sizeof(MPID_Request *) * rma_op->reqs_size);
+                for (i = 0; i < rma_op->reqs_size; i++)
+                    rma_op->reqs[i] = NULL;
+            }
+
+            rma_op->reqs[j] = curr_req;
+            win_ptr->active_req_cnt++;
+        }
+
+        rma_op->issued_stream_count++;
+
+        if (accum_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_LOCK_SHARED ||
+            accum_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_LOCK_EXCLUSIVE) {
+            /* if piggybacked with LOCK flag, we
+             * only issue the first streaming unit */
+            MPIU_Assert(j == 0);
+            break;
+        }
+    }   /* end of for loop */
+
+    /* Mark that all stream units have been issued */
+    rma_op->issued_stream_count = -1;
+
+  fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_ISSUE_ACC_OP);
     return mpi_errno;
- fn_fail:
+  fn_fail:
+    if (rma_op->reqs != NULL) {
+        MPIU_Free(rma_op->reqs);
+    }
+    rma_op->reqs = NULL;
+    rma_op->reqs_size = 0;
     goto fn_exit;
 }
 
@@ -429,109 +784,230 @@ static int issue_acc_op(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr,
 #define FUNCNAME issue_get_acc_op
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-static int issue_get_acc_op(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr,
-                            MPIDI_RMA_Target_t *target_ptr,
-                            MPIDI_CH3_Pkt_flags_t flags)
+static int issue_get_acc_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
+                            MPIDI_RMA_Target_t * target_ptr, MPIDI_CH3_Pkt_flags_t flags)
 {
     MPIDI_VC_t *vc = NULL;
-    MPI_Aint origin_type_size;
     MPID_Comm *comm_ptr = win_ptr->comm_ptr;
     MPIDI_CH3_Pkt_get_accum_t *get_accum_pkt = &rma_op->pkt.get_accum;
-    MPID_IOV iov[MPID_IOV_LIMIT];
-    MPID_Request *resp_req = NULL;
+    int i, j;
+    MPI_Aint stream_elem_count, stream_unit_count;
+    MPI_Aint predefined_dtp_size, predefined_dtp_count, predefined_dtp_extent;
+    MPI_Aint total_len, rest_len;
+    MPI_Aint origin_dtp_size;
+    MPID_Datatype *origin_dtp_ptr = NULL;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_ISSUE_GET_ACC_OP);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_ISSUE_GET_ACC_OP);
 
-    rma_op->request = NULL;
-
-    /* Create a request for the GACC response.  Store the response buf, count, and
-     * datatype in it, and pass the request's handle in the GACC packet. When the
-     * response comes from the target, it will contain the request handle. */
-    resp_req = MPID_Request_create();
-    MPIU_ERR_CHKANDJUMP(resp_req == NULL, mpi_errno, MPI_ERR_OTHER, "**nomemreq");
-
-    MPIU_Object_set_ref(resp_req, 2);
-
-    resp_req->dev.user_buf = rma_op->result_addr;
-    resp_req->dev.user_count = rma_op->result_count;
-    resp_req->dev.datatype = rma_op->result_datatype;
-    resp_req->dev.target_win_handle = MPI_WIN_NULL;
-    resp_req->dev.source_win_handle = win_ptr->handle;
-
-    if (!MPIR_DATATYPE_IS_PREDEFINED(resp_req->dev.datatype)) {
-      MPID_Datatype *result_dtp = NULL;
-      MPID_Datatype_get_ptr(resp_req->dev.datatype, result_dtp);
-      resp_req->dev.datatype_ptr = result_dtp;
-      /* this will cause the datatype to be freed when the
-       * request is freed. */
-    }
-
-    /* Note: Get_accumulate uses the same packet type as accumulate */
-    get_accum_pkt->request_handle = resp_req->handle;
-
-    get_accum_pkt->flags |= flags;
-
-    MPID_Datatype_get_size_macro(rma_op->origin_datatype, origin_type_size);
-
     MPIDI_Comm_get_vc_set_active(comm_ptr, rma_op->target_rank, &vc);
 
     if (rma_op->pkt.type == MPIDI_CH3_PKT_GET_ACCUM_IMMED) {
+        MPID_Request *resp_req = NULL;
+        MPID_Request *curr_req = NULL;
+
+        get_accum_pkt->flags |= flags;
+
+        rma_op->reqs_size = 1;
+
+        rma_op->reqs = (MPID_Request **) MPIU_Malloc(sizeof(MPID_Request *) * rma_op->reqs_size);
+        for (i = 0; i < rma_op->reqs_size; i++)
+            rma_op->reqs[i] = NULL;
+
+        /* Create a request for the GACC response.  Store the response buf, count, and
+         * datatype in it, and pass the request's handle in the GACC packet. When the
+         * response comes from the target, it will contain the request handle. */
+        resp_req = MPID_Request_create();
+        MPIU_ERR_CHKANDJUMP(resp_req == NULL, mpi_errno, MPI_ERR_OTHER, "**nomemreq");
+
+        MPIU_Object_set_ref(resp_req, 2);
+
+        resp_req->dev.user_buf = rma_op->result_addr;
+        resp_req->dev.user_count = rma_op->result_count;
+        resp_req->dev.datatype = rma_op->result_datatype;
+        resp_req->dev.target_win_handle = MPI_WIN_NULL;
+        resp_req->dev.source_win_handle = win_ptr->handle;
+
+        /* Note: Get_accumulate uses the same packet type as accumulate */
+        get_accum_pkt->request_handle = resp_req->handle;
+
         /* All origin data is in packet header, issue the header. */
         MPIU_THREAD_CS_ENTER(CH3COMM, vc);
-        mpi_errno = MPIDI_CH3_iStartMsg(vc, get_accum_pkt, sizeof(*get_accum_pkt), &(rma_op->request));
+        mpi_errno = MPIDI_CH3_iStartMsg(vc, get_accum_pkt, sizeof(*get_accum_pkt), &curr_req);
         MPIU_THREAD_CS_EXIT(CH3COMM, vc);
         MPIU_ERR_CHKANDJUMP(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
+
+        if (curr_req != NULL) {
+            MPID_Request_release(curr_req);
+            curr_req = resp_req;
+        }
+        else {
+            curr_req = resp_req;
+        }
+
+        /* For error checking */
+        resp_req = NULL;
+
+        rma_op->reqs[0] = curr_req;
+        win_ptr->active_req_cnt++;
+
+        goto fn_exit;
+    }
+
+    /* Get total length of origin data */
+    MPID_Datatype_get_size_macro(rma_op->origin_datatype, origin_dtp_size);
+    total_len = origin_dtp_size * rma_op->origin_count;
+
+    /* Get size and count for predefined datatype elements */
+    if (MPIR_DATATYPE_IS_PREDEFINED(rma_op->origin_datatype)) {
+        predefined_dtp_size = origin_dtp_size;
+        predefined_dtp_count = rma_op->origin_count;
+        MPID_Datatype_get_extent_macro(rma_op->origin_datatype, predefined_dtp_extent);
     }
     else {
-        /* We still need to issue from origin buffer. */
-        iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) get_accum_pkt;
-        iov[0].MPID_IOV_LEN = sizeof(*get_accum_pkt);
-        iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) ((char *)rma_op->origin_addr);
-        iov[1].MPID_IOV_LEN = rma_op->origin_count * origin_type_size;
-
-        mpi_errno = issue_from_origin_buffer(rma_op, iov, vc);
-        if (mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);
+        MPID_Datatype_get_ptr(rma_op->origin_datatype, origin_dtp_ptr);
+        MPIU_Assert(origin_dtp_ptr != NULL && origin_dtp_ptr->basic_type != MPI_DATATYPE_NULL);
+        MPID_Datatype_get_size_macro(origin_dtp_ptr->basic_type, predefined_dtp_size);
+        predefined_dtp_count = total_len / predefined_dtp_size;
+        MPID_Datatype_get_extent_macro(origin_dtp_ptr->basic_type, predefined_dtp_extent);
     }
+    MPIU_Assert(predefined_dtp_count > 0 && predefined_dtp_size > 0 && predefined_dtp_extent > 0);
 
-    /* This operation can generate two requests; one for inbound and one for
-     * outbound data. */
-    if (rma_op->request != NULL) {
-        /* If we have both inbound and outbound requests (i.e. GACC
-         * operation), we need to ensure that the source buffer is
-         * available and that the response data has been received before
-         * informing the origin that this operation is complete.  Because
-         * the update needs to be done atomically at the target, they will
-         * not send back data until it has been received.  Therefore,
-         * completion of the response request implies that the send request
-         * has completed.
-         *
-         * Therefore: refs on the response request are set to two: one is
-         * held by the progress engine and the other by the RMA op
-         * completion code.  Refs on the outbound request are set to one;
-         * it will be completed by the progress engine.
-         */
+    /* Calculate number of predefined elements in each stream unit, and
+     * total number of stream units. */
+    stream_elem_count = MPIDI_CH3U_Acc_stream_size / predefined_dtp_extent;
+    stream_unit_count = (predefined_dtp_count - 1) / stream_elem_count + 1;
+    MPIU_Assert(stream_elem_count > 0 && stream_unit_count > 0);
 
-        MPID_Request_release(rma_op->request);
-        rma_op->request = resp_req;
+    rest_len = total_len;
 
-    }
-    else {
-        rma_op->request = resp_req;
-    }
+    rma_op->reqs_size = stream_unit_count;
 
-    /* For error checking */
-    resp_req = NULL;
+    rma_op->reqs = (MPID_Request **) MPIU_Malloc(sizeof(MPID_Request *) * rma_op->reqs_size);
+    for (i = 0; i < rma_op->reqs_size; i++)
+        rma_op->reqs[i] = NULL;
 
- fn_exit:
+    MPIU_Assert(rma_op->issued_stream_count >= 0);
+
+    for (j = 0; j < stream_unit_count; j++) {
+        MPIDI_msg_sz_t stream_offset, stream_size;
+        MPID_Request *resp_req = NULL;
+        MPID_Request *curr_req = NULL;
+
+        if (j < rma_op->issued_stream_count)
+            continue;
+
+        get_accum_pkt->flags |= flags;
+
+        if (j != 0) {
+            get_accum_pkt->flags &= ~MPIDI_CH3_PKT_FLAG_RMA_LOCK_SHARED;
+            get_accum_pkt->flags &= ~MPIDI_CH3_PKT_FLAG_RMA_LOCK_EXCLUSIVE;
+        }
+        if (j != stream_unit_count - 1) {
+            get_accum_pkt->flags &= ~MPIDI_CH3_PKT_FLAG_RMA_UNLOCK;
+            get_accum_pkt->flags &= ~MPIDI_CH3_PKT_FLAG_RMA_FLUSH;
+            get_accum_pkt->flags &= ~MPIDI_CH3_PKT_FLAG_RMA_DECR_AT_COUNTER;
+        }
+
+        /* Create a request for the GACC response.  Store the response buf, count, and
+         * datatype in it, and pass the request's handle in the GACC packet. When the
+         * response comes from the target, it will contain the request handle. */
+        resp_req = MPID_Request_create();
+        MPIU_ERR_CHKANDJUMP(resp_req == NULL, mpi_errno, MPI_ERR_OTHER, "**nomemreq");
+
+        MPIU_Object_set_ref(resp_req, 2);
+
+        resp_req->dev.user_buf = rma_op->result_addr;
+        resp_req->dev.user_count = rma_op->result_count;
+        resp_req->dev.datatype = rma_op->result_datatype;
+        resp_req->dev.target_win_handle = MPI_WIN_NULL;
+        resp_req->dev.source_win_handle = win_ptr->handle;
+
+        if (!MPIR_DATATYPE_IS_PREDEFINED(resp_req->dev.datatype)) {
+            MPID_Datatype *result_dtp = NULL;
+            MPID_Datatype_get_ptr(resp_req->dev.datatype, result_dtp);
+            resp_req->dev.datatype_ptr = result_dtp;
+            /* this will cause the datatype to be freed when the
+             * request is freed. */
+        }
+
+        /* Note: Get_accumulate uses the same packet type as accumulate */
+        get_accum_pkt->request_handle = resp_req->handle;
+
+        stream_offset = j * stream_elem_count * predefined_dtp_size;
+        stream_size = MPIR_MIN(stream_elem_count * predefined_dtp_size, rest_len);
+        rest_len -= stream_size;
+
+        get_accum_pkt->info.metadata.stream_offset = stream_offset;
+
+        resp_req->dev.stream_offset = stream_offset;
+
+        mpi_errno =
+            issue_from_origin_buffer_stream(rma_op, vc, stream_offset, stream_size, &curr_req);
+        if (mpi_errno != MPI_SUCCESS)
+            MPIU_ERR_POP(mpi_errno);
+
+        /* This operation can generate two requests; one for inbound and one for
+         * outbound data. */
+        if (curr_req != NULL) {
+            /* If we have both inbound and outbound requests (i.e. GACC
+             * operation), we need to ensure that the source buffer is
+             * available and that the response data has been received before
+             * informing the origin that this operation is complete.  Because
+             * the update needs to be done atomically at the target, they will
+             * not send back data until it has been received.  Therefore,
+             * completion of the response request implies that the send request
+             * has completed.
+             *
+             * Therefore: refs on the response request are set to two: one is
+             * held by the progress engine and the other by the RMA op
+             * completion code.  Refs on the outbound request are set to one;
+             * it will be completed by the progress engine.
+             */
+
+            MPID_Request_release(curr_req);
+            curr_req = resp_req;
+        }
+        else {
+            curr_req = resp_req;
+        }
+
+        /* For error checking */
+        resp_req = NULL;
+
+        rma_op->reqs[j] = curr_req;
+        win_ptr->active_req_cnt++;
+
+        rma_op->issued_stream_count++;
+
+        if (get_accum_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_LOCK_SHARED ||
+            get_accum_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_LOCK_EXCLUSIVE) {
+            /* if piggybacked with LOCK flag, we
+             * only issue the first streaming unit */
+            MPIU_Assert(j == 0);
+            break;
+        }
+    }   /* end of for loop */
+
+    /* Mark that all stream units have been issued */
+    rma_op->issued_stream_count = -1;
+
+  fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_ISSUE_GET_ACC_OP);
     return mpi_errno;
     /* --BEGIN ERROR HANDLING-- */
- fn_fail:
-    if (resp_req != NULL) {
-        MPID_Request_release(resp_req);
+  fn_fail:
+    for (i = 0; i < rma_op->reqs_size; i++) {
+        if (rma_op->reqs[i] != NULL) {
+            MPIDI_CH3_Request_destroy(rma_op->reqs[i]);
+        }
     }
+    if (rma_op->reqs != NULL) {
+        MPIU_Free(rma_op->reqs);
+    }
+    rma_op->reqs = NULL;
+    rma_op->reqs_size = 0;
     goto fn_exit;
     /* --END ERROR HANDLING-- */
 }
@@ -542,8 +1018,7 @@ static int issue_get_acc_op(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr,
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 static int issue_get_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
-                        MPIDI_RMA_Target_t *target_ptr,
-                        MPIDI_CH3_Pkt_flags_t flags)
+                        MPIDI_RMA_Target_t * target_ptr, MPIDI_CH3_Pkt_flags_t flags)
 {
     MPIDI_CH3_Pkt_get_t *get_pkt = &rma_op->pkt.get;
     int mpi_errno = MPI_SUCCESS;
@@ -552,35 +1027,43 @@ static int issue_get_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
     MPID_Datatype *dtp;
     MPI_Datatype target_datatype;
     MPID_Request *req = NULL;
+    MPID_Request *curr_req = NULL;
+    int i, curr_req_index = 0;
     MPID_IOV iov[MPID_IOV_LIMIT];
     MPIDI_STATE_DECL(MPID_STATE_ISSUE_GET_OP);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_ISSUE_GET_OP);
 
+    rma_op->reqs_size = 1;
+
+    rma_op->reqs = (MPID_Request **) MPIU_Malloc(sizeof(MPID_Request *) * rma_op->reqs_size);
+    for (i = 0; i < rma_op->reqs_size; i++)
+        rma_op->reqs[i] = NULL;
+
     /* create a request, store the origin buf, cnt, datatype in it,
      * and pass a handle to it in the get packet. When the get
      * response comes from the target, it will contain the request
      * handle. */
-    rma_op->request = MPID_Request_create();
-    if (rma_op->request == NULL) {
+    curr_req = MPID_Request_create();
+    if (curr_req == NULL) {
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomemreq");
     }
 
-    MPIU_Object_set_ref(rma_op->request, 2);
+    MPIU_Object_set_ref(curr_req, 2);
 
-    rma_op->request->dev.user_buf = rma_op->origin_addr;
-    rma_op->request->dev.user_count = rma_op->origin_count;
-    rma_op->request->dev.datatype = rma_op->origin_datatype;
-    rma_op->request->dev.target_win_handle = MPI_WIN_NULL;
-    rma_op->request->dev.source_win_handle = win_ptr->handle;
-    if (!MPIR_DATATYPE_IS_PREDEFINED(rma_op->request->dev.datatype)) {
-        MPID_Datatype_get_ptr(rma_op->request->dev.datatype, dtp);
-        rma_op->request->dev.datatype_ptr = dtp;
+    curr_req->dev.user_buf = rma_op->origin_addr;
+    curr_req->dev.user_count = rma_op->origin_count;
+    curr_req->dev.datatype = rma_op->origin_datatype;
+    curr_req->dev.target_win_handle = MPI_WIN_NULL;
+    curr_req->dev.source_win_handle = win_ptr->handle;
+    if (!MPIR_DATATYPE_IS_PREDEFINED(curr_req->dev.datatype)) {
+        MPID_Datatype_get_ptr(curr_req->dev.datatype, dtp);
+        curr_req->dev.datatype_ptr = dtp;
         /* this will cause the datatype to be freed when the
          * request is freed. */
     }
 
-    get_pkt->request_handle = rma_op->request->handle;
+    get_pkt->request_handle = curr_req->handle;
 
     get_pkt->flags |= flags;
 
@@ -600,7 +1083,8 @@ static int issue_get_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
         MPID_Datatype_get_ptr(target_datatype, dtp);
 
         mpi_errno = fill_in_derived_dtp_info(rma_op, dtp);
-        if (mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);
+        if (mpi_errno != MPI_SUCCESS)
+            MPIU_ERR_POP(mpi_errno);
 
         /* Set dataloop size in pkt header */
         MPIDI_CH3_PKT_RMA_SET_DATALOOP_SIZE(rma_op->pkt, dtp->dataloop_size, mpi_errno);
@@ -629,11 +1113,24 @@ static int issue_get_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
         MPID_Request_release(req);
     }
 
+    rma_op->reqs[curr_req_index] = curr_req;
+    win_ptr->active_req_cnt++;
+
   fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_ISSUE_GET_OP);
     return mpi_errno;
     /* --BEGIN ERROR HANDLING-- */
   fn_fail:
+    for (i = 0; i < rma_op->reqs_size; i++) {
+        if (rma_op->reqs[i] != NULL) {
+            MPIDI_CH3_Request_destroy(rma_op->reqs[i]);
+        }
+    }
+    if (rma_op->reqs != NULL) {
+        MPIU_Free(rma_op->reqs);
+    }
+    rma_op->reqs = NULL;
+    rma_op->reqs_size = 0;
     goto fn_exit;
     /* --END ERROR HANDLING-- */
 }
@@ -644,35 +1141,43 @@ static int issue_get_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 static int issue_cas_op(MPIDI_RMA_Op_t * rma_op,
-                        MPID_Win * win_ptr, MPIDI_RMA_Target_t *target_ptr,
+                        MPID_Win * win_ptr, MPIDI_RMA_Target_t * target_ptr,
                         MPIDI_CH3_Pkt_flags_t flags)
 {
     MPIDI_VC_t *vc = NULL;
     MPID_Comm *comm_ptr = win_ptr->comm_ptr;
     MPIDI_CH3_Pkt_cas_t *cas_pkt = &rma_op->pkt.cas;
     MPID_Request *rmw_req = NULL;
+    MPID_Request *curr_req = NULL;
+    int i, curr_req_index = 0;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_ISSUE_CAS_OP);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_ISSUE_CAS_OP);
 
+    rma_op->reqs_size = 1;
+
+    rma_op->reqs = (MPID_Request **) MPIU_Malloc(sizeof(MPID_Request *) * rma_op->reqs_size);
+    for (i = 0; i < rma_op->reqs_size; i++)
+        rma_op->reqs[i] = NULL;
+
     /* Create a request for the RMW response.  Store the origin buf, count, and
      * datatype in it, and pass the request's handle RMW packet. When the
      * response comes from the target, it will contain the request handle. */
-    rma_op->request = MPID_Request_create();
-    MPIU_ERR_CHKANDJUMP(rma_op->request == NULL, mpi_errno, MPI_ERR_OTHER, "**nomemreq");
+    curr_req = MPID_Request_create();
+    MPIU_ERR_CHKANDJUMP(curr_req == NULL, mpi_errno, MPI_ERR_OTHER, "**nomemreq");
 
     /* Set refs on the request to 2: one for the response message, and one for
      * the partial completion handler */
-    MPIU_Object_set_ref(rma_op->request, 2);
+    MPIU_Object_set_ref(curr_req, 2);
 
-    rma_op->request->dev.user_buf = rma_op->result_addr;
-    rma_op->request->dev.datatype = rma_op->result_datatype;
+    curr_req->dev.user_buf = rma_op->result_addr;
+    curr_req->dev.datatype = rma_op->result_datatype;
 
-    rma_op->request->dev.target_win_handle = MPI_WIN_NULL;
-    rma_op->request->dev.source_win_handle = win_ptr->handle;
+    curr_req->dev.target_win_handle = MPI_WIN_NULL;
+    curr_req->dev.source_win_handle = win_ptr->handle;
 
-    cas_pkt->request_handle = rma_op->request->handle;
+    cas_pkt->request_handle = curr_req->handle;
     cas_pkt->flags |= flags;
 
     MPIDI_Comm_get_vc_set_active(comm_ptr, rma_op->target_rank, &vc);
@@ -685,18 +1190,24 @@ static int issue_cas_op(MPIDI_RMA_Op_t * rma_op,
         MPID_Request_release(rmw_req);
     }
 
+    rma_op->reqs[curr_req_index] = curr_req;
+    win_ptr->active_req_cnt++;
+
   fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_ISSUE_CAS_OP);
     return mpi_errno;
     /* --BEGIN ERROR HANDLING-- */
   fn_fail:
-    if (rma_op->request) {
-        MPID_Request_release(rma_op->request);
+    for (i = 0; i < rma_op->reqs_size; i++) {
+        if (rma_op->reqs[i] != NULL) {
+            MPIDI_CH3_Request_destroy(rma_op->reqs[i]);
+        }
     }
-    rma_op->request = NULL;
-    if (rmw_req) {
-        MPID_Request_release(rmw_req);
+    if (rma_op->reqs != NULL) {
+        MPIU_Free(rma_op->reqs);
     }
+    rma_op->reqs = NULL;
+    rma_op->reqs_size = 0;
     goto fn_exit;
     /* --END ERROR HANDLING-- */
 }
@@ -707,21 +1218,25 @@ static int issue_cas_op(MPIDI_RMA_Op_t * rma_op,
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 static int issue_fop_op(MPIDI_RMA_Op_t * rma_op,
-                        MPID_Win * win_ptr, MPIDI_RMA_Target_t *target_ptr,
+                        MPID_Win * win_ptr, MPIDI_RMA_Target_t * target_ptr,
                         MPIDI_CH3_Pkt_flags_t flags)
 {
     MPIDI_VC_t *vc = NULL;
     MPID_Comm *comm_ptr = win_ptr->comm_ptr;
     MPIDI_CH3_Pkt_fop_t *fop_pkt = &rma_op->pkt.fop;
     MPID_Request *resp_req = NULL;
-    MPI_Aint origin_type_size;
-    MPID_IOV iov[MPID_IOV_LIMIT];
+    MPID_Request *curr_req = NULL;
+    int i, curr_req_index = 0;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_ISSUE_FOP_OP);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_ISSUE_FOP_OP);
 
-    rma_op->request = NULL;
+    rma_op->reqs_size = 1;
+
+    rma_op->reqs = (MPID_Request **) MPIU_Malloc(sizeof(MPID_Request *) * rma_op->reqs_size);
+    for (i = 0; i < rma_op->reqs_size; i++)
+        rma_op->reqs[i] = NULL;
 
     /* Create a request for the GACC response.  Store the response buf, count, and
      * datatype in it, and pass the request's handle in the GACC packet. When the
@@ -742,29 +1257,22 @@ static int issue_fop_op(MPIDI_RMA_Op_t * rma_op,
 
     MPIDI_Comm_get_vc_set_active(comm_ptr, rma_op->target_rank, &vc);
 
-    MPID_Datatype_get_size_macro(rma_op->origin_datatype, origin_type_size);
-
     if (rma_op->pkt.type == MPIDI_CH3_PKT_FOP_IMMED) {
-    /* All origin data is in packet header, issue the header. */
-    MPIU_THREAD_CS_ENTER(CH3COMM, vc);
-    mpi_errno = MPIDI_CH3_iStartMsg(vc, fop_pkt, sizeof(*fop_pkt), &(rma_op->request));
-    MPIU_THREAD_CS_EXIT(CH3COMM, vc);
-    MPIU_ERR_CHKANDJUMP(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
+        /* All origin data is in packet header, issue the header. */
+        MPIU_THREAD_CS_ENTER(CH3COMM, vc);
+        mpi_errno = MPIDI_CH3_iStartMsg(vc, fop_pkt, sizeof(*fop_pkt), &curr_req);
+        MPIU_THREAD_CS_EXIT(CH3COMM, vc);
+        MPIU_ERR_CHKANDJUMP(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
     }
     else {
-        /* We still need to issue from origin buffer. */
-        iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) fop_pkt;
-        iov[0].MPID_IOV_LEN = sizeof(*fop_pkt);
-        iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) ((char *)rma_op->origin_addr);
-        iov[1].MPID_IOV_LEN = origin_type_size;
-
-        mpi_errno = issue_from_origin_buffer(rma_op, iov, vc);
-        if (mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);
+        mpi_errno = issue_from_origin_buffer(rma_op, vc, &curr_req);
+        if (mpi_errno != MPI_SUCCESS)
+            MPIU_ERR_POP(mpi_errno);
     }
 
     /* This operation can generate two requests; one for inbound and one for
      * outbound data. */
-    if (rma_op->request != NULL) {
+    if (curr_req != NULL) {
         /* If we have both inbound and outbound requests (i.e. GACC
          * operation), we need to ensure that the source buffer is
          * available and that the response data has been received before
@@ -780,24 +1288,34 @@ static int issue_fop_op(MPIDI_RMA_Op_t * rma_op,
          * it will be completed by the progress engine.
          */
 
-        MPID_Request_release(rma_op->request);
-        rma_op->request = resp_req;
+        MPID_Request_release(curr_req);
+        curr_req = resp_req;
     }
     else {
-        rma_op->request = resp_req;
+        curr_req = resp_req;
     }
 
     /* For error checking */
     resp_req = NULL;
 
- fn_exit:
+    rma_op->reqs[curr_req_index] = curr_req;
+    win_ptr->active_req_cnt++;
+
+  fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_ISSUE_FOP_OP);
     return mpi_errno;
     /* --BEGIN ERROR HANDLING-- */
- fn_fail:
-    if (resp_req != NULL) {
-        MPID_Request_release(resp_req);
+  fn_fail:
+    for (i = 0; i < rma_op->reqs_size; i++) {
+        if (rma_op->reqs[i] != NULL) {
+            MPIDI_CH3_Request_destroy(rma_op->reqs[i]);
+        }
     }
+    if (rma_op->reqs != NULL) {
+        MPIU_Free(rma_op->reqs);
+    }
+    rma_op->reqs = NULL;
+    rma_op->reqs_size = 0;
     goto fn_exit;
     /* --END ERROR HANDLING-- */
 }
@@ -810,8 +1328,7 @@ static int issue_fop_op(MPIDI_RMA_Op_t * rma_op,
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 static inline int issue_rma_op(MPIDI_RMA_Op_t * op_ptr, MPID_Win * win_ptr,
-                               MPIDI_RMA_Target_t * target_ptr,
-                               MPIDI_CH3_Pkt_flags_t flags)
+                               MPIDI_RMA_Target_t * target_ptr, MPIDI_CH3_Pkt_flags_t flags)
 {
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_ISSUE_RMA_OP);
@@ -857,4 +1374,84 @@ static inline int issue_rma_op(MPIDI_RMA_Op_t * op_ptr, MPID_Win * win_ptr,
     /* --END ERROR HANDLING-- */
 }
 
-#endif  /* MPID_RMA_ISSUE_H_INCLUDED */
+#undef FUNCNAME
+#define FUNCNAME set_user_req_after_issuing_op
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static inline int set_user_req_after_issuing_op(MPIDI_RMA_Op_t * op)
+{
+    int i, incomplete_req_cnt = 0;
+    int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPID_STATE_SET_USER_REQ_AFTER_ISSUING_OP);
+
+    MPIDI_RMA_FUNC_ENTER(MPID_STATE_SET_USER_REQ_AFTER_ISSUING_OP);
+
+    if (op->ureq == NULL)
+        goto fn_exit;
+
+    if (op->reqs_size == 0) {
+        MPIU_Assert(op->reqs == NULL);
+        /* Sending is completed immediately, complete user request
+         * and release ch3 ref. */
+
+        /* Complete user request and release the ch3 ref */
+        MPID_Request_set_completed(op->ureq);
+        MPID_Request_release(op->ureq);
+    }
+    else {
+        /* Sending is not completed immediately. */
+
+        for (i = 0; i < op->reqs_size; i++) {
+            if (op->reqs[i] == NULL || MPID_Request_is_complete(op->reqs[i]))
+                continue;
+
+            /* Setup user request info in order to be completed following send request. */
+            incomplete_req_cnt++;
+            MPID_cc_set(&(op->ureq->cc), incomplete_req_cnt);   /* increment CC counter */
+
+            op->reqs[i]->dev.request_handle = op->ureq->handle;
+
+            /* Setup user request completion handler.
+             *
+             * The handler is triggered when send request is completed at
+             * following places:
+             * - progress engine: complete PUT/ACC req.
+             * - GET/GET_ACC packet handler: complete GET/GET_ACC reqs.
+             *
+             * We always set OnFinal which should be called when sending or
+             * receiving the last segment. However, short put/acc ops are
+             * issued in one packet and the lower layer only check OnDataAvail
+             * so we have to set OnDataAvail as well.
+             *
+             * Note that a noncontig send also uses OnDataAvail to loop all
+             * segments but it must be changed to OnFinal when sending the
+             * last segment, so it is also correct for us.
+             *
+             * TODO: implement stack for overriding functions*/
+            if (op->reqs[i]->dev.OnDataAvail == NULL) {
+                op->reqs[i]->dev.OnDataAvail = MPIDI_CH3_ReqHandler_ReqOpsComplete;
+            }
+            op->reqs[i]->dev.OnFinal = MPIDI_CH3_ReqHandler_ReqOpsComplete;
+        }       /* end of for loop */
+
+        if (incomplete_req_cnt) {
+            /* Increase ref for completion handler */
+            MPIU_Object_add_ref(op->ureq);
+        }
+        else {
+            /* all requests are completed */
+            /* Complete user request and release ch3 ref */
+            MPID_Request_set_completed(op->ureq);
+            MPID_Request_release(op->ureq);
+            op->ureq = NULL;
+        }
+    }
+
+  fn_exit:
+    MPIDI_RMA_FUNC_EXIT(MPID_STATE_SET_USER_REQ_AFTER_ISSUING_OP);
+    return mpi_errno;
+  fn_fail:
+    goto fn_exit;
+}
+
+#endif /* MPID_RMA_ISSUE_H_INCLUDED */

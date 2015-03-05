@@ -47,7 +47,7 @@ int MPID_Ssend(const void * buf, int count, MPI_Datatype datatype, int rank, int
         MPIU_ERR_SETANDJUMP(mpi_errno,MPIX_ERR_REVOKED,"**revoked");
     }
 
-#if defined(FINEGRAIN_MPI) /* FG: TODO REMAINING OF THIS FUNCTION */
+#if defined(FINEGRAIN_MPI)
     MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
     if (COMPARE_RANKS(rank,comm,destpid) && comm->comm_kind != MPID_INTERCOMM)
     {
@@ -96,7 +96,11 @@ int MPID_Ssend(const void * buf, int count, MPI_Datatype datatype, int rank, int
 	goto fn_exit;
     }
 
+#if defined(FINEGRAIN_MPI)
+    MPIDI_Comm_get_vc_set_active_direct(comm, destpid, &vc);
+#else
     MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
+#endif
 
 #ifdef ENABLE_COMM_OVERRIDES
     if (vc->comm_ops && vc->comm_ops->ssend)

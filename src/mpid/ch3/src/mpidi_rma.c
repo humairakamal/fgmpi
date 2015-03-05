@@ -91,8 +91,10 @@ cvars:
 */
 
 
-MPIDI_RMA_Op_t *global_rma_op_pool = NULL, *global_rma_op_pool_tail = NULL, *global_rma_op_pool_start = NULL;
-MPIDI_RMA_Target_t *global_rma_target_pool = NULL, *global_rma_target_pool_tail = NULL, *global_rma_target_pool_start = NULL;
+MPIDI_RMA_Op_t *global_rma_op_pool = NULL, *global_rma_op_pool_tail =
+    NULL, *global_rma_op_pool_start = NULL;
+MPIDI_RMA_Target_t *global_rma_target_pool = NULL, *global_rma_target_pool_tail =
+    NULL, *global_rma_target_pool_start = NULL;
 MPIDI_RMA_Pkt_orderings_t *MPIDI_RMA_Pkt_orderings = NULL;
 
 #undef FUNCNAME
@@ -122,14 +124,14 @@ int MPIDI_RMA_init(void)
                         mpi_errno, "RMA target pool");
     for (i = 0; i < MPIR_CVAR_CH3_RMA_TARGET_GLOBAL_POOL_SIZE; i++) {
         global_rma_target_pool_start[i].pool_type = MPIDI_RMA_POOL_GLOBAL;
-        MPL_LL_APPEND(global_rma_target_pool, global_rma_target_pool_tail, &(global_rma_target_pool_start[i]));
+        MPL_LL_APPEND(global_rma_target_pool, global_rma_target_pool_tail,
+                      &(global_rma_target_pool_start[i]));
     }
 
     MPIU_CHKPMEM_MALLOC(MPIDI_RMA_Pkt_orderings, struct MPIDI_RMA_Pkt_orderings *,
-                        sizeof(struct MPIDI_RMA_Pkt_orderings),
-                        mpi_errno, "RMA packet orderings");
+                        sizeof(struct MPIDI_RMA_Pkt_orderings), mpi_errno, "RMA packet orderings");
     /* FIXME: here we should let channel to set ordering flags. For now we just set them
-       in CH3 layer. */
+     * in CH3 layer. */
     MPIDI_RMA_Pkt_orderings->flush_remote = 1;
 
   fn_exit:
@@ -176,8 +178,8 @@ int MPIDI_Win_free(MPID_Win ** win_ptr)
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_WIN_FREE);
 
     /* it is possible that there is a IBARRIER in MPI_WIN_FENCE with
-       MODE_NOPRECEDE not being completed, we let the progress engine
-       to delete its request when it is completed. */
+     * MODE_NOPRECEDE not being completed, we let the progress engine
+     * to delete its request when it is completed. */
     if ((*win_ptr)->fence_sync_req != MPI_REQUEST_NULL) {
         MPID_Request *req_ptr;
         MPID_Request_get_ptr((*win_ptr)->fence_sync_req, req_ptr);
@@ -194,29 +196,31 @@ int MPIDI_Win_free(MPID_Win ** win_ptr)
                         mpi_errno, MPI_ERR_RMA_SYNC, "**rmasync");
 
     /* 1. Here we must wait until all passive locks are released on this target,
-       because for some UNLOCK messages, we do not send ACK back to origin,
-       we must wait until lock is released so that we can free window.
-       2. We also need to wait until AT completion counter being zero, because
-       this counter is increment everytime we meet a GET-like operation, it is
-       possible that when target entering Win_free, passive epoch is not finished
-       yet and there are still GETs doing on this target.
-       3. We also need to wait until lock queue becomes empty. It is possible
-       that some lock requests is still waiting in the queue when target is
-       entering Win_free. */
+     * because for some UNLOCK messages, we do not send ACK back to origin,
+     * we must wait until lock is released so that we can free window.
+     * 2. We also need to wait until AT completion counter being zero, because
+     * this counter is increment everytime we meet a GET-like operation, it is
+     * possible that when target entering Win_free, passive epoch is not finished
+     * yet and there are still GETs doing on this target.
+     * 3. We also need to wait until lock queue becomes empty. It is possible
+     * that some lock requests is still waiting in the queue when target is
+     * entering Win_free. */
     while ((*win_ptr)->current_lock_type != MPID_LOCK_NONE ||
            (*win_ptr)->at_completion_counter != 0 ||
-           (*win_ptr)->lock_queue != NULL ||
-           (*win_ptr)->current_lock_data_bytes != 0) {
+           (*win_ptr)->lock_queue != NULL || (*win_ptr)->current_lock_data_bytes != 0) {
         mpi_errno = wait_progress_engine();
         if (mpi_errno != MPI_SUCCESS)
             MPIU_ERR_POP(mpi_errno);
     }
 
-    if (!(*win_ptr)->shm_allocated) {
-        /* when SHM is allocated, we already did a global barrier in
-           MPIDI_CH3_SHM_Win_free, so we do not need to do it again here. */
-        mpi_errno = MPIR_Barrier_impl((*win_ptr)->comm_ptr, &errflag);
-        if (mpi_errno)
+    mpi_errno = MPIR_Barrier_impl((*win_ptr)->comm_ptr, &errflag);
+    if (mpi_errno)
+        MPIU_ERR_POP(mpi_errno);
+
+    /* Free window resources in lower layer. */
+    if (MPIDI_CH3U_Win_hooks.win_free != NULL) {
+        mpi_errno = MPIDI_CH3U_Win_hooks.win_free(win_ptr);
+        if (mpi_errno != MPI_SUCCESS)
             MPIU_ERR_POP(mpi_errno);
     }
 
@@ -232,15 +236,13 @@ int MPIDI_Win_free(MPID_Win ** win_ptr)
     if (mpi_errno)
         MPIU_ERR_POP(mpi_errno);
 
-    MPIU_Free((*win_ptr)->base_addrs);
-    MPIU_Free((*win_ptr)->sizes);
-    MPIU_Free((*win_ptr)->disp_units);
-    MPIU_Free((*win_ptr)->all_win_handles);
+    if ((*win_ptr)->basic_info_table != NULL)
+        MPIU_Free((*win_ptr)->basic_info_table);
     MPIU_Free((*win_ptr)->op_pool_start);
     MPIU_Free((*win_ptr)->target_pool_start);
     MPIU_Free((*win_ptr)->slots);
     if (!(*win_ptr)->info_args.no_locks) {
-    MPIU_Free((*win_ptr)->lock_entry_pool_start);
+        MPIU_Free((*win_ptr)->lock_entry_pool_start);
     }
     MPIU_Assert((*win_ptr)->current_lock_data_bytes == 0);
 
@@ -303,7 +305,7 @@ void *MPIDI_Alloc_mem(size_t size, MPID_Info * info_ptr)
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_ALLOC_MEM);
 
-    ap = MPIU_Malloc(size);
+    ap = MPIDI_CH3I_Alloc_mem(size, info_ptr);
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_ALLOC_MEM);
     return ap;
@@ -321,7 +323,7 @@ int MPIDI_Free_mem(void *ptr)
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_FREE_MEM);
 
-    MPIU_Free(ptr);
+    MPIDI_CH3I_Free_mem(ptr);
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_FREE_MEM);
     return mpi_errno;

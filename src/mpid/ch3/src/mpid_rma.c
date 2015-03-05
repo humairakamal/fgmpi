@@ -43,7 +43,7 @@ MPIU_THREADSAFE_INIT_DECL(initRMAoptions);
 
 MPIDI_RMA_Win_list_t *MPIDI_RMA_Win_list = NULL, *MPIDI_RMA_Win_list_tail = NULL;
 
-static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, MPID_Info *info,
+static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, MPID_Info * info,
                     MPID_Comm * comm_ptr, MPID_Win ** win_ptr);
 
 
@@ -139,7 +139,8 @@ int MPID_Win_allocate(MPI_Aint size, int disp_unit, MPID_Info * info,
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPID_WIN_ALLOCATE);
 
     mpi_errno =
-        win_init(size, disp_unit, MPI_WIN_FLAVOR_ALLOCATE, MPI_WIN_UNIFIED, info, comm_ptr, win_ptr);
+        win_init(size, disp_unit, MPI_WIN_FLAVOR_ALLOCATE, MPI_WIN_UNIFIED, info, comm_ptr,
+                 win_ptr);
     if (mpi_errno != MPI_SUCCESS) {
         MPIU_ERR_POP(mpi_errno);
     }
@@ -261,7 +262,7 @@ int MPID_Win_allocate_shared(MPI_Aint size, int disp_unit, MPID_Info * info, MPI
 #define FUNCNAME win_init
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, MPID_Info *info,
+static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, MPID_Info * info,
                     MPID_Comm * comm_ptr, MPID_Win ** win_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -304,10 +305,8 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
     (*win_ptr)->comm_ptr = win_comm_ptr;
 
     (*win_ptr)->at_completion_counter = 0;
-    /* (*win_ptr)->base_addrs[] is set by caller; */
-    /* (*win_ptr)->sizes[] is set by caller; */
-    /* (*win_ptr)->disp_units[] is set by caller; */
-    /* (*win_ptr)->all_win_handles[] is set by caller; */
+    (*win_ptr)->shm_base_addrs = NULL;
+    /* (*win_ptr)->basic_info_table[] is set by caller; */
     (*win_ptr)->current_lock_type = MPID_LOCK_NONE;
     (*win_ptr)->shared_lock_ref_cnt = 0;
     (*win_ptr)->lock_queue = NULL;
@@ -341,7 +340,8 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
 
     /* Set info_args on window based on info provided by user */
     mpi_errno = (*win_ptr)->RMAFns.Win_set_info((*win_ptr), info);
-    if (mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno != MPI_SUCCESS)
+        MPIU_ERR_POP(mpi_errno);
 
     MPIU_CHKPMEM_MALLOC((*win_ptr)->op_pool_start, MPIDI_RMA_Op_t *,
                         sizeof(MPIDI_RMA_Op_t) * MPIR_CVAR_CH3_RMA_OP_WIN_POOL_SIZE, mpi_errno,
@@ -350,18 +350,21 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
     (*win_ptr)->op_pool_tail = NULL;
     for (i = 0; i < MPIR_CVAR_CH3_RMA_OP_WIN_POOL_SIZE; i++) {
         (*win_ptr)->op_pool_start[i].pool_type = MPIDI_RMA_POOL_WIN;
-        MPL_LL_APPEND((*win_ptr)->op_pool, (*win_ptr)->op_pool_tail, &((*win_ptr)->op_pool_start[i]));
+        MPL_LL_APPEND((*win_ptr)->op_pool, (*win_ptr)->op_pool_tail,
+                      &((*win_ptr)->op_pool_start[i]));
     }
 
-    win_target_pool_size = MPIR_MIN(MPIR_CVAR_CH3_RMA_TARGET_WIN_POOL_SIZE, MPIR_Comm_size(win_comm_ptr));
+    win_target_pool_size =
+        MPIR_MIN(MPIR_CVAR_CH3_RMA_TARGET_WIN_POOL_SIZE, MPIR_Comm_size(win_comm_ptr));
     MPIU_CHKPMEM_MALLOC((*win_ptr)->target_pool_start, MPIDI_RMA_Target_t *,
-                        sizeof(MPIDI_RMA_Target_t) * win_target_pool_size,
-                        mpi_errno, "RMA target pool");
+                        sizeof(MPIDI_RMA_Target_t) * win_target_pool_size, mpi_errno,
+                        "RMA target pool");
     (*win_ptr)->target_pool = NULL;
     (*win_ptr)->target_pool_tail = NULL;
     for (i = 0; i < win_target_pool_size; i++) {
         (*win_ptr)->target_pool_start[i].pool_type = MPIDI_RMA_POOL_WIN;
-        MPL_LL_APPEND((*win_ptr)->target_pool, (*win_ptr)->target_pool_tail, &((*win_ptr)->target_pool_start[i]));
+        MPL_LL_APPEND((*win_ptr)->target_pool, (*win_ptr)->target_pool_tail,
+                      &((*win_ptr)->target_pool_start[i]));
     }
 
     (*win_ptr)->num_slots = MPIR_MIN(MPIR_CVAR_CH3_RMA_SLOTS_SIZE, MPIR_Comm_size(win_comm_ptr));
@@ -373,15 +376,16 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
     }
 
     if (!(*win_ptr)->info_args.no_locks) {
-    MPIU_CHKPMEM_MALLOC((*win_ptr)->lock_entry_pool_start, MPIDI_RMA_Lock_entry_t *,
-                        sizeof(MPIDI_RMA_Lock_entry_t) * MPIR_CVAR_CH3_RMA_LOCK_ENTRY_WIN_POOL_SIZE,
-                        mpi_errno, "RMA lock entry pool");
-    (*win_ptr)->lock_entry_pool = NULL;
-    (*win_ptr)->lock_entry_pool_tail = NULL;
-    for (i = 0; i < MPIR_CVAR_CH3_RMA_LOCK_ENTRY_WIN_POOL_SIZE; i++) {
-        MPL_LL_APPEND((*win_ptr)->lock_entry_pool, (*win_ptr)->lock_entry_pool_tail,
-                      &((*win_ptr)->lock_entry_pool_start[i]));
-    }
+        MPIU_CHKPMEM_MALLOC((*win_ptr)->lock_entry_pool_start, MPIDI_RMA_Lock_entry_t *,
+                            sizeof(MPIDI_RMA_Lock_entry_t) *
+                            MPIR_CVAR_CH3_RMA_LOCK_ENTRY_WIN_POOL_SIZE, mpi_errno,
+                            "RMA lock entry pool");
+        (*win_ptr)->lock_entry_pool = NULL;
+        (*win_ptr)->lock_entry_pool_tail = NULL;
+        for (i = 0; i < MPIR_CVAR_CH3_RMA_LOCK_ENTRY_WIN_POOL_SIZE; i++) {
+            MPL_LL_APPEND((*win_ptr)->lock_entry_pool, (*win_ptr)->lock_entry_pool_tail,
+                          &((*win_ptr)->lock_entry_pool_start[i]));
+        }
     }
 
     /* enqueue window into the global list */
@@ -389,6 +393,14 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
                         "Window list element");
     win_elem->win_ptr = *win_ptr;
     MPL_LL_APPEND(MPIDI_RMA_Win_list, MPIDI_RMA_Win_list_tail, win_elem);
+
+    if (MPIDI_CH3U_Win_hooks.win_init != NULL) {
+        mpi_errno =
+            MPIDI_CH3U_Win_hooks.win_init(size, disp_unit, create_flavor, model, info, comm_ptr,
+                                          win_ptr);
+        if (mpi_errno != MPI_SUCCESS)
+            MPIU_ERR_POP(mpi_errno);
+    }
 
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_WIN_INIT);

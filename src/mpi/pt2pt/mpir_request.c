@@ -19,6 +19,111 @@
   A helper routine that implements the very common case of running the progress
   engine until the given request is complete.
   @*/
+#if defined(FINEGRAIN_MPI)
+int MPIR_Progress_wait_request_with_progress_state(MPID_Request *req, MPID_Progress_state* progress_state_ptr)
+{
+    int mpi_errno = MPI_SUCCESS;
+    MPIR_Rank_t dest = req->dev.match.parts.rank;
+    MPID_Comm *comm_ptr = req->comm;
+
+    if (!MPID_Request_is_complete(req))
+    {
+      if ( Is_within_same_HWP(dest, comm_ptr, NULL) )
+      {
+           while(!MPID_Request_is_complete(req))
+           {
+               if( MPID_REQUEST_RECV == req->kind ){
+                   scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
+                   FG_Yield_on_event(tye);
+               }
+               else {
+                   FG_Yield();
+               }
+           }
+      }
+      else {
+        while (!MPID_Request_is_complete(req))
+        {
+            mpi_errno = MPID_Progress_wait(progress_state_ptr);
+            if (mpi_errno != MPI_SUCCESS)
+            {
+                /* --BEGIN ERROR HANDLING-- */
+                MPID_Progress_end(progress_state_ptr);
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                /* --END ERROR HANDLING-- */
+            }
+            if (!MPID_Request_is_complete(req))
+            {
+                if( MPID_REQUEST_RECV == req->kind ){
+                    scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
+                    FG_Yield_on_event(tye);
+                }
+                else {
+                    FG_Yield();
+                }
+            }
+        }
+     }
+    }
+fn_fail: /* no special err handling at this level */
+fn_exit:
+    return mpi_errno;
+}
+
+int MPIR_Progress_wait_request(MPID_Request *req) /* FG: TODO Double-check */
+{
+    int mpi_errno = MPI_SUCCESS;
+    MPIR_Rank_t dest = req->dev.match.parts.rank;
+    MPID_Comm *comm_ptr = req->comm;
+
+    if (!MPID_Request_is_complete(req))
+    {
+      if ( Is_within_same_HWP(dest, comm_ptr, NULL) )
+      {
+           while(!MPID_Request_is_complete(req))
+           {
+               if( MPID_REQUEST_RECV == req->kind ){
+                   scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
+                   FG_Yield_on_event(tye);
+               }
+               else {
+                   FG_Yield();
+               }
+           }
+      }
+      else {
+        MPID_Progress_state progress_state;
+
+        MPID_Progress_start(&progress_state);
+        while (!MPID_Request_is_complete(req))
+        {
+            mpi_errno = MPID_Progress_wait(&progress_state);
+            if (mpi_errno != MPI_SUCCESS)
+            {
+                /* --BEGIN ERROR HANDLING-- */
+                MPID_Progress_end(&progress_state);
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                /* --END ERROR HANDLING-- */
+            }
+            if (!MPID_Request_is_complete(req))
+            {
+                if( MPID_REQUEST_RECV == req->kind ){
+                    scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
+                    FG_Yield_on_event(tye);
+                }
+                else {
+                    FG_Yield();
+                }
+            }
+        }
+        MPID_Progress_end(&progress_state);
+     }
+    }
+fn_fail: /* no special err handling at this level */
+fn_exit:
+    return mpi_errno;
+}
+#else
 int MPIR_Progress_wait_request(MPID_Request *req)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -45,6 +150,7 @@ fn_fail: /* no special err handling at this level */
 fn_exit:
     return mpi_errno;
 }
+#endif
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Request_complete
@@ -695,6 +801,10 @@ int MPIR_Grequest_waitall(int count, MPID_Request * const * request_ptrs)
            other thread, we'll make progress on regular requests too.  The
            progress engine should permit the other thread to run at some
            point. */
+#if defined(FINEGRAIN_MPI)
+        mpi_error = MPIR_Progress_wait_request_with_progress_state(request_ptrs[i], &progress_state);
+        if (mpi_error) MPIU_ERR_POP(mpi_error);
+#else
         while (!MPID_Request_is_complete(request_ptrs[i]))
         {
             mpi_error = MPID_Progress_wait(&progress_state);
@@ -706,6 +816,7 @@ int MPIR_Grequest_waitall(int count, MPID_Request * const * request_ptrs)
                 /* --END ERROR HANDLING-- */
             }
         }
+#endif
     }
     MPID_Progress_end(&progress_state);
 #endif
