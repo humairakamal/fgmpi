@@ -61,7 +61,7 @@ int MPID_Isend(const void * buf, int count, MPI_Datatype datatype, int rank,
         MPIU_ERR_SETANDJUMP(mpi_errno,MPIX_ERR_REVOKED,"**revoked");
     }
 
-#if defined(FINEGRAIN_MPI) /* FG: TODO REMAINING oF THIS FUNCTION */
+#if defined(FINEGRAIN_MPI)
     MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
     if (COMPARE_RANKS(rank,comm,destpid) && comm->comm_kind != MPID_INTERCOMM)
     {
@@ -77,7 +77,11 @@ int MPID_Isend(const void * buf, int count, MPI_Datatype datatype, int rank,
     }
 
     if (rank != MPI_PROC_NULL) {
+#if defined(FINEGRAIN_MPI)
+        MPIDI_Comm_get_vc_set_active_direct(comm, destpid, &vc);
+#else
         MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
+#endif
 #ifdef ENABLE_COMM_OVERRIDES
         /* this needs to come before the sreq is created, since the override
          * function is responsible for creating its own request */
@@ -112,6 +116,9 @@ int MPID_Isend(const void * buf, int count, MPI_Datatype datatype, int rank,
 	    
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"sending zero length message");
 	MPIDI_Pkt_init(eager_pkt, MPIDI_CH3_PKT_EAGER_SEND);
+#if defined(FINEGRAIN_MPI)
+        eager_pkt->match.parts.dest_rank = destworldrank;
+#endif
 	eager_pkt->match.parts.rank = comm->rank;
 	eager_pkt->match.parts.tag = tag;
 	eager_pkt->match.parts.context_id = comm->context_id + context_offset;

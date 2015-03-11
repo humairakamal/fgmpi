@@ -20,6 +20,17 @@
   engine until the given request is complete.
   @*/
 #if defined(FINEGRAIN_MPI)
+int FG_Yield_on_incomplete_request(MPID_Request *req)
+{
+    if( MPID_REQUEST_RECV == req->kind ){
+        scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
+        FG_Yield_on_event(tye);
+    }
+    else {
+        FG_Yield();
+    }
+    return (MPI_SUCCESS);
+}
 int MPIR_Progress_wait_request_with_progress_state(MPID_Request *req, MPID_Progress_state* progress_state_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -32,13 +43,7 @@ int MPIR_Progress_wait_request_with_progress_state(MPID_Request *req, MPID_Progr
       {
            while(!MPID_Request_is_complete(req))
            {
-               if( MPID_REQUEST_RECV == req->kind ){
-                   scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
-                   FG_Yield_on_event(tye);
-               }
-               else {
-                   FG_Yield();
-               }
+               FG_Yield_on_incomplete_request(req);
            }
       }
       else {
@@ -54,13 +59,7 @@ int MPIR_Progress_wait_request_with_progress_state(MPID_Request *req, MPID_Progr
             }
             if (!MPID_Request_is_complete(req))
             {
-                if( MPID_REQUEST_RECV == req->kind ){
-                    scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
-                    FG_Yield_on_event(tye);
-                }
-                else {
-                    FG_Yield();
-                }
+                FG_Yield_on_incomplete_request(req);
             }
         }
      }
@@ -70,7 +69,7 @@ fn_exit:
     return mpi_errno;
 }
 
-int MPIR_Progress_wait_request(MPID_Request *req) /* FG: TODO Double-check */
+int MPIR_Progress_wait_request(MPID_Request *req) /* FG: TODO Double-check all places it is called */
 {
     int mpi_errno = MPI_SUCCESS;
     MPIR_Rank_t dest = req->dev.match.parts.rank;
@@ -82,13 +81,7 @@ int MPIR_Progress_wait_request(MPID_Request *req) /* FG: TODO Double-check */
       {
            while(!MPID_Request_is_complete(req))
            {
-               if( MPID_REQUEST_RECV == req->kind ){
-                   scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
-                   FG_Yield_on_event(tye);
-               }
-               else {
-                   FG_Yield();
-               }
+               FG_Yield_on_incomplete_request(req);
            }
       }
       else {
@@ -107,13 +100,7 @@ int MPIR_Progress_wait_request(MPID_Request *req) /* FG: TODO Double-check */
             }
             if (!MPID_Request_is_complete(req))
             {
-                if( MPID_REQUEST_RECV == req->kind ){
-                    scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
-                    FG_Yield_on_event(tye);
-                }
-                else {
-                    FG_Yield();
-                }
+                FG_Yield_on_incomplete_request(req);
             }
         }
         MPID_Progress_end(&progress_state);

@@ -57,10 +57,22 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
             goto fn_exit;
         }
 
+#if defined(FINEGRAIN_MPI) /* FG:TODO IMPORTANT Doublecheck */
+        MPIR_Rank_t dest = request_ptr->dev.match.parts.rank;
+        MPID_Comm *comm_ptr = request_ptr->comm;
+        if ( Is_within_same_HWP(dest, comm_ptr, NULL) )
+        {
+            while(!MPID_Request_is_complete(request_ptr))
+            {
+                mpi_errno = FG_Yield_on_incomplete_request(request_ptr);
+            }
+        } else {
+#endif
+
 	MPID_Progress_start(&progress_state);
         while (!MPID_Request_is_complete(request_ptr))
 	{
-	    mpi_errno = MPIR_Grequest_progress_poke(1, &request_ptr, status);
+	    mpi_errno = MPIR_Grequest_progress_poke(1, &request_ptr, status); /* FG: TODO? */
 	    if (request_ptr->kind == MPID_UREQUEST &&
                 request_ptr->greq_fns->wait_fn != NULL)
 	    {
@@ -70,6 +82,11 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
                     MPIU_ERR_POP(mpi_errno);
                     /* --END ERROR HANDLING-- */
 		}
+#if defined(FINEGRAIN_MPI)
+                if (!MPID_Request_is_complete(request_ptr)) {
+                    FG_Yield_on_incomplete_request(request_ptr);
+                }
+#endif
 		continue; /* treating UREQUEST like normal request means we'll
 			     poll indefinitely. skip over progress_wait */
 	    }
@@ -92,10 +109,27 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
                 if (status != MPI_STATUS_IGNORE) status->MPI_ERROR = mpi_errno;
                 goto fn_fail;
             }
+#if defined(FINEGRAIN_MPI)
+            if (!MPID_Request_is_complete(request_ptr)) {
+                FG_Yield_on_incomplete_request(request_ptr);
+            }
+#endif
 	}
 	MPID_Progress_end(&progress_state);
+#if defined(FINEGRAIN_MPI)
+      }
+#endif
     }
 
+#if defined(FINEGRAIN_MPI)
+    /* HK: Note for zerocopy:
+     * MPIDI_CH3U_Buffer_free(request_ptr);
+     * MPIX_Izend sender buffer will be freed if the receiver is Non-Collocated.
+     * The freeing of buffer in the collocated case where the match is not with
+     * MPI_Zrecv or MPI_Izrecv is handled in  MPIDI_Isend_self() and MPIDI_CH3_RecvFromSelf().
+     */
+    /* FG:TODO Zerocopy MPIDI_CH3U_Buffer_free(request_ptr); */
+#endif
     mpi_errno = MPIR_Request_complete(request, request_ptr, status, &active_flag);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     
