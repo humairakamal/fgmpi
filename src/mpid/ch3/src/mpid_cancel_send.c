@@ -189,6 +189,9 @@ int MPID_Cancel_send(MPID_Request * sreq)
 	}
 
 	MPIDI_Pkt_init(csr_pkt, MPIDI_CH3_PKT_CANCEL_SEND_REQ);
+#if defined(FINEGRAIN_MPI)
+        csr_pkt->match.parts.dest_rank = sreq->dev.match.parts.dest_rank;
+#endif
 	csr_pkt->match.parts.rank = sreq->comm->rank;
 	csr_pkt->match.parts.tag = sreq->dev.match.parts.tag;
 	csr_pkt->match.parts.context_id = sreq->dev.match.parts.context_id;

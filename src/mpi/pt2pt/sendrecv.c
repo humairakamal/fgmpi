@@ -177,10 +177,53 @@ int MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     if (!MPID_Request_is_complete(sreq) || !MPID_Request_is_complete(rreq))
     {
 	MPID_Progress_state progress_state;
-	
+#if defined(FINEGRAIN_MPI)
+        MPIR_Rank_t dest = sreq->dev.match.parts.rank;
+        MPID_Comm *scomm_ptr = sreq->comm;
+        MPIR_Rank_t source = rreq->dev.match.parts.rank;
+        MPID_Comm *rcomm_ptr = rreq->comm;
+#endif
+
 	MPID_Progress_start(&progress_state);
         while (!MPID_Request_is_complete(sreq) || !MPID_Request_is_complete(rreq))
 	{
+#if defined(FINEGRAIN_MPI)
+             /* FG SCHEDULER - Giving priority to sending messages by not
+                blocking as long as *sreq->cc_ptr != 0 */
+            if (!MPID_Request_is_complete(sreq))
+            {
+                if ( Is_within_same_HWP(dest, scomm_ptr, NULL) )
+                {
+                    FG_Yield();
+                } else {
+                    mpi_errno = MPID_Progress_wait(&progress_state);
+                    if (mpi_errno != MPI_SUCCESS)
+                    {
+                        /* --BEGIN ERROR HANDLING-- */
+                        MPID_Progress_end(&progress_state);
+                        goto fn_fail;
+                        /* --END ERROR HANDLING-- */
+                    }
+                }
+            }
+            else if(!MPID_Request_is_complete(rreq))
+            {
+                if ( Is_within_same_HWP(source, rcomm_ptr, NULL) )
+                {
+                    scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
+                    FG_Yield_on_event(tye);
+                }  else {
+                    mpi_errno = MPID_Progress_wait(&progress_state);
+                    if (mpi_errno != MPI_SUCCESS)
+                    {
+                        /* --BEGIN ERROR HANDLING-- */
+                        MPID_Progress_end(&progress_state);
+                        goto fn_fail;
+                        /* --END ERROR HANDLING-- */
+                    }
+                }
+            }
+#else
 	    mpi_errno = MPID_Progress_wait(&progress_state);
 	    if (mpi_errno != MPI_SUCCESS)
 	    {
@@ -189,7 +232,7 @@ int MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
 		goto fn_fail;
 		/* --END ERROR HANDLING-- */
 	    }
-
+#endif
             if (unlikely(MPIR_CVAR_ENABLE_FT &&
                         !MPID_Request_is_complete(rreq) &&
                         MPID_Request_is_anysource(rreq) &&

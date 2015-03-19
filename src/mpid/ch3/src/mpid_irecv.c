@@ -126,7 +126,7 @@ int MPID_Irecv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
 	}
 	else if (MPIDI_Request_get_msg_type(rreq) == MPIDI_REQUEST_SELF_MSG)
 	{
-#if defined (FINEGRAIN_MPI) /* FG: TODO REMAINING OF THIS FUNCTION */
+#if defined (FINEGRAIN_MPI)
 	    mpi_errno = MPIDI_CH3_RecvFromSelf( rreq, &buf, count, datatype );
 #else
            mpi_errno = MPIDI_CH3_RecvFromSelf( rreq, buf, count, datatype );
