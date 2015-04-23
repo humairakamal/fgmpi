@@ -36,34 +36,32 @@ int MPIR_Progress_wait_request_with_progress_state(MPID_Request *req, MPID_Progr
     int mpi_errno = MPI_SUCCESS;
     MPIR_Rank_t dest = req->dev.match.parts.rank;
     MPID_Comm *comm_ptr = req->comm;
+    int is_colocated = Is_within_same_HWP(dest, comm_ptr, NULL);
+    int num_of_colocated_yields = 0;
+    const int MAX_COLOCATED_YIELDS = 2;
 
-    if (!MPID_Request_is_complete(req))
+    while(!MPID_Request_is_complete(req))
     {
-      if ( Is_within_same_HWP(dest, comm_ptr, NULL) )
+      if ( is_colocated && (num_of_colocated_yields < MAX_COLOCATED_YIELDS) )
       {
-           while(!MPID_Request_is_complete(req))
-           {
-               FG_Yield_on_incomplete_request(req);
-           }
+          num_of_colocated_yields++;
+          FG_Yield_on_incomplete_request(req);
+      } else {
+          mpi_errno = MPID_Progress_wait(progress_state_ptr);
+          if (mpi_errno != MPI_SUCCESS)
+          {
+              /* --BEGIN ERROR HANDLING-- */
+              MPID_Progress_end(progress_state_ptr);
+              if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+              /* --END ERROR HANDLING-- */
+          }
+          if (!MPID_Request_is_complete(req))
+          {
+              FG_Yield_on_incomplete_request(req);
+          }
       }
-      else {
-        while (!MPID_Request_is_complete(req))
-        {
-            mpi_errno = MPID_Progress_wait(progress_state_ptr);
-            if (mpi_errno != MPI_SUCCESS)
-            {
-                /* --BEGIN ERROR HANDLING-- */
-                MPID_Progress_end(progress_state_ptr);
-                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-                /* --END ERROR HANDLING-- */
-            }
-            if (!MPID_Request_is_complete(req))
-            {
-                FG_Yield_on_incomplete_request(req);
-            }
-        }
-     }
     }
+
 fn_fail: /* no special err handling at this level */
 fn_exit:
     return mpi_errno;

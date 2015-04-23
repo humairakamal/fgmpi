@@ -98,6 +98,15 @@ int MPI_Waitsome(int incount, MPI_Request array_of_requests[],
     int rc;
     int disabled_anysource = FALSE;
     int mpi_errno = MPI_SUCCESS;
+#if defined(FINEGRAIN_MPI)
+    MPIR_Rank_t dest = -1;
+    MPID_Comm *comm_ptr = NULL;
+    int atleast_one_is_colocated = 0;
+    int is_colocated_index = -1;
+    int all_active_reqs_are_recv = 1;
+    int num_of_colocated_yields = 0;
+    const int MAX_COLOCATED_YIELDS = 2;
+#endif
     MPIU_CHKLMEM_DECL(1);
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_WAITSOME);
 
@@ -170,6 +179,23 @@ int MPI_Waitsome(int incount, MPI_Request array_of_requests[],
                         !MPID_Comm_AS_enabled(request_ptrs[i]->comm))) {
                 disabled_anysource = TRUE;
             }
+#if defined(FINEGRAIN_MPI)
+            dest = request_ptrs[i]->dev.match.parts.rank;
+            comm_ptr = request_ptrs[i]->comm;
+            /* The persistent request check is to avoid the situation where
+               a null request_ptr may be accessed. Note that the request_ptr
+               can later be set to null if active_flag is FALSE */
+            if ( (request_ptrs[i]->kind != MPID_PREQUEST_SEND) &&
+                 (request_ptrs[i]->kind != MPID_PREQUEST_RECV) ) {
+                if ( !atleast_one_is_colocated && Is_within_same_HWP(dest, comm_ptr, NULL) ) {
+                    atleast_one_is_colocated = 1;
+                    is_colocated_index = i;
+                }
+            }
+            if ( request_ptrs[i]->kind != MPID_REQUEST_RECV )  {
+                all_active_reqs_are_recv = 0;
+            }
+#endif
 	}
 	else
 	{
@@ -215,6 +241,10 @@ int MPI_Waitsome(int incount, MPI_Request array_of_requests[],
                 if (MPID_Request_is_complete(request_ptrs[i]))
                 {
                     status_ptr = (array_of_statuses != MPI_STATUSES_IGNORE) ? &array_of_statuses[n_active] : MPI_STATUS_IGNORE;
+#if defined(FINEGRAIN_MPI)
+                    /* FG: TODO Zerocopy
+                       MPIDI_CH3U_Buffer_free(request_ptrs[i]); */
+#endif
                     rc = MPIR_Request_complete(&array_of_requests[i], request_ptrs[i], status_ptr, &active_flag);
                     if (active_flag)
                     {
@@ -277,6 +307,46 @@ int MPI_Waitsome(int incount, MPI_Request array_of_requests[],
 	    break;
 	}
 
+#if defined(FINEGRAIN_MPI)
+        if ( atleast_one_is_colocated && all_active_reqs_are_recv &&
+             (num_of_colocated_yields < MAX_COLOCATED_YIELDS) ) {
+            num_of_colocated_yields++;
+            MPIU_Assert( !MPID_Request_is_complete(request_ptrs[is_colocated_index]) );
+            scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
+            FG_Yield_on_event(tye);
+        }
+        else if ( atleast_one_is_colocated && (num_of_colocated_yields < MAX_COLOCATED_YIELDS)) {
+            num_of_colocated_yields++;
+            MPIU_Assert( !MPID_Request_is_complete(request_ptrs[is_colocated_index]) );
+            FG_Yield();
+        } else {
+            mpi_errno = MPID_Progress_wait(&progress_state);
+            if (mpi_errno != MPI_SUCCESS)
+            {
+                /* --BEGIN ERROR HANDLING-- */
+                MPID_Progress_end(&progress_state);
+                goto fn_fail;
+                /* --END ERROR HANDLING-- */
+            }
+            int atleast_one_request_completed = 0;
+            for (i = 0; i < incount; i++) {
+                if (request_ptrs[i] == NULL)
+                    continue;
+                if (MPID_Request_is_complete(request_ptrs[i])) {
+                    atleast_one_request_completed = 1;
+                    break;
+                }
+            }
+            if (!atleast_one_request_completed) {
+                if (all_active_reqs_are_recv) {
+                    scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
+                    FG_Yield_on_event(tye);
+                } else {
+                    FG_Yield();
+                }
+            }
+        }
+#else
 	mpi_errno = MPID_Progress_wait(&progress_state);
 	if (mpi_errno != MPI_SUCCESS)
 	{
@@ -285,6 +355,7 @@ int MPI_Waitsome(int incount, MPI_Request array_of_requests[],
 	    goto fn_fail;
 	    /* --END ERROR HANDLING-- */
 	}
+#endif
     }
     MPID_Progress_end(&progress_state);
 

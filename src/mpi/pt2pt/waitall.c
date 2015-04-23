@@ -52,6 +52,13 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
     const int ignoring_statuses = (array_of_statuses == MPI_STATUSES_IGNORE);
     int optimize = ignoring_statuses; /* see NOTE-O1 */
     MPIU_CHKLMEM_DECL(1);
+#if defined(FINEGRAIN_MPI)
+    MPIR_Rank_t dest  = -1;
+    MPID_Comm *comm_ptr = NULL;
+    int is_colocated = 0;
+    int num_of_colocated_yields = 0;
+    const int MAX_COLOCATED_YIELDS = 2;
+#endif
 
     /* Convert MPI request handles to a request object pointers */
     if (count > MPID_REQUEST_PTR_ARRAY_SIZE)
@@ -127,7 +134,20 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
     if (optimize) {
         MPID_Progress_start(&progress_state);
         for (i = 0; i < count; ++i) {
+#if defined(FINEGRAIN_MPI)
+            dest = request_ptrs[i]->dev.match.parts.rank;
+            comm_ptr = request_ptrs[i]->comm;
+            is_colocated = Is_within_same_HWP(dest, comm_ptr, NULL);
+            num_of_colocated_yields = 0;
+#endif
             while (!MPID_Request_is_complete(request_ptrs[i])) {
+#if defined(FINEGRAIN_MPI)
+               if ( is_colocated && (num_of_colocated_yields < MAX_COLOCATED_YIELDS) )
+               {
+                   num_of_colocated_yields++;
+                   FG_Yield_on_incomplete_request(request_ptrs[i]);
+               } else {
+#endif
                 mpi_errno = MPID_Progress_wait(&progress_state);
                 /* must check and handle the error, can't guard with HAVE_ERROR_CHECKING, but it's
                  * OK for the error case to be slower */
@@ -143,7 +163,17 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
                     MPIU_ERR_POP(mpi_errno);
                     /* --END ERROR HANDLING-- */
                 }
+#if defined(FINEGRAIN_MPI)
+                if (!MPID_Request_is_complete(request_ptrs[i])) {
+                    FG_Yield_on_incomplete_request(request_ptrs[i]);
+                 }
+               }
+#endif
             }
+#if defined(FINEGRAIN_MPI)
+            /* FG: TODO Zerocopy
+               MPIDI_CH3U_Buffer_free(request_ptrs[i]); */
+#endif
             mpi_errno = MPIR_Request_complete_fastpath(&array_of_requests[i], request_ptrs[i]);
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
         }
@@ -174,13 +204,27 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
                 array_of_statuses[i].MPI_ERROR = MPI_SUCCESS;
             continue;
         }
-        
+
+#if defined(FINEGRAIN_MPI)
+        dest = request_ptrs[i]->dev.match.parts.rank;
+        comm_ptr = request_ptrs[i]->comm;
+        is_colocated = Is_within_same_HWP(dest, comm_ptr, NULL);
+        num_of_colocated_yields = 0;
+#endif
+
         /* wait for ith request to complete */
         while (!MPID_Request_is_complete(request_ptrs[i]))
         {
             /* generalized requests should already be finished */
             MPIU_Assert(request_ptrs[i]->kind != MPID_UREQUEST);
-            
+
+#if defined(FINEGRAIN_MPI)
+           if ( is_colocated && (num_of_colocated_yields < MAX_COLOCATED_YIELDS) )
+           {
+               num_of_colocated_yields++;
+               FG_Yield_on_incomplete_request(request_ptrs[i]);
+           } else {
+#endif
             mpi_errno = MPID_Progress_wait(&progress_state);
             if (mpi_errno != MPI_SUCCESS) {
                 /* --BEGIN ERROR HANDLING-- */
@@ -199,11 +243,21 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
                 proc_failure = TRUE;
                 break;
             }
+#if defined(FINEGRAIN_MPI)
+             if (!MPID_Request_is_complete(request_ptrs[i])) {
+                 FG_Yield_on_incomplete_request(request_ptrs[i]);
+             }
+           }
+#endif
         }
 
         if (MPID_Request_is_complete(request_ptrs[i])) {
             /* complete the request and check the status */
             status_ptr = (ignoring_statuses) ? MPI_STATUS_IGNORE : &array_of_statuses[i];
+#if defined(FINEGRAIN_MPI)
+            /* FG: TODO Zerocopy
+               MPIDI_CH3U_Buffer_free(request_ptrs[i]); */
+#endif
             rc = MPIR_Request_complete(&array_of_requests[i], request_ptrs[i], status_ptr, &active_flag);
         }
 

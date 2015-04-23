@@ -174,6 +174,10 @@ int MPI_Testsome(int incount, MPI_Request array_of_requests[], int *outcount,
         {
             if (MPID_Request_is_complete(request_ptrs[i]))
             {
+#if defined(FINEGRAIN_MPI)
+                /* FG: TODO Zerocopy
+                   MPIDI_CH3U_Buffer_free(request_ptrs[i]); */
+#endif
                 rc = MPIR_Request_complete(&array_of_requests[i], request_ptrs[i], status_ptr, &active_flag);
                 if (active_flag)
                 {
