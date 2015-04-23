@@ -103,11 +103,11 @@ static int append_overflow(int i)
     me.match_id = id_any;
     me.match_bits = 0;
     me.ignore_bits = ~((ptl_match_bits_t)0);
-    me.min_free = PTL_MAX_EAGER;
+    me.min_free = PTL_LARGE_THRESHOLD;
     
     /* if there is no space to append the entry, process outstanding events and try again */
-    ret = MPID_nem_ptl_me_append(MPIDI_nem_ptl_ni, MPIDI_nem_ptl_pt, &me, PTL_OVERFLOW_LIST, (void *)(size_t)i,
-                                 &overflow_me_handle[i]);
+    ret = PtlMEAppend(MPIDI_nem_ptl_ni, MPIDI_nem_ptl_pt, &me, PTL_OVERFLOW_LIST, (void *)(size_t)i,
+                      &overflow_me_handle[i]);
     MPIU_ERR_CHKANDJUMP1(ret, mpi_errno, MPI_ERR_OTHER, "**ptlmeappend", "**ptlmeappend %s", MPID_nem_ptl_strerror(ret));
 
  fn_exit:
@@ -132,6 +132,8 @@ int MPID_nem_ptl_poll(int is_blocking_poll)
     /* MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_PTL_POLL); */
 
     while (1) {
+        int ctl_event = FALSE;
+
         /* check EQs for events */
         ret = MPID_nem_ptl_rptl_eqget(MPIDI_nem_ptl_eq, &event);
         MPIU_ERR_CHKANDJUMP(ret == PTL_EQ_DROPPED, mpi_errno, MPI_ERR_OTHER, "**eqdropped");
@@ -146,6 +148,8 @@ int MPID_nem_ptl_poll(int is_blocking_poll)
                 if (ret == PTL_EQ_EMPTY) {
                     ret = MPID_nem_ptl_rptl_eqget(MPIDI_nem_ptl_origin_eq, &event);
                     MPIU_ERR_CHKANDJUMP(ret == PTL_EQ_DROPPED, mpi_errno, MPI_ERR_OTHER, "**eqdropped");
+                } else {
+                    ctl_event = TRUE;
                 }
 
                 /* all EQs are empty */
@@ -159,16 +163,17 @@ int MPID_nem_ptl_poll(int is_blocking_poll)
                                                 MPID_nem_ptl_strlist(event.ptl_list), event.user_ptr, event.hdr_data, event.mlength, event.rlength));
         MPIU_ERR_CHKANDJUMP2(event.ni_fail_type != PTL_NI_OK && event.ni_fail_type != PTL_NI_NO_MATCH, mpi_errno, MPI_ERR_OTHER, "**ptlni_fail", "**ptlni_fail %s %s", MPID_nem_ptl_strevent(&event), MPID_nem_ptl_strnifail(event.ni_fail_type));
 
+        /* special case for events on the control portal */
+        if (ctl_event) {
+            mpi_errno = MPID_nem_ptl_nm_ctl_event_handler(&event);
+            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+            continue;
+        }
+
         switch (event.type) {
         case PTL_EVENT_PUT:
             if (event.ptl_list == PTL_OVERFLOW_LIST)
                 break;
-            if (event.pt_index == MPIDI_nem_ptl_control_pt) {
-                mpi_errno = MPID_nem_ptl_nm_ctl_event_handler(&event);
-                if (mpi_errno)
-                    MPIU_ERR_POP(mpi_errno);
-                break;
-            }
         case PTL_EVENT_PUT_OVERFLOW:
         case PTL_EVENT_GET:
         case PTL_EVENT_SEND:

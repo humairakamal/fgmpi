@@ -938,6 +938,11 @@ MPIDI_Env_setup(int rank, int requested)
     ENV_Unsigned(names, &MPIDI_Process.mpir_nbc, 1, &found_deprecated_env_var, rank);
   }
 
+  /* Enable typed PAMI calls for derived types within MPID_Put and MPID_Get. */
+  {
+    char* names[] = {"PAMID_TYPED_ONESIDED", NULL};
+    ENV_Unsigned(names, &MPIDI_Process.typed_onesided, 1, &found_deprecated_env_var, rank);
+  }
   /* Check for deprecated collectives environment variables. These variables are
    * used in src/mpid/pamid/src/comm/mpid_selectcolls.c */
   {
@@ -1143,6 +1148,25 @@ MPIDI_Env_setup(int rank, int requested)
 #if CUDA_AWARE_SUPPORT
     char* names[] = {"MP_CUDA_AWARE", NULL};
     ENV_Char(names, &MPIDI_Process.cuda_aware_support_on);
+    if(MPIDI_Process.cuda_aware_support_on && MPIDI_enable_cuda() == false)
+    {
+      MPIDI_Process.cuda_aware_support_on = false;
+      if(rank == 0)
+      {
+        fprintf(stderr, "Error loading libcudart\n");fflush(stderr);sleep(1);exit(1);
+      }
+    }
+    else if(MPIDI_Process.cuda_aware_support_on)
+    {
+      if(MPIDI_Process.optimized.collectives == MPID_COLL_FCA)
+        if(rank == 0)
+        {
+          fprintf(stderr, "Warning: FCA is not supported with CUDA Aware support\n");fflush(stderr);
+        }
+
+      MPIDI_Process.optimized.collectives = MPID_COLL_CUDA;
+      MPIDI_Process.optimized.select_colls = 0;
+    }
 #endif
 
   /* Exit if any deprecated environment variables were specified. */

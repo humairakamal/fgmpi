@@ -2249,6 +2249,20 @@ MPIMODNAME=mpi
 MPICONSTMODNAME=mpi_constants
 MPISIZEOFMODNAME=mpi_sizeofs
 MPIBASEMODNAME=mpi_base
+
+# F08 binding stuff
+MPI_F08_LINK_CONSTANTS_NAME=mpi_f08_link_constants
+PMPI_F08_NAME=pmpi_f08
+MPI_F08_CALLBACKS_NAME=mpi_f08_callbacks
+MPI_C_INTERFACE_NAME=mpi_c_interface
+MPI_C_INTERFACE_GLUE_NAME=mpi_c_interface_glue
+MPI_F08_TYPES_NAME=mpi_f08_types
+MPI_C_INTERFACE_NOBUF_NAME=mpi_c_interface_nobuf
+MPI_F08_COMPILE_CONSTANTS_NAME=mpi_f08_compile_constants
+MPI_F08_NAME=mpi_f08
+MPI_C_INTERFACE_TYPES_NAME=mpi_c_interface_types
+MPI_C_INTERFACE_CDESC_NAME=mpi_c_interface_cdesc
+
 if test "$enable_fc" = "yes" ; then
     # determine rpath and other shared library flags for FC
     fc_shlib_conf=src/env/fc_shlib.conf
@@ -2299,16 +2313,50 @@ if test "$enable_fc" = "yes" ; then
         MPICONSTMODNAME=MPI_CONSTANTS
 	MPISIZEOFMODNAME=MPI_SIZEOFS
 	MPIBASEMODNAME=MPI_BASE
+        MPI_F08_NAME=MPI_F08
+        MPI_F08_LINK_CONSTANTS_NAME=MPI_F08_LINK_CONSTANTS
+        MPI_F08_CALLBACKS_NAME=MPI_F08_CALLBACKS
+        MPI_F08_TYPES_NAME=MPI_F08_TYPES
+        MPI_F08_COMPILE_CONSTANTS_NAME=MPI_F08_COMPILE_CONSTANTS
+        PMPI_F08_NAME=PMPI_F08
+        MPI_C_INTERFACE_NAME=MPI_C_INTERFACE
+        MPI_C_INTERFACE_NOBUF_NAME=MPI_C_INTERFACE_NOBUF
+        MPI_C_INTERFACE_GLUE_NAME=MPI_C_INTERFACE_GLUE
+        MPI_C_INTERFACE_TYPES_NAME=MPI_C_INTERFACE_TYPES
+        MPI_C_INTERFACE_CDESC_NAME=MPI_C_INTERFACE_CDESC
     else
         MPIMODNAME=mpi
         MPICONSTMODNAME=mpi_constants
 	MPISIZEOFMODNAME=mpi_sizeofs
 	MPIBASEMODNAME=mpi_base
+        MPI_F08_NAME=mpi_f08
+        MPI_F08_LINK_CONSTANTS_NAME=mpi_f08_link_constants
+        MPI_F08_CALLBACKS_NAME=mpi_f08_callbacks
+        MPI_F08_TYPES_NAME=mpi_f08_types
+        MPI_F08_COMPILE_CONSTANTS_NAME=mpi_f08_compile_constants
+        PMPI_F08_NAME=pmpi_f08
+        MPI_C_INTERFACE_NAME=mpi_c_interface
+        MPI_C_INTERFACE_NOBUF_NAME=mpi_c_interface_nobuf
+        MPI_C_INTERFACE_GLUE_NAME=mpi_c_interface_glue
+        MPI_C_INTERFACE_TYPES_NAME=mpi_c_interface_types
+        MPI_C_INTERFACE_CDESC_NAME=mpi_c_interface_cdesc
     fi
     AC_SUBST(MPIMODNAME)
     AC_SUBST(MPICONSTMODNAME)
     AC_SUBST(MPISIZEOFMODNAME)
     AC_SUBST(MPIBASEMODNAME)
+
+    AC_SUBST(MPI_F08_NAME)
+    AC_SUBST(MPI_F08_LINK_CONSTANTS_NAME)
+    AC_SUBST(MPI_F08_CALLBACKS_NAME)
+    AC_SUBST(MPI_F08_TYPES_NAME)
+    AC_SUBST(MPI_F08_COMPILE_CONSTANTS_NAME)
+    AC_SUBST(PMPI_F08_NAME)
+    AC_SUBST(MPI_C_INTERFACE_NAME)
+    AC_SUBST(MPI_C_INTERFACE_NOBUF_NAME)
+    AC_SUBST(MPI_C_INTERFACE_GLUE_NAME)
+    AC_SUBST(MPI_C_INTERFACE_TYPES_NAME)
+    AC_SUBST(MPI_C_INTERFACE_CDESC_NAME)
 
     # Assume that all Fortran 90 compilers accept -I for include directories
     FCINC=-I
@@ -6049,6 +6097,36 @@ if test "X$enable_shared" = "Xyes" ; then
     AS_CASE([$host],
         [*-*-darwin*],
         [
+
+        # The linker on Darwin does not allow common symbols, thus libtool
+        # adds the -fno-common option by default for shared libraries.
+        # However, the common symbols defined in different shared libraries
+        # and object files still can not be treated as the same symbol.
+        # For example:
+        # with gfortran, the same common block in the shared libraries and
+        # the object files will have different memory locations separately;
+        # with ifort, the same common block in different shared libraries
+        # will get the same memory location but still get a different location
+        # in the object file.
+
+        # The -Wl,-commons,use_dylibs option asks linker to check dylibs for
+        # definitions and use them to replace tentative definitions(commons)
+        # from object files, thus it solves the issue of the common symbol
+        # mismatch between the object file and the dylibs (i.e., by setting
+        # the address of a common symbol to the place located in the first
+        # dylib that is linked with the object file and contains this symbol).
+        # It needs to be added only in the linking stage for the final
+        # executable file.
+
+        # On the other hand, the -flat-namespace option allows linker to
+        # unify the same common symbols in different dylibs. It needs to be
+        # added in linking stage for both the shared library and the final
+        # executable file.
+
+        # Although gfortran works fine by only adding -flat-namespace, and
+        # ifort works by only adding -Wl,-commons,use_dylibs, we should add
+        # both options here as a generic solution to make sure everything safe.
+
         # sanity check that -Wl,-flat_namespace works on darwin, unless the user
         # asked us not to add it
         if test "X$enable_two_level_namespace" = "Xno"; then
@@ -6076,35 +6154,155 @@ if test "X$enable_shared" = "Xyes" ; then
         # We only need to bother with -Wl,-commons,-use_dylibs if we are
         # building fortran bindings (no common block usage in our C libs).
         if test "X$enable_f77" = "Xyes" ; then
-            # We also don't need this argument if flat_namespace is used.
-            if test "X$enable_two_level_namespace" != "Xno" ; then
-                # TODO, move this into a PAC macro with real autoconf caching
-                pac_cv_wl_commons_use_dylibs_works=no
-                AC_MSG_CHECKING([if the F77 compiler accepts -Wl,-commons,use_dylibs])
-                AC_LANG_PUSH([Fortran 77])
-                PAC_PUSH_FLAG([LDFLAGS])
-                PAC_APPEND_FLAG([-Wl,-commons,use_dylibs], [LDFLAGS])
-                AC_LINK_IFELSE([AC_LANG_PROGRAM([],[      INTEGER i])],
-                               [AC_MSG_RESULT([yes])
-                                pac_cv_wl_commons_use_dylibs_works=yes],
-                               [AC_MSG_RESULT([no])])
-                PAC_POP_FLAG([LDFLAGS])
-                AC_LANG_POP([Fortran 77])
+            # TODO, move this into a PAC macro with real autoconf caching
+            pac_cv_wl_commons_use_dylibs_works=no
+            AC_MSG_CHECKING([if the F77 compiler accepts -Wl,-commons,use_dylibs])
+            AC_LANG_PUSH([Fortran 77])
+            PAC_PUSH_FLAG([LDFLAGS])
+            PAC_APPEND_FLAG([-Wl,-commons,use_dylibs], [LDFLAGS])
+            AC_LINK_IFELSE([AC_LANG_PROGRAM([],[      INTEGER i])],
+                           [AC_MSG_RESULT([yes])
+                            pac_cv_wl_commons_use_dylibs_works=yes],
+                           [AC_MSG_RESULT([no])])
+            PAC_POP_FLAG([LDFLAGS])
+            AC_LANG_POP([Fortran 77])
 
-                # Add the flag to the WRAPPER_LDFLAGS, since this common block issue
-                # is really only a problem for dynamically linked user programs.
-                #
-                # Technically we may not be able to use the same form of the argument
-                # for all four compilers (CC/CXX/F77/FC).  But we only think this is
-                # necessary for Darwin for now, so this unconditional, single-var
-                # approximation will work for now.
-                if test "X$pac_cv_wl_commons_use_dylibs_works" = "Xyes" ; then
-                    PAC_APPEND_FLAG([-Wl,-commons,use_dylibs], [WRAPPER_LDFLAGS])
-                fi
+            # Add the flag to the WRAPPER_LDFLAGS, since this common block issue
+            # is really only a problem for dynamically linked user programs.
+            #
+            # Technically we may not be able to use the same form of the argument
+            # for all four compilers (CC/CXX/F77/FC).  But we only think this is
+            # necessary for Darwin for now, so this unconditional, single-var
+            # approximation will work for now.
+            if test "X$pac_cv_wl_commons_use_dylibs_works" = "Xyes" ; then
+                PAC_APPEND_FLAG([-Wl,-commons,use_dylibs], [WRAPPER_LDFLAGS])
             fi
         fi
         ]
     )
+fi
+
+# Set F08 versions of datatypes, which have type MPI_Datatype and are not integers anymore.
+# If the correspoinding F77 datatypes exist, i.e., not MPI_DATATYPE_NULL, we simply use their
+# integer value (already converted into decimal) in F08 counterparts. Otherwise, we use
+# MPI_VAL value of F08 MPI_DATATYPE_NULL.
+# We put the code at the end to ensure all F77 datatypes have been set.
+
+if test "X$f08_works" = "Xyes"; then
+    for type in INTEGER1 INTEGER2 INTEGER4 INTEGER8 INTEGER16 \
+                REAL4 REAL8 REAL16 \
+                COMPLEX8 COMPLEX16 COMPLEX32; do
+        eval f77typename=F77_$type
+        eval f77typevalue=\$$f77typename
+        if test "$f77typevalue" = MPI_DATATYPE_NULL ; then
+            eval F08_$type=MPI_DATATYPE_NULL%MPI_VAL
+        else
+            eval F08_$type=$f77typevalue
+        fi
+    done
+    AC_SUBST(F08_INTEGER1)
+    AC_SUBST(F08_INTEGER2)
+    AC_SUBST(F08_INTEGER4)
+    AC_SUBST(F08_INTEGER8)
+    AC_SUBST(F08_INTEGER16)
+    AC_SUBST(F08_REAL4)
+    AC_SUBST(F08_REAL8)
+    AC_SUBST(F08_REAL16)
+    AC_SUBST(F08_COMPLEX8)
+    AC_SUBST(F08_COMPLEX16)
+    AC_SUBST(F08_COMPLEX32)
+
+    for type in PACKED UB LB BYTE \
+                CHAR SIGNED_CHAR UNSIGNED_CHAR WCHAR SHORT \
+                UNSIGNED_SHORT UNSIGNED INT LONG UNSIGNED_INT UNSIGNED_LONG \
+                FLOAT DOUBLE LONG_DOUBLE LONG_LONG_INT \
+                UNSIGNED_LONG_LONG LONG_LONG FLOAT_INT DOUBLE_INT \
+                LONG_INT SHORT_INT "2INT" LONG_DOUBLE_INT \
+                INT8_T INT16_T INT32_T INT64_T            \
+                UINT8_T UINT16_T UINT32_T UINT64_T        \
+                C_BOOL C_FLOAT_COMPLEX C_COMPLEX C_DOUBLE_COMPLEX  C_LONG_DOUBLE_COMPLEX \
+                AINT OFFSET COUNT \
+                CXX_BOOL CXX_FLOAT_COMPLEX CXX_DOUBLE_COMPLEX CXX_LONG_DOUBLE_COMPLEX; do
+        eval f77typename=MPI_F77_$type
+        eval f77typevalue=\$$f77typename
+        if test "$f77typevalue" = MPI_DATATYPE_NULL ; then
+            eval F08_$type=MPI_DATATYPE_NULL%MPI_VAL
+        else
+            eval F08_$type=$f77typevalue
+        fi
+    done
+    AC_SUBST(F08_PACKED)
+    AC_SUBST(F08_UB)
+    AC_SUBST(F08_LB)
+    AC_SUBST(F08_BYTE)
+    AC_SUBST(F08_CHAR)
+    AC_SUBST(F08_SIGNED_CHAR)
+    AC_SUBST(F08_UNSIGNED_CHAR)
+    AC_SUBST(F08_WCHAR)
+    AC_SUBST(F08_SHORT)
+    AC_SUBST(F08_UNSIGNED_SHORT)
+    AC_SUBST(F08_UNSIGNED)
+    AC_SUBST(F08_INT)
+    AC_SUBST(F08_LONG)
+    AC_SUBST(F08_UNSIGNED_INT)
+    AC_SUBST(F08_UNSIGNED_LONG)
+    AC_SUBST(F08_FLOAT)
+    AC_SUBST(F08_DOUBLE)
+    AC_SUBST(F08_LONG_DOUBLE)
+    AC_SUBST(F08_LONG_LONG_INT)
+    AC_SUBST(F08_UNSIGNED_LONG_LONG)
+    AC_SUBST(F08_LONG_LONG)
+    AC_SUBST(F08_FLOAT_INT)
+    AC_SUBST(F08_DOUBLE_INT)
+    AC_SUBST(F08_LONG_INT)
+    AC_SUBST(F08_SHORT_INT)
+    AC_SUBST(F08_2INT)
+    AC_SUBST(F08_LONG_DOUBLE_INT)
+    AC_SUBST(F08_INT8_T)
+    AC_SUBST(F08_INT16_T)
+    AC_SUBST(F08_INT32_T)
+    AC_SUBST(F08_INT64_T)
+    AC_SUBST(F08_UINT8_T)
+    AC_SUBST(F08_UINT16_T)
+    AC_SUBST(F08_UINT32_T)
+    AC_SUBST(F08_UINT64_T)
+    AC_SUBST(F08_C_BOOL)
+    AC_SUBST(F08_C_FLOAT_COMPLEX)
+    AC_SUBST(F08_C_COMPLEX)
+    AC_SUBST(F08_C_DOUBLE_COMPLEX)
+    AC_SUBST(F08_C_LONG_DOUBLE_COMPLEX)
+    AC_SUBST(F08_AINT)
+    AC_SUBST(F08_OFFSET)
+    AC_SUBST(F08_COUNT)
+    AC_SUBST(F08_CXX_BOOL)
+    AC_SUBST(F08_CXX_FLOAT_COMPLEX)
+    AC_SUBST(F08_CXX_DOUBLE_COMPLEX)
+    AC_SUBST(F08_CXX_LONG_DOUBLE_COMPLEX)
+
+    AS_CASE([$MPI_AINT],
+        [short],       [F08_C_AINT="c_short"],
+        [int],         [F08_C_AINT="c_int"],
+        [long],        [F08_C_AINT="c_long"],
+        ['long long'], [F08_C_AINT="c_long_long"],
+        [AC_MSG_ERROR([unable to determine C MPI_AINT type in Fortran 2008])])
+
+    AS_CASE([$MPI_COUNT],
+        [short],       [F08_C_COUNT="c_short"],
+        [int],         [F08_C_COUNT="c_int"],
+        [long],        [F08_C_COUNT="c_long"],
+        ['long long'], [F08_C_COUNT="c_long_long"],
+        [AC_MSG_ERROR([unable to determine C MPI_COUNT type in Fortran 2008])])
+
+    AS_CASE([$MPI_OFFSET],
+        [short],       [F08_C_OFFSET="c_short"],
+        [int],         [F08_C_OFFSET="c_int"],
+        [long],        [F08_C_OFFSET="c_long"],
+        ['long long'], [F08_C_OFFSET="c_long_long"],
+        [AC_MSG_ERROR([unable to determine C MPI_OFFSET type in Fortran 2008])])
+
+    AC_SUBST(F08_C_AINT)
+    AC_SUBST(F08_C_COUNT)
+    AC_SUBST(F08_C_OFFSET)
 fi
 
 ########################################################################
@@ -6133,6 +6331,8 @@ AC_OUTPUT(Makefile \
 	  src/binding/fortran/use_mpi/mpi_sizeofs.f90 \
 	  src/binding/fortran/use_mpi/mpi_base.f90 \
 	  src/binding/fortran/use_mpi/mpi_constants.f90 \
+	  src/binding/fortran/use_mpi_f08/mpi_f08_compile_constants.f90 \
+	  src/binding/fortran/use_mpi_f08/mpi_c_interface_types.f90 \
 	  src/packaging/pkgconfig/mpich.pc \
 	  src/packaging/envmods/mpich.module \
           src/env/mpixxx_opts.conf \

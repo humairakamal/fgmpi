@@ -135,6 +135,7 @@ MPIDI_Process_t  MPIDI_Process = {
 
   .mpir_nbc              = 1,
   .numTasks              = 0,
+  .typed_onesided        = 0,
 };
 
 
@@ -640,8 +641,8 @@ void MPIDI_Init_collsel_extension()
     MPIDI_Process.optimized.auto_select_colls = MPID_AUTO_SELECT_COLLS_NONE;
 
 #ifndef __BGQ__
-  //If collective selection will be disabled, check on fca, if both not required, disable pami alltogether
-  if(MPIDI_Process.optimized.auto_select_colls == MPID_AUTO_SELECT_COLLS_NONE && MPIDI_Process.optimized.collectives != MPID_COLL_FCA)
+  //If collective selection will be disabled, check on fca and CUDA if both not required, disable pami alltogether
+  if(MPIDI_Process.optimized.auto_select_colls == MPID_AUTO_SELECT_COLLS_NONE && MPIDI_Process.optimized.collectives != MPID_COLL_FCA && MPIDI_Process.optimized.collectives != MPID_COLL_CUDA)
     MPIDI_Process.optimized.collectives = MPID_COLL_OFF;
 #endif
 }
@@ -1016,6 +1017,7 @@ MPIDI_PAMI_init(int* rank, int* size, int* threading)
              "  optimized.num_requests: %u\n"
              "  mpir_nbc              : %u\n" 
              "  numTasks              : %u\n",
+             "  typed_onesided        : %u\n",
              MPIDI_Process.verbose,
              MPIDI_Process.statistics,
              MPIDI_Process.avail_contexts,
@@ -1052,7 +1054,8 @@ MPIDI_PAMI_init(int* rank, int* size, int* threading)
              MPIDI_Process.optimized.memory,
              MPIDI_Process.optimized.num_requests,
              MPIDI_Process.mpir_nbc, 
-             MPIDI_Process.numTasks);
+             MPIDI_Process.numTasks,
+             MPIDI_Process.typed_onesided);
       switch (*threading)
         {
           case MPI_THREAD_MULTIPLE:

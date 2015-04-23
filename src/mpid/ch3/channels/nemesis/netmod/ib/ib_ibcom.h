@@ -1,8 +1,9 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2012 NEC Corporation
- *      Author: Masamichi Takagi
- *  (C) 2012 Oct 14 Yutaka Ishikawa, ishikawa@is.s.u-tokyo.ac.jp
+ *  (C) 2012 University of Tokyo
+ *  (C) 2014 RIKEN AICS
+ *
  *      See COPYRIGHT in top-level directory.
  */
 
@@ -559,6 +560,7 @@ extern int MPID_nem_ib_com_reg_mr(void *addr, long len, struct ibv_mr **mr,
 extern int MPID_nem_ib_com_dereg_mr(struct ibv_mr *mr);
 
 extern int MPID_nem_ib_com_get_info_conn(int condesc, int key, void *out, uint32_t out_len);
+extern int MPID_nem_ib_com_get_info_pattr(int key, void *out, uint32_t out_len);
 extern int MPID_nem_ib_com_get_info_mr(int condesc, int memid, int key, void *out, int out_len);
 
 extern int MPID_nem_ib_com_rdmabuf_occupancy_notify_rate_get(int condesc, int *notify_rate);
@@ -771,7 +773,7 @@ static inline void *MPID_nem_ib_rdmawr_from_alloc(uint32_t _sz)
 static inline void MPID_nem_ib_rdmawr_from_free(const void *p, uint32_t _sz)
 {
     int clz;
-    uint32_t sz;
+    uint32_t sz _UNUSED_;
     assert(_sz <= (1ULL << 31));
     MPID_NEM_IB_RDMAWR_FROM_ALLOC_PREPROCESS_SZ;
     void *q = MPID_NEM_IB_RDMAWR_FROM_ALLOC_ARENA_START(p);

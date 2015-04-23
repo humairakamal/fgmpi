@@ -1,3 +1,10 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
+/*
+ *  (C) 2014-2015 RIKEN AICS
+ *
+ *      See COPYRIGHT in top-level directory.
+ */
+
 #define _GNU_SOURCE 1
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,7 +36,10 @@ void *ib_malloc_hook(size_t size, const void *caller);
 void ib_free_hook(void *addr, const void *caller);
 void *ib_realloc_hook(void *addr, size_t size, const void *caller);
 
-void (*__malloc_initialize_hook) (void) = _local_malloc_initialize_hook;
+#ifndef __MALLOC_HOOK_VOLATILE
+#define __MALLOC_HOOK_VOLATILE
+#endif
+void (*__MALLOC_HOOK_VOLATILE __malloc_initialize_hook) (void) = _local_malloc_initialize_hook;
 
 static pthread_mutex_t mutex;
 static int __initialized_malloc = 0;

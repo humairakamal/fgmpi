@@ -1,7 +1,8 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2013 NEC Corporation
- *      Author: Masamichi Takagi
+ *  (C) 2014-2015 RIKEN AICS
+ *
  *      See COPYRIGHT in top-level directory.
  */
 
@@ -30,9 +31,6 @@ int MPID_nem_ib_lmt_initiate_lmt(struct MPIDI_VC *vc, union MPIDI_CH3_Pkt *rts_p
     MPIDI_msg_sz_t data_sz;
     MPID_Datatype *dt_ptr;
     MPI_Aint dt_true_lb;
-#if 0
-    MPID_nem_ib_vc_area *vc_ib = VC_IB(vc);
-#endif
 
     MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_IB_LMT_INITIATE_LMT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_IB_LMT_INITIATE_LMT);
@@ -101,20 +99,19 @@ int MPID_nem_ib_lmt_initiate_lmt(struct MPIDI_VC *vc, union MPIDI_CH3_Pkt *rts_p
     /* prepare magic */
     //*((uint32_t*)(write_from_buf + data_sz - sizeof(tailmagic_t))) = MPID_NEM_IB_COM_MAGIC;
 
-#if 0   /* moving to packet header */   /* embed RDMA-write-to buffer occupancy information */
-    dprintf("lmt_initiate_lmt,rsr_seq_num_tail=%d\n", vc_ib->ibcom->rsr_seq_num_tail);
-    /* embed RDMA-write-to buffer occupancy information */
-    s_cookie_buf->seq_num_tail = vc_ib->ibcom->rsr_seq_num_tail;
-
-    /* remember the last one sent */
-    vc_ib->ibcom->rsr_seq_num_tail_last_sent = vc_ib->ibcom->rsr_seq_num_tail;
-#endif
-
     int post_num;
     uint32_t max_msg_sz;
     MPID_nem_ib_vc_area *vc_ib = VC_IB(vc);
-    MPID_nem_ib_com_get_info_conn(vc_ib->sc->fd, MPID_NEM_IB_COM_INFOKEY_PATTR_MAX_MSG_SZ,
-                                  &max_msg_sz, sizeof(uint32_t));
+
+    if (vc_ib->connection_state == MPID_NEM_IB_CM_ESTABLISHED) {
+        MPID_nem_ib_com_get_info_conn(vc_ib->sc->fd, MPID_NEM_IB_COM_INFOKEY_PATTR_MAX_MSG_SZ,
+                                      &max_msg_sz, sizeof(uint32_t));
+    }
+    else {
+        /* If connection is not established, get max_msg_sz from the global value. */
+        MPID_nem_ib_com_get_info_pattr(MPID_NEM_IB_COM_INFOKEY_PATTR_MAX_MSG_SZ, &max_msg_sz,
+                                       sizeof(uint32_t));
+    }
 
     /* Type of max_msg_sz is uint32_t. */
     post_num = (data_sz + (long) max_msg_sz - 1) / (long) max_msg_sz;
@@ -190,7 +187,7 @@ int MPID_nem_ib_lmt_start_recv_core(struct MPID_Request *req, void *raddr, uint3
     MPID_nem_ib_com_get_info_conn(vc_ib->sc->fd, MPID_NEM_IB_COM_INFOKEY_PATTR_MAX_MSG_SZ,
                                   &r_max_msg_sz, sizeof(uint32_t));
 
-    divide = (max_msg_sz + r_max_msg_sz - 1) / r_max_msg_sz;
+    divide = (len + r_max_msg_sz - 1) / r_max_msg_sz;
 
     write_pos = write_to_buf;
     posted_num = 0;
@@ -200,7 +197,7 @@ int MPID_nem_ib_lmt_start_recv_core(struct MPID_Request *req, void *raddr, uint3
 
     for (i = 0; i < divide; i++) {
         if (i == divide - 1)
-            data_sz = max_msg_sz - i * r_max_msg_sz;
+            data_sz = len - i * r_max_msg_sz;
         else
             data_sz = r_max_msg_sz;
 
@@ -210,8 +207,7 @@ int MPID_nem_ib_lmt_start_recv_core(struct MPID_Request *req, void *raddr, uint3
             else
                 last = MPID_NEM_IB_LMT_SEGMENT_LAST;    /* last part of this segment */
 
-            /* last data may be smaller than initiator's max_msg_sz */
-            if (rest_data_sz < max_msg_sz)
+            if (rest_data_sz < r_max_msg_sz)
                 data_sz = rest_data_sz;
         }
 
@@ -275,7 +271,7 @@ int MPID_nem_ib_lmt_start_recv(struct MPIDI_VC *vc, struct MPID_Request *req, MP
 {
     int mpi_errno = MPI_SUCCESS;
     int dt_contig;
-    MPIDI_msg_sz_t data_sz;
+    MPIDI_msg_sz_t data_sz _UNUSED_;
     MPID_Datatype *dt_ptr;
     MPI_Aint dt_true_lb;
     MPID_nem_ib_vc_area *vc_ib = VC_IB(vc);
@@ -335,8 +331,8 @@ int MPID_nem_ib_lmt_start_recv(struct MPIDI_VC *vc, struct MPID_Request *req, MP
         length = s_cookie_buf->max_msg_sz;
     }
 
-    REQ_FIELD(req, max_msg_sz) = s_cookie_buf->max_msg_sz; /* store initiator's max_msg_sz */
-    REQ_FIELD(req, seg_num) = s_cookie_buf->seg_num; /* store number of segments */
+    REQ_FIELD(req, max_msg_sz) = s_cookie_buf->max_msg_sz;      /* store initiator's max_msg_sz */
+    REQ_FIELD(req, seg_num) = s_cookie_buf->seg_num;    /* store number of segments */
 
     /* try to issue RDMA-read command */
     int slack = 1;              /* slack for control packet bringing sequence number */
@@ -367,14 +363,6 @@ int MPID_nem_ib_lmt_start_recv(struct MPIDI_VC *vc, struct MPID_Request *req, MP
         MPID_nem_ib_sendq_enqueue(&vc_ib->sendq, req);
     }
 
-#if 0   /* moving to packet header */
-    /* extract embeded RDMA-write-to buffer occupancy information */
-    dprintf("lmt_start_recv,old lsr_seq_num=%d,s_cookie_buf->seq_num_tail=%d\n",
-            vc_ib->ibcom->lsr_seq_num_tail, s_cookie_buf->seq_num_tail);
-    vc_ib->ibcom->lsr_seq_num_tail = s_cookie_buf->seq_num_tail;
-    //dprintf("lmt_start_recv,new lsr_seq_num=%d\n", vc_ib->ibcom->lsr_seq_num_tail);
-#endif
-
 #ifndef MPID_NEM_IB_DISABLE_VAR_OCC_NOTIFY_RATE
     /* change remote notification policy of RDMA-write-to buf */
     //dprintf("lmt_start_recv,reply_seq_num,old rstate=%d\n", vc_ib->ibcom->rdmabuf_occupancy_notify_rstate);
@@ -403,83 +391,6 @@ int MPID_nem_ib_lmt_start_recv(struct MPIDI_VC *vc, struct MPID_Request *req, MP
   fn_fail:
     goto fn_exit;
 }
-
-#if 0   /* unused function */
-/* fall-back to lmt-get if end-flag of send-buf has the same value as the end-flag of recv-buf */
-#undef FUNCNAME
-#define FUNCNAME MPID_nem_ib_lmt_switch_send
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_nem_ib_lmt_switch_send(struct MPIDI_VC *vc, struct MPID_Request *req)
-{
-    int mpi_errno = MPI_SUCCESS;
-    int dt_contig;
-    MPIDI_msg_sz_t data_sz;
-    MPID_Datatype *dt_ptr;
-    MPI_Aint dt_true_lb;
-    MPID_IOV r_cookie = req->ch.lmt_tmp_cookie;
-    MPID_nem_ib_lmt_cookie_t *r_cookie_buf = r_cookie.iov_base;
-
-    MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_IB_LMT_SWITCH_SEND);
-    MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_IB_LMT_SWITCH_SEND);
-
-    MPIDI_Datatype_get_info(req->dev.user_count, req->dev.datatype, dt_contig, data_sz, dt_ptr,
-                            dt_true_lb);
-
-    void *write_from_buf;
-    if (dt_contig) {
-        write_from_buf = req->dev.user_buf;
-    }
-    else {
-        /* see MPIDI_CH3_EagerNoncontigSend (in ch3u_eager.c) */
-        req->dev.segment_ptr = MPID_Segment_alloc();
-        MPIU_ERR_CHKANDJUMP((req->dev.segment_ptr == NULL), mpi_errno, MPI_ERR_OTHER,
-                            "**outofmemory");
-
-        MPID_Segment_init(req->dev.user_buf, req->dev.user_count, req->dev.datatype,
-                          req->dev.segment_ptr, 0);
-        req->dev.segment_first = 0;
-        req->dev.segment_size = data_sz;
-
-        MPIDI_msg_sz_t last;
-        last = req->dev.segment_size;   /* segment_size is byte offset */
-        MPIU_Assert(last > 0);
-
-        REQ_FIELD(req, lmt_pack_buf) = MPIU_Malloc(data_sz);
-        MPIU_ERR_CHKANDJUMP(!REQ_FIELD(req, lmt_pack_buf), mpi_errno, MPI_ERR_OTHER,
-                            "**outofmemory");
-
-        MPID_Segment_pack(req->dev.segment_ptr, req->dev.segment_first, &last,
-                          (char *) (REQ_FIELD(req, lmt_pack_buf)));
-        MPIU_Assert(last == req->dev.segment_size);
-
-        write_from_buf = REQ_FIELD(req, lmt_pack_buf);
-    }
-
-    //assert(dt_true_lb == 0);
-    uint8_t *tailp =
-        (uint8_t *) ((uint8_t *) write_from_buf /*+ dt_true_lb */  + data_sz - sizeof(uint8_t));
-#if 0
-    *is_end_flag_same = (r_cookie_buf->tail == *tailp) ? 1 : 0;
-#else
-    REQ_FIELD(req, lmt_receiver_tail) = r_cookie_buf->tail;
-    REQ_FIELD(req, lmt_sender_tail) = *tailp;
-    dprintf("lmt_switch_send,tail on sender=%02x,tail onreceiver=%02x,req=%p\n", *tailp,
-            r_cookie_buf->tail, req);
-#ifdef MPID_NEM_IB_DEBUG_LMT
-    uint8_t *tail_wordp = (uint8_t *) ((uint8_t *) write_from_buf + data_sz - sizeof(uint32_t) * 2);
-#endif
-    dprintf("lmt_switch_send,tail on sender=%d\n", *tail_wordp);
-    fflush(stdout);
-#endif
-
-  fn_exit:
-    MPIDI_FUNC_EXIT(MPID_STATE_MPID_NEM_IB_LMT_SWITCH_SEND);
-    return mpi_errno;
-  fn_fail:
-    goto fn_exit;
-}
-#endif
 
 /* when cookie is received in the middle of the lmt */
 #undef FUNCNAME
@@ -531,9 +442,7 @@ int MPID_nem_ib_lmt_done_send(struct MPIDI_VC *vc, struct MPID_Request *req)
     MPID_Datatype_is_contig(req->dev.datatype, &is_contig);
     if (!is_contig && REQ_FIELD(req, lmt_pack_buf)) {
         dprintf("lmt_done_send,lmt-get,non-contiguous,free lmt_pack_buf\n");
-#if 1   /* debug, enable again later */
         MPIU_Free(REQ_FIELD(req, lmt_pack_buf));
-#endif
     }
 
     /* mark completion on sreq */

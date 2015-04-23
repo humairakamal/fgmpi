@@ -10,7 +10,6 @@
 #include "adio_cb_config_list.h"
 
 #include "mpio.h"
-
 static int is_aggregator(int rank, ADIO_File fd);
 static int uses_generic_read(ADIO_File fd);
 static int uses_generic_write(ADIO_File fd);
@@ -71,6 +70,9 @@ MPI_File ADIO_Open(MPI_Comm orig_comm,
 
     fd->err_handler = ADIOI_DFLT_ERR_HANDLER;
 
+    fd->io_buf_window = MPI_WIN_NULL;
+    fd->io_buf_put_amounts_window = MPI_WIN_NULL;
+
     MPI_Comm_rank(comm, &rank);
     MPI_Comm_size(comm, &procs);
 /* create and initialize info object */
@@ -124,8 +126,8 @@ MPI_File ADIO_Open(MPI_Comm orig_comm,
     /* Instead of repeatedly allocating this buffer in collective read/write,
      * allocating up-front might make memory management on small platforms
      * (e.g. Blue Gene) more efficent */
-    fd->io_buf = ADIOI_Malloc(fd->hints->cb_buffer_size);
 
+    fd->io_buf = ADIOI_Malloc(fd->hints->cb_buffer_size);
      /* deferred open: 
      * we can only do this optimization if 'fd->hints->deferred_open' is set
      * (which means the user hinted 'no_indep_rw' and collective buffering).

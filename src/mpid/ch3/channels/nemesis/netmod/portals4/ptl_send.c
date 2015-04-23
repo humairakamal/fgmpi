@@ -41,8 +41,8 @@ static void big_meappend(void *buf, ptl_size_t left_to_send, MPIDI_VC_t *vc, ptl
         else
             me.length = left_to_send;
 
-        ret = MPID_nem_ptl_me_append(MPIDI_nem_ptl_ni, MPIDI_nem_ptl_get_pt, &me, PTL_PRIORITY_LIST, sreq,
-                                     &REQ_PTL(sreq)->get_me_p[i]);
+        ret = PtlMEAppend(MPIDI_nem_ptl_ni, MPIDI_nem_ptl_get_pt, &me, PTL_PRIORITY_LIST, sreq,
+                          &REQ_PTL(sreq)->get_me_p[i]);
         DBG_MSG_MEAPPEND("CTL", vc->pg_rank, me, sreq);
         MPIU_Assert(ret == 0);
         /* increment the cc for each get operation */
@@ -64,6 +64,9 @@ static int handler_send(const ptl_event_t *e)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Request *const sreq = e->user_ptr;
+    MPIDI_VC_t *vc = sreq->ch.vc;
+    MPID_nem_ptl_vc_area *const vc_ptl = VC_PTL(vc);
+
     int i, ret, incomplete;
 
     MPIDI_STATE_DECL(MPID_STATE_HANDLER_SEND);
@@ -73,7 +76,7 @@ static int handler_send(const ptl_event_t *e)
     MPIU_Assert(e->type == PTL_EVENT_SEND || e->type == PTL_EVENT_GET);
 
     /* if we are done, release all resources and complete the request */
-    if (sreq->cc == 1) {
+    if (MPID_cc_get(sreq->cc) == 1) {
         if (REQ_PTL(sreq)->md != PTL_INVALID_HANDLE) {
             ret = PtlMDRelease(REQ_PTL(sreq)->md);
             MPIU_ERR_CHKANDJUMP1(ret, mpi_errno, MPI_ERR_OTHER, "**ptlmdrelease", "**ptlmdrelease %s", MPID_nem_ptl_strerror(ret));
@@ -87,6 +90,10 @@ static int handler_send(const ptl_event_t *e)
             MPIU_Free(REQ_PTL(sreq)->get_me_p);
     
         MPIDI_CH3U_Request_complete(sreq);
+        vc_ptl->num_queued_sends--;
+
+        if (vc->state == MPIDI_VC_STATE_CLOSED && vc_ptl->num_queued_sends == 0)
+            MPID_nem_ptl_vc_terminated(vc);
     } else {
         MPIDI_CH3U_Request_decrement_cc(sreq, &incomplete);
     }
@@ -127,6 +134,8 @@ static int send_msg(ptl_hdr_data_t ssend_flag, struct MPIDI_VC *vc, const void *
     sreq->dev.match.parts.rank = dest;
     sreq->dev.match.parts.tag = tag;
     sreq->dev.match.parts.context_id = comm->context_id + context_offset;
+    sreq->ch.vc = vc;
+    vc_ptl->num_queued_sends++;
 
     if (!vc_ptl->id_initialized) {
         mpi_errno = MPID_nem_ptl_init_id(vc);
@@ -267,8 +276,8 @@ static int send_msg(ptl_hdr_data_t ssend_flag, struct MPIDI_VC *vc, const void *
 
                 MPIU_CHKPMEM_MALLOC(REQ_PTL(sreq)->get_me_p, ptl_handle_me_t *, sizeof(ptl_handle_me_t), mpi_errno, "get_me_p");
 
-                ret = MPID_nem_ptl_me_append(MPIDI_nem_ptl_ni, MPIDI_nem_ptl_get_pt, &me, PTL_PRIORITY_LIST, sreq,
-                                             &REQ_PTL(sreq)->get_me_p[0]);
+                ret = PtlMEAppend(MPIDI_nem_ptl_ni, MPIDI_nem_ptl_get_pt, &me, PTL_PRIORITY_LIST, sreq,
+                                  &REQ_PTL(sreq)->get_me_p[0]);
                 MPIU_ERR_CHKANDJUMP1(ret, mpi_errno, MPI_ERR_OTHER, "**ptlmeappend", "**ptlmeappend %s", MPID_nem_ptl_strerror(ret));
                 DBG_MSG_MEAPPEND("CTL", vc->pg_rank, me, sreq);
                 /* increment the cc for the get operation */

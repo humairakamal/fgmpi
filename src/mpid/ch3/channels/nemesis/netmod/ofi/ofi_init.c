@@ -12,13 +12,39 @@
 static inline int dump_and_choose_providers(info_t * prov, info_t ** prov_use);
 static inline int compile_time_checking();
 
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+cvars:
+    - name        : MPIR_CVAR_OFI_USE_PROVIDER
+      category    : DEVELOPER
+      type        : string
+      default     : NULL
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_MPIDEV_DETAIL
+      scope       : MPI_T_SCOPE_LOCAL
+      description : >-
+        If non-null, choose an OFI provider by name
+
+    - name        : MPIR_CVAR_OFI_DUMP_PROVIDERS
+      category    : DEVELOPER
+      type        : boolean
+      default     : false
+      class       : device
+      verbosity   : MPI_T_VERBOSITY_MPIDEV_DETAIL
+      scope       : MPI_T_SCOPE_LOCAL
+      description : >-
+        If true, dump provider information at init
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
 #undef FCNAME
 #define FCNAME DECL_FUNC(MPID_nem_ofi_init)
 int MPID_nem_ofi_init(MPIDI_PG_t * pg_p, int pg_rank, char **bc_val_p, int *val_max_sz_p)
 {
     int ret, fi_version, i, len, pmi_errno;
     int mpi_errno = MPI_SUCCESS;
-    info_t hints, *prov_tagged, *prov_use;
+    info_t *hints, *prov_tagged, *prov_use;
     cq_attr_t cq_attr;
     av_attr_t av_attr;
     char kvsname[OFI_KVSAPPSTRLEN], key[OFI_KVSAPPSTRLEN], bc[OFI_KVSAPPSTRLEN];
@@ -51,12 +77,11 @@ int MPID_nem_ofi_init(MPIDI_PG_t * pg_p, int pg_rank, char **bc_val_p, int *val_
     /*           We expect to register all memory up front for use with this    */
     /*           endpoint, so the netmod requires dynamic memory regions        */
     /* ------------------------------------------------------------------------ */
-    memset(&hints, 0, sizeof(hints));
-    hints.mode         = FI_CONTEXT;
-    hints.caps         = FI_TAGGED;     /* Tag matching interface    */
-    hints.caps        |= FI_CANCEL;     /* Support cancel            */
-    hints.caps        |= FI_DYNAMIC_MR; /* Global dynamic mem region */
-
+    hints                   = fi_allocinfo();
+    hints->mode             = FI_CONTEXT;
+    hints->ep_attr->type    = FI_EP_RDM;      /* Reliable datagram         */
+    hints->caps             = FI_TAGGED;      /* Tag matching interface    */
+    hints->caps            |= FI_DYNAMIC_MR;  /* Global dynamic mem region */
 
     /* ------------------------------------------------------------------------ */
     /* FI_VERSION provides binary backward and forward compatibility support    */
@@ -70,29 +95,18 @@ int MPID_nem_ofi_init(MPIDI_PG_t * pg_p, int pg_rank, char **bc_val_p, int *val_
     /* remote node or service.  this does not necessarily allocate resources.   */
     /* Pass NULL for name/service because we want a list of providers supported */
     /* ------------------------------------------------------------------------ */
-    domain_attr_t domain_attr;
-    memset(&domain_attr, 0, sizeof(domain_attr));
-
-    ep_attr_t ep_attr;
-    memset(&ep_attr, 0, sizeof(ep_attr));
-
-    tx_attr_t tx_attr;
-    memset(&tx_attr, 0, sizeof(tx_attr));
-
-    hints.ep_attr       = &ep_attr;
-    hints.ep_attr->type =  FI_EP_RDM;
-
-    domain_attr.threading        =  FI_THREAD_ENDPOINT;
-    domain_attr.control_progress =  FI_PROGRESS_AUTO;
-    domain_attr.data_progress    =  FI_PROGRESS_AUTO;
-    hints.domain_attr            = &domain_attr;
-    hints.tx_attr                = &tx_attr;
-
+    hints->domain_attr->threading        = FI_THREAD_ENDPOINT;
+    hints->domain_attr->control_progress = FI_PROGRESS_AUTO;
+    hints->domain_attr->data_progress    = FI_PROGRESS_AUTO;
+    char *provname;
+    provname                             = MPIR_CVAR_OFI_USE_PROVIDER?
+      MPIU_Strdup(MPIR_CVAR_OFI_USE_PROVIDER):NULL;
+    hints->fabric_attr->prov_name        = provname;
     FI_RC(fi_getinfo(fi_version,    /* Interface version requested               */
                      NULL,          /* Optional name or fabric to resolve        */
                      NULL,          /* Service name or port number to request    */
                      0ULL,          /* Flag:  node/service specify local address */
-                     &hints,        /* In:  Hints to filter available providers  */
+                     hints,         /* In:  Hints to filter available providers  */
                      &prov_tagged), /* Out: List of providers that match hints   */
           getinfo);
     MPIU_ERR_CHKANDJUMP4(prov_tagged == NULL, mpi_errno, MPI_ERR_OTHER,
@@ -187,6 +201,12 @@ int MPID_nem_ofi_init(MPIDI_PG_t * pg_p, int pg_rank, char **bc_val_p, int *val_
     /* --------------------------- */
     /* Free providers info         */
     /* --------------------------- */
+    if(provname) {
+      MPIU_Free(provname);
+      hints->fabric_attr->prov_name = NULL;
+    }
+
+    fi_freeinfo(hints);
     fi_freeinfo(prov_use);
 
     /* ---------------------------------------------------- */
@@ -308,8 +328,8 @@ int MPID_nem_ofi_finalize(void)
     MPI_RC(MPID_nem_ofi_cm_finalize());
 
     FI_RC(fi_close((fid_t) gl_data.mr), mrclose);
-    FI_RC(fi_close((fid_t) gl_data.av), avclose);
     FI_RC(fi_close((fid_t) gl_data.endpoint), epclose);
+    FI_RC(fi_close((fid_t) gl_data.av), avclose);
     FI_RC(fi_close((fid_t) gl_data.cq), cqclose);
     FI_RC(fi_close((fid_t) gl_data.domain), domainclose);
     FI_RC(fi_close((fid_t) gl_data.fabric), fabricclose);
@@ -350,11 +370,9 @@ static inline int compile_time_checking()
     MPIU_ERR_SET2(e, MPI_ERR_OTHER, "**ofi_avclose", "**ofi_avclose %s %d %s %s", a, b, a, a);
     MPIU_ERR_SET2(e, MPI_ERR_OTHER, "**ofi_epclose", "**ofi_epclose %s %d %s %s", a, b, a, a);
     MPIU_ERR_SET2(e, MPI_ERR_OTHER, "**ofi_cqclose", "**ofi_cqclose %s %d %s %s", a, b, a, a);
-    MPIU_ERR_SET2(e, MPI_ERR_OTHER, "**ofi_fabricclose", "**ofi_fabricclose %s %d %s %s", a, b, a,
-                  a);
-    MPIU_ERR_SET2(e, MPI_ERR_OTHER, "**ofi_domainclose", "**ofi_domainclose %s %d %s %s", a, b, a,
-                  a);
-    MPIU_ERR_SET2(e, MPI_ERR_OTHER, "**ofi_tsearch", "**ofi_tsearch %s %d %s %s", a, b, a, a);
+    MPIU_ERR_SET2(e, MPI_ERR_OTHER, "**ofi_fabricclose", "**ofi_fabricclose %s %d %s %s", a, b, a,a);
+    MPIU_ERR_SET2(e, MPI_ERR_OTHER, "**ofi_domainclose", "**ofi_domainclose %s %d %s %s", a, b, a,a);
+    MPIU_ERR_SET2(e, MPI_ERR_OTHER, "**ofi_peek", "**ofi_peek %s %d %s %s", a, b, a, a);
     MPIU_ERR_SET2(e, MPI_ERR_OTHER, "**ofi_poll", "**ofi_poll %s %d %s %s", a, b, a, a);
     MPIU_ERR_SET2(e, MPI_ERR_OTHER, "**ofi_cancel", "**ofi_cancel %s %d %s %s", a, b, a, a);
 #endif
@@ -362,28 +380,12 @@ static inline int compile_time_checking()
 }
 
 
-/*
-=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
-
-cvars:
-    - name        : MPIR_CVAR_DUMP_PROVIDERS
-      category    : DEVELOPER
-      type        : boolean
-      default     : false
-      class       : device
-      verbosity   : MPI_T_VERBOSITY_MPIDEV_DETAIL
-      scope       : MPI_T_SCOPE_LOCAL
-      description : >-
-        If true, dump provider information at init
-
-=== END_MPI_T_CVAR_INFO_BLOCK ===
-*/
 static inline int dump_and_choose_providers(info_t * prov, info_t ** prov_use)
 {
   info_t *p = prov;
   int     i = 0;
   *prov_use = prov;
-  if (MPIR_CVAR_DUMP_PROVIDERS) {
+  if (MPIR_CVAR_OFI_DUMP_PROVIDERS) {
     fprintf(stdout, "Dumping Providers(first=%p):\n", prov);
     while(p) {
       fprintf(stdout, "%s", fi_tostr(p, FI_TYPE_INFO));

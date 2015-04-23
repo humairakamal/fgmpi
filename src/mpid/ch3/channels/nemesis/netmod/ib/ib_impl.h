@@ -1,7 +1,8 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2012 NEC Corporation
- *      Author: Masamichi Takagi
+ *  (C) 2014-2015 RIKEN AICS
+ *
  *      See COPYRIGHT in top-level directory.
  */
 
@@ -22,6 +23,12 @@
    (3) sender fetch CQE (4) receiver polls on end-flag
 */
 #define MPID_NEM_IB_ONDEMAND
+
+#ifdef __GNUC__
+#define _UNUSED_ __attribute__ ((__unused__))
+#else
+#define _UNUSED_
+#endif
 
 typedef struct {
     union ibv_gid gid;
@@ -55,8 +62,12 @@ typedef struct {
 
 /* macro for secret area in vc */
 #define VC_CH(vc) ((MPIDI_CH3I_VC *)&(vc)->ch)
-#define VC_IB(vc) ((MPID_nem_ib_vc_area *)VC_CH((vc))->netmod_area.padding)
-#define VC_FIELD(vcp, field) (((MPID_nem_ib_vc_area *)VC_CH(((vcp)))->netmod_area.padding)->field)
+static inline MPID_nem_ib_vc_area *VC_IB(MPIDI_VC_t * vc)
+{
+    return (MPID_nem_ib_vc_area *) vc->ch.netmod_area.padding;
+}
+
+#define VC_FIELD(vcp, field) VC_IB(vcp)->field
 
 /* The req provides a generic buffer in which network modules can store
    private fields This removes all dependencies from the req structure
@@ -88,8 +99,12 @@ typedef struct {
 } MPID_nem_ib_req_area;
 
 /* macro for secret area in req */
-#define REQ_IB(req) ((MPID_nem_ib_req_area *)(&(req)->ch.netmod_area.padding))
-#define REQ_FIELD(reqp, field) (((MPID_nem_ib_req_area *)((reqp)->ch.netmod_area.padding))->field)
+static inline MPID_nem_ib_req_area *REQ_IB(MPID_Request * req)
+{
+    return (MPID_nem_ib_req_area *) req->ch.netmod_area.padding;
+}
+
+#define REQ_FIELD(reqp, field) (REQ_IB(reqp)->field)
 
 /* see src/mpid/ch3/channels/nemesis/include/mpidi_ch3_impl.h */
 /* sreq is never enqueued into posted-queue nor unexpected-queue, so we can reuse sreq->dev.next */
@@ -484,7 +499,7 @@ static inline int MPID_nem_ib_cbf_hash1(uint64_t addr)
         (((addr >> (MPID_nem_ib_cbf_lognslot * 0)) & (MPID_nem_ib_cbf_nslot - 1)) ^
          ((addr >> (MPID_nem_ib_cbf_lognslot * 3)) & (MPID_nem_ib_cbf_nslot - 1)) ^
          (((addr >> (MPID_nem_ib_cbf_lognslot * 6)) & (MPID_nem_ib_cbf_nslot - 1))
-         + 1)) & (MPID_nem_ib_cbf_nslot - 1);
+          + 1)) & (MPID_nem_ib_cbf_nslot - 1);
 }
 
 static inline int MPID_nem_ib_cbf_hash2(uint64_t addr)
@@ -494,7 +509,7 @@ static inline int MPID_nem_ib_cbf_hash2(uint64_t addr)
         (((addr >> (MPID_nem_ib_cbf_lognslot * 1)) & (MPID_nem_ib_cbf_nslot - 1)) ^
          ((addr >> (MPID_nem_ib_cbf_lognslot * 4)) & (MPID_nem_ib_cbf_nslot - 1)) ^
          (((addr >> (MPID_nem_ib_cbf_lognslot * 7)) & (MPID_nem_ib_cbf_nslot - 1))
-         + 1)) & (MPID_nem_ib_cbf_nslot - 1);
+          + 1)) & (MPID_nem_ib_cbf_nslot - 1);
 }
 
 static inline int MPID_nem_ib_cbf_hash3(uint64_t addr)
@@ -504,7 +519,7 @@ static inline int MPID_nem_ib_cbf_hash3(uint64_t addr)
         (((addr >> (MPID_nem_ib_cbf_lognslot * 2)) & (MPID_nem_ib_cbf_nslot - 1)) ^
          ((addr >> (MPID_nem_ib_cbf_lognslot * 5)) & (MPID_nem_ib_cbf_nslot - 1)) ^
          (((addr >> (MPID_nem_ib_cbf_lognslot * 8)) & (MPID_nem_ib_cbf_nslot - 1))
-         + 2)) & (MPID_nem_ib_cbf_nslot - 1);
+          + 2)) & (MPID_nem_ib_cbf_nslot - 1);
 
 }
 
@@ -698,9 +713,6 @@ extern uint8_t MPID_nem_ib_lmt_tail_addr_cbf[MPID_nem_ib_cbf_nslot *
 typedef struct {
     void *addr;
     uint32_t rkey;
-#if 0                           /* moving to packet header */
-    int seq_num_tail;           /* notify RDMA-write-to buffer occupation */
-#endif
     uint8_t tail;               /* last word of payload */
     uint32_t max_msg_sz;        /* max message size */
     int seg_seq_num;
@@ -711,16 +723,16 @@ typedef struct {
     void *addr;
     uint32_t rkey;
     uint8_t tail;               /* last word of payload */
-    int len;
+    long len;
     MPI_Request sender_req_id;  /* request id of sender side */
+    MPI_Request receiver_req_id;        /* request id of sender side */
     uint32_t max_msg_sz;        /* max message size */
+    int seg_seq_num;
+    int seg_num;
 } MPID_nem_ib_rma_lmt_cookie_t;
 
 typedef enum MPID_nem_ib_pkt_subtype {
     MPIDI_NEM_IB_PKT_EAGER_SEND,
-#if 0                           /* modification of mpid_nem_lmt.c is required */
-    MPIDI_NEM_IB_PKT_LMT_RTS,
-#endif
     MPIDI_NEM_IB_PKT_RMA_LMT_RTS,
     MPIDI_NEM_IB_PKT_PUT,
     MPIDI_NEM_IB_PKT_ACCUMULATE,
@@ -791,28 +803,9 @@ typedef struct MPID_nem_ib_pkt_change_rdmabuf_occupancy_notify_state_t {
 int MPID_nem_ib_PktHandler_EagerSend(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
                                      MPIDI_msg_sz_t * buflen /* out */ ,
                                      MPID_Request ** rreqp /* out */);
-#if 0   /* modification of mpid_nem_lmt.c is required */
-int MPID_nem_ib_pkt_RTS_handler(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
-                                MPIDI_msg_sz_t * buflen /* out */ ,
-                                MPID_Request ** rreqp /* out */);
-#endif
 int MPID_nem_ib_PktHandler_rma_lmt_rts(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
                                        MPIDI_msg_sz_t * buflen /* out */ ,
                                        MPID_Request ** rreqp /* out */);
-#if 0
-int MPID_nem_ib_PktHandler_Put(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
-                               MPIDI_msg_sz_t * buflen /* out */ ,
-                               MPID_Request ** rreqp /* out */);
-int MPID_nem_ib_PktHandler_Accumulate(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
-                                      MPIDI_msg_sz_t * buflen /* out */ ,
-                                      MPID_Request ** rreqp /* out */);
-int MPID_nem_ib_PktHandler_Get(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
-                               MPIDI_msg_sz_t * buflen /* out */ ,
-                               MPID_Request ** rreqp /* out */);
-int MPID_nem_ib_PktHandler_GetResp(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
-                                   MPIDI_msg_sz_t * buflen /* out */ ,
-                                   MPID_Request ** rreqp /* out */);
-#endif
 int MPID_nem_ib_PktHandler_lmt_done(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
                                     MPIDI_msg_sz_t * buflen, MPID_Request ** rreqp);
 int MPID_nem_ib_pkt_GET_DONE_handler(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
@@ -938,13 +931,13 @@ int pkt_DONE_handler(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt, MPIDI_msg_sz_t * bu
         }                                                                                                       \
     } while (0)
 
-#define MPID_nem_ib_lmt_send_RTS(vc, _req_id, _addr, _rkey, _seg_seq_num) do {          \
+#define MPID_nem_ib_lmt_send_RTS(_subtype, vc, _req_id, _addr, _rkey, _seg_seq_num) do {          \
         MPID_PKT_DECL_CAST(_upkt, MPID_nem_ib_pkt_lmt_rts_t, _rts_pkt);                                        \
         MPID_Request *_rts_req;                                                                                \
                                                                                                                \
         MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"sending rndv RTS segment packet"); \
         MPIDI_Pkt_init(_rts_pkt, MPIDI_NEM_PKT_NETMOD); \
-        _rts_pkt->subtype = MPIDI_NEM_IB_PKT_LMT_RTS;\
+        _rts_pkt->subtype = _subtype;\
         _rts_pkt->req_id = _req_id; \
         _rts_pkt->addr = _addr; \
         _rts_pkt->rkey = _rkey; \
@@ -973,6 +966,7 @@ int pkt_DONE_handler(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt, MPIDI_msg_sz_t * bu
         MPIDI_Pkt_init(_done_pkt, MPIDI_NEM_PKT_NETMOD); \
         _done_pkt->subtype = MPIDI_NEM_IB_PKT_RMA_LMT_GET_DONE;\
         _done_pkt->req_id = (rreq)->ch.lmt_req_id; \
+        _done_pkt->receiver_req_id = (rreq)->handle; \
             /* embed SR occupancy information */ \
         _done_pkt->seq_num_tail = VC_FIELD(vc, ibcom->rsr_seq_num_tail); \
  \
@@ -1010,10 +1004,16 @@ static inline void *MPID_nem_ib_stmalloc(size_t _sz)
         sz >>= 1;
     } while (sz > 0);
     if (i < 12) {
-        return MPIU_Malloc(sz);
+        return MPIU_Malloc(_sz);
     }
     if (i > 30) {
-        return mmap(0, sz, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+        void *addr = mmap(0, _sz, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+        if (addr == (void *) -1) {
+            return NULL;
+        }
+        else {
+            return addr;
+        }
     }
     int ndx = i - 12;
     void *slot;
@@ -1033,12 +1033,13 @@ static inline void *MPID_nem_ib_stmalloc(size_t _sz)
     return slot;
 }
 
-static inline void MPID_nem_ib_stfree(void *ptr, size_t sz)
+static inline void MPID_nem_ib_stfree(void *ptr, size_t _sz)
 {
     if (MPID_nem_ib_myrank == 1) {
         //printf("stfree,%p,%08x\n", ptr, (int)sz);
     }
     int i = 0;
+    size_t sz = _sz;
     do {
         i++;
         sz >>= 1;
@@ -1048,7 +1049,7 @@ static inline void MPID_nem_ib_stfree(void *ptr, size_t sz)
         goto fn_exit;
     }
     if (i > 30) {
-        munmap(ptr, sz);
+        munmap(ptr, _sz);
         goto fn_exit;
     }
     int ndx = i - 12;

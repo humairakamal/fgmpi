@@ -216,7 +216,7 @@ static int pkt_RTS_handler(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, MPIDI_msg_sz_t 
     /* If the completion counter is 0, that means that the communicator to
      * which this message is being sent has been revoked and we shouldn't
      * bother finishing this. */
-    if (!found && rreq->cc == 0) {
+    if (!found && MPID_cc_get(rreq->cc) == 0) {
         *rreqp = NULL;
         goto fn_exit;
     }
@@ -473,13 +473,14 @@ static int pkt_COOKIE_handler(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, MPIDI_msg_sz
 
     if (cookie_pkt->from_sender) {
         MPID_Request_get_ptr(cookie_pkt->receiver_req_id, req);
+        MPIU_Assert(req != NULL);
         req->ch.lmt_req_id = cookie_pkt->sender_req_id;
     }
     else {
         MPID_Request_get_ptr(cookie_pkt->sender_req_id, req);
+        MPIU_Assert(req != NULL);
         req->ch.lmt_req_id = cookie_pkt->receiver_req_id;
     }
-    MPIU_Assert(req != NULL);
 
     if (cookie_pkt->cookie_len != 0)
     {

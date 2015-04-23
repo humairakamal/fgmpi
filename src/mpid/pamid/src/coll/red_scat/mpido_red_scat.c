@@ -63,9 +63,9 @@ int MPIDO_Reduce_scatter(const void *sendbuf,
        if(is_send_dev_buf)
        {
          scbuf = MPIU_Malloc(dt_extent * total_buf);
-         cudaError_t cudaerr = cudaMemcpy(scbuf, sendbuf, dt_extent * total_buf, cudaMemcpyDeviceToHost);
+         cudaError_t cudaerr = CudaMemcpy(scbuf, sendbuf, dt_extent * total_buf, cudaMemcpyDeviceToHost);
          if (cudaSuccess != cudaerr) 
-           fprintf(stderr, "cudaMemcpy failed: %s\n", cudaGetErrorString(cudaerr));
+           fprintf(stderr, "cudaMemcpy failed: %s\n", CudaGetErrorString(cudaerr));
        }
        else
          scbuf = sendbuf;
@@ -73,7 +73,14 @@ int MPIDO_Reduce_scatter(const void *sendbuf,
        if(is_recv_dev_buf)
        {
          rcbuf = MPIU_Malloc(total_buf * dt_extent);
-         memset(rcbuf, 0, total_buf * dt_extent);
+         if(sendbuf == MPI_IN_PLACE)
+         {
+           cudaError_t cudaerr = CudaMemcpy(rcbuf, recvbuf, dt_extent * total_buf, cudaMemcpyDeviceToHost);
+           if (cudaSuccess != cudaerr)
+             fprintf(stderr, "cudaMemcpy failed: %s\n", CudaGetErrorString(cudaerr));
+         }
+         else
+           memset(rcbuf, 0, total_buf * dt_extent);
        }
        else
          rcbuf = recvbuf;
@@ -82,9 +89,9 @@ int MPIDO_Reduce_scatter(const void *sendbuf,
        if(is_send_dev_buf)MPIU_Free(scbuf);
        if(is_recv_dev_buf)
        {
-         cudaError_t cudaerr = cudaMemcpy(recvbuf, rcbuf, dt_extent * total_buf, cudaMemcpyHostToDevice);
+         cudaError_t cudaerr = CudaMemcpy(recvbuf, rcbuf, dt_extent * total_buf, cudaMemcpyHostToDevice);
          if (cudaSuccess != cudaerr)
-           fprintf(stderr, "cudaMemcpy failed: %s\n", cudaGetErrorString(cudaerr));
+           fprintf(stderr, "cudaMemcpy failed: %s\n", CudaGetErrorString(cudaerr));
          MPIU_Free(rcbuf);
        }
        return cuda_res;
@@ -129,9 +136,9 @@ int MPIDO_Reduce_scatter_block(const void *sendbuf,
        if(is_send_dev_buf)
        {
          scbuf = MPIU_Malloc(dt_extent * recvcount * size);
-         cudaError_t cudaerr = cudaMemcpy(scbuf, sendbuf, dt_extent * recvcount * size, cudaMemcpyDeviceToHost);
+         cudaError_t cudaerr = CudaMemcpy(scbuf, sendbuf, dt_extent * recvcount * size, cudaMemcpyDeviceToHost);
          if (cudaSuccess != cudaerr) 
-           fprintf(stderr, "cudaMemcpy failed: %s\n", cudaGetErrorString(cudaerr));
+           fprintf(stderr, "cudaMemcpy failed: %s recvbuf: %p scbuf: %p is_send_dev_buf: %d is_recv_dev_buf: %p sendbuf: %p\n", CudaGetErrorString(cudaerr), recvbuf, scbuf, is_send_dev_buf,is_recv_dev_buf, sendbuf );
        }
        else
          scbuf = sendbuf;
@@ -139,7 +146,14 @@ int MPIDO_Reduce_scatter_block(const void *sendbuf,
        if(is_recv_dev_buf)
        {
          rcbuf = MPIU_Malloc(dt_extent * recvcount * size);
-         memset(rcbuf, 0, dt_extent * recvcount * size);
+         if(sendbuf == MPI_IN_PLACE)
+         {
+           cudaError_t cudaerr = CudaMemcpy(rcbuf, recvbuf, dt_extent * recvcount * size, cudaMemcpyDeviceToHost);
+           if (cudaSuccess != cudaerr)
+             fprintf(stderr, "cudaMemcpy failed: %s\n", CudaGetErrorString(cudaerr));
+         }
+         else
+           memset(rcbuf, 0, recvcount * size * dt_extent);
        }
        else
          rcbuf = recvbuf;
@@ -152,9 +166,9 @@ int MPIDO_Reduce_scatter_block(const void *sendbuf,
        if(is_send_dev_buf)MPIU_Free(scbuf);
        if(is_recv_dev_buf)
        {
-         cudaError_t cudaerr = cudaMemcpy(recvbuf, rcbuf, dt_extent * recvcount * size, cudaMemcpyHostToDevice);
+         cudaError_t cudaerr = CudaMemcpy(recvbuf, rcbuf, dt_extent * recvcount * size, cudaMemcpyHostToDevice);
          if (cudaSuccess != cudaerr)
-           fprintf(stderr, "cudaMemcpy failed: %s\n", cudaGetErrorString(cudaerr));
+           fprintf(stderr, "cudaMemcpy failed: %s recvbuf: %p rcbuf: %p is_send_dev_buf: %d is_recv_dev_buf: %p sendbuf: %p\n", CudaGetErrorString(cudaerr), recvbuf, rcbuf, is_send_dev_buf,is_recv_dev_buf, sendbuf );
          MPIU_Free(rcbuf);
        }
        return cuda_res;

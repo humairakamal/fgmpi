@@ -68,10 +68,9 @@ static inline int MPID_nem_ofi_recv_callback(cq_tagged_entry_t * wc, MPID_Reques
     /* ---------------------------------------------------- */
     rreq->status.MPI_ERROR = MPI_SUCCESS;
     rreq->status.MPI_SOURCE = get_source(wc->tag);
-    rreq->status.MPI_TAG = get_tag(wc->tag);
+    rreq->status.MPI_TAG    = get_tag(wc->tag);
     REQ_OFI(rreq)->req_started = 1;
     MPIR_STATUS_SET_COUNT(rreq->status, wc->len);
-
     if (REQ_OFI(rreq)->pack_buffer) {
         MPIDI_CH3U_Buffer_copy(REQ_OFI(rreq)->pack_buffer,
                                MPIR_STATUS_GET_COUNT(rreq->status),
@@ -250,13 +249,25 @@ int MPID_nem_ofi_recv_posted(struct MPIDI_VC *vc, struct MPID_Request *rreq)
     /* ---------------- */
     /* Post the receive */
     /* ---------------- */
-    FI_RC(fi_trecv(gl_data.endpoint,
-                       recv_buffer,
-                       data_sz,
-                       gl_data.mr,
-                       remote_proc,
-                       match_bits, mask_bits, &(REQ_OFI(rreq)->ofi_context)), trecv);
-    MPID_nem_ofi_poll(MPID_NONBLOCKING_POLL);
+    uint64_t     msgflags;
+    iovec_t      iov;
+    msg_tagged_t msg;
+    iov.iov_base = recv_buffer;
+    iov.iov_len  = data_sz;
+    if(REQ_OFI(rreq)->match_state == PEEK_FOUND)
+      msgflags = FI_CLAIM;
+    else
+      msgflags = 0ULL;
+
+    msg.msg_iov   = &iov;
+    msg.desc      = NULL;
+    msg.iov_count = 1;
+    msg.addr      = remote_proc;
+    msg.tag       = match_bits;
+    msg.ignore    = mask_bits;
+    msg.context   = (void *) &(REQ_OFI(rreq)->ofi_context);
+    msg.data      = 0;
+    FI_RC(fi_trecvmsg(gl_data.endpoint,&msg,msgflags), trecv);
     END_FUNC_RC(FCNAME);
 }
 
@@ -376,7 +387,7 @@ void MPID_nem_ofi_anysource_posted(MPID_Request * rreq)
 #define FCNAME DECL_FUNC(MPID_nem_ofi_anysource_matched)
 int MPID_nem_ofi_anysource_matched(MPID_Request * rreq)
 {
-    int mpi_errno = FALSE;
+    int mpi_errno = TRUE;
     int ret;
     BEGIN_FUNC(FCNAME);
     /* ----------------------------------------------------- */
@@ -389,10 +400,7 @@ int MPID_nem_ofi_anysource_matched(MPID_Request * rreq)
         /* --------------------------------------------------- */
         /* Request cancelled:  cancel and complete the request */
         /* --------------------------------------------------- */
-        mpi_errno = TRUE;
-        MPIR_STATUS_SET_CANCEL_BIT(rreq->status, TRUE);
-        MPIR_STATUS_SET_COUNT(rreq->status, 0);
-        MPIDI_CH3U_Request_complete(rreq);
+        mpi_errno = FALSE;
     }
     END_FUNC(FCNAME);
     return mpi_errno;
