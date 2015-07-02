@@ -40,6 +40,7 @@
 
 #if defined(FINEGRAIN_MPI)
 #include "fgmpiimpl.h"
+#include "mpiu_uthash.h"
 #endif
 
 /* if we are defining this, we must define it before including mpl.h */
@@ -1136,6 +1137,9 @@ typedef enum MPID_Comm_hierarchy_kind_t {
     MPID_HIERARCHY_PARENT = 1,      /* has subcommunicators */
     MPID_HIERARCHY_NODE_ROOTS = 2,  /* is the subcomm for node roots */
     MPID_HIERARCHY_NODE = 3,        /* is the subcomm for a node */
+#if defined(FINEGRAIN_MPI)
+    MPID_HIERARCHY_COLOCATED = 4,   /* is the subcomm for colocated in an OS-process */
+#endif
     MPID_HIERARCHY_SIZE             /* cardinality of this enum */
 } MPID_Comm_hierarchy_kind_t;
 /* Communicators */
@@ -1211,12 +1215,6 @@ typedef struct MPID_Comm {
     int           p_rank;        /* This is now value of HWP rank _p_rank_*/
     int           totprocs;      /* Total number of processes including all the FGPs. Value of MPI_Comm_size */
     struct Coproclet_shared_vars * co_shared_vars; /* This encapsulates pointers to rtw_map and co_barrier_vars among others */
-    MPI_Comm *coFGP_comm;        /* FG: TODO nested communicator of all those FGPs that have the same HWP pid as the calling FGP */
-    MPI_Comm *pid_comm;          /* FG: TODO nested communicator of a respresentative set of FGPs: one each from every unique pid*/
-    int isRepresentative;        /* This is true if the calling FGP is included in the representative set of FGPs for pid_comm */
-    int numofcoFGPs;             /* FG: TODO */
-    int numPidsInComm;           /* FG: TODO */
-    MPID_nem_barrier_vars_t *barrier_vars; /*FG: TODO: This can be eventually removed, now that hierarchical shared memory barrier is in place. Currently in use for nested comm */
 #endif
     MPID_VCRT     vcrt;          /* virtual connecton reference table */
     MPID_VCR *    vcr;           /* alias to the array of virtual connections
@@ -1239,6 +1237,9 @@ typedef struct MPID_Comm {
     struct MPID_Comm *node_comm; /* Comm of processes in this comm that are on
                                     the same node as this process. */
     struct MPID_Comm *node_roots_comm; /* Comm of root processes for other nodes. */
+#if defined(FINEGRAIN_MPI)
+    struct MPID_Comm *osproc_colocated_comm; /* Comm of colocated processes in an OS-process. */
+#endif
     int *intranode_table;        /* intranode_table[i] gives the rank in
                                     node_comm of rank i in this comm or -1 if i
                                     is not in this process' node_comm.
@@ -1387,6 +1388,9 @@ extern MPID_Comm MPID_Comm_direct[];
 #define MPID_CONTEXT_PARENT_OFFSET    (0 << MPID_CONTEXT_SUBCOMM_SHIFT)
 #define MPID_CONTEXT_INTRANODE_OFFSET (1 << MPID_CONTEXT_SUBCOMM_SHIFT)
 #define MPID_CONTEXT_INTERNODE_OFFSET (2 << MPID_CONTEXT_SUBCOMM_SHIFT)
+#if defined(FINEGRAIN_MPI)
+#define MPID_CONTEXT_COLOCATED_OFFSET (MPID_CONTEXT_INTRANODE_OFFSET | MPID_CONTEXT_INTERNODE_OFFSET)
+#endif
 
 /* this field (IS_LOCALCOM) is used to derive a context ID for local
  * communicators of intercommunicators without communication */
@@ -2298,7 +2302,7 @@ struct StateWrapper {
 };
 extern MPID_VCRT     vcrt_world;          /* virtual connecton reference table for MPI_COMM_WORLD */
 extern MPID_VCR *    vcr_world;           /* alias to the array of virtual connections in vcrt_world */
-extern MPIDI_CH3I_comm_t *world_ch3i_ptr; /* FG: TODO */
+
 #else
 extern MPICH_PerProcess_t MPIR_Process;
 #endif

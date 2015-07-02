@@ -19,7 +19,6 @@ MPID_VCRT     vcrt_world;          /* virtual connecton reference table for MPI_
 MPID_VCR *    vcr_world;           /* alias to the array of virtual connections in vcrt_world */
 hshtbl *cidLookup_hshtbl;          /* FG: This is the new cid lookup hashtable that will be used with
                                     the new CID = <LID,LBI> algorithm. */
-MPIDI_CH3I_comm_t *world_ch3i_ptr; /* FG: TODO IMPORTANT definition changed! */
 Coproclet_shared_vars_t * world_co_shared_vars;
 
 

@@ -117,6 +117,13 @@ int MPIR_Comm_init(MPID_Comm *comm_p)
 
     MPIU_THREAD_MPI_OBJ_INIT(comm_p); /* FG: TODO Double-check */
 
+#if defined(FINEGRAIN_MPI)
+    comm_p->p_rank = -1;
+    comm_p->totprocs = -1;
+    comm_p->co_shared_vars = NULL;
+    comm_p->osproc_colocated_comm = NULL;
+#endif
+
     /* Clear many items (empty means to use the default; some of these
        may be overridden within the upper-level communicator initialization) */
     comm_p->errhandler   = NULL;
@@ -175,7 +182,7 @@ int MPIR_Comm_create( MPID_Comm **newcomm_ptr )
     /* Insert this new communicator into the list of known communicators.
        Make this conditional on debugger support to match the test in 
        MPIR_Comm_release . */
-    MPIR_COMML_REMEMBER( newptr );
+    MPIR_COMML_REMEMBER( newptr ); /* FG: TODO IMPORTANT NON-SCALABLE! Used for debugging */
 
  fn_fail:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_COMM_CREATE);
@@ -329,7 +336,10 @@ static int init_default_collops(void)
                 break;
             case MPID_HIERARCHY_NODE_ROOTS:
                 break;
-
+#if defined(FINEGRAIN_MPI)
+            case MPID_HIERARCHY_COLOCATED:
+                break;
+#endif
                 /* --BEGIN ERROR HANDLING-- */
             default:
                 MPIU_Assertp(FALSE);
@@ -408,7 +418,7 @@ static int set_collops(MPID_Comm *comm)
         goto fn_exit;
 
     if (unlikely(!initialized)) {
-        mpi_errno = init_default_collops(); /* FG: TODO */
+        mpi_errno = init_default_collops();
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
         initialized = TRUE;
@@ -422,13 +432,50 @@ static int set_collops(MPID_Comm *comm)
         comm->coll_fns = ic_default_collops;
     }
 
-    comm->coll_fns->ref_count++;
+    comm->coll_fns->ref_count++; /* FG: TODO DOUBLE-CHECK ref_count
+                                    will be incremented by all
+                                    colocated so should be decremented
+                                    by all colocated in
+                                    MPI_Finalize */
 
 fn_exit:
     return mpi_errno;
 fn_fail:
     goto fn_exit;
 }
+
+
+#if defined(FINEGRAIN_MPI)
+#define FREE_HASH(hash,hashtype)                        \
+    do {                                                \
+        if (NULL != hash) {                             \
+            hashtype *current_entry, *tmp;              \
+            HASH_ITER(hh, hash, current_entry, tmp) {   \
+                HASH_DEL(hash,current_entry);           \
+                MPIU_Free(current_entry);               \
+            }                                           \
+        }                                               \
+        MPIU_Assert(NULL == hash);                      \
+    } while(0)
+
+#define EXTRACT_ARRAY_FREE_HASH(hash,hashtype,fillarray,arraysize)      \
+    do {                                                                \
+        if (NULL != hash) {                                             \
+            hashtype *current_entry, *tmp;                              \
+            int count = 0;                                              \
+            HASH_ITER(hh, hash, current_entry, tmp) {                   \
+                MPIU_Assert((current_entry->rank < arraysize) && (current_entry->rank >= 0)) ; \
+                fillarray[current_entry->rank] = current_entry->worldrank; \
+                count++;                                                \
+                HASH_DEL(hash,current_entry);                           \
+                MPIU_Free(current_entry);                               \
+            }                                                           \
+            MPIU_Assert(count == arraysize);                            \
+            MPIU_Assert(NULL == hash);                                  \
+        }                                                               \
+    } while(0)
+
+#endif
 
 /* Provides a hook for the top level functions to perform some manipulation on a
    communicator just before it is given to the application level.
@@ -441,12 +488,18 @@ fn_fail:
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Comm_commit(MPID_Comm *comm)
 {
-    return (MPI_SUCCESS); /* FG: TODO IMPORTANT This is temporary */
     int mpi_errno = MPI_SUCCESS;
     int i;
     int num_local = -1, num_external = -1;
     int local_rank = -1, external_rank = -1;
+#if defined(FINEGRAIN_MPI)
+    int num_fg_local = -1;
+    int fg_local_rank = -1;
+    int comm_leader_worldrank = -1, comm_leader = 0; /* comm_leader is smallest rank (i.e. 0) in comm */
+    cLitemptr stored = NULL;
+#else
     int *local_procs = NULL, *external_procs = NULL;
+#endif
     MPID_MPI_STATE_DECL(MPID_STATE_MPIR_COMM_COMMIT);
 
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_COMM_COMMIT);
@@ -458,11 +511,41 @@ int MPIR_Comm_commit(MPID_Comm *comm)
     MPIU_Assert(comm->node_roots_comm == NULL);
 
     if (comm->comm_kind == MPID_INTRACOMM) {
+#if defined(FINEGRAIN_MPI)
+        MPIU_Assert(comm->co_shared_vars);
+        MPIDI_Comm_get_pid_worldrank(comm, comm_leader, NULL, &comm_leader_worldrank);
+        if (comm->co_shared_vars->ptn_hash == NULL) {
+            mpi_errno = MPIU_Nested_maps_for_communicators(comm);
+            /* --BEGIN ERROR HANDLING-- */
+            if (mpi_errno) {
+                if (MPIR_Err_is_fatal(mpi_errno)) MPIU_ERR_POP(mpi_errno);
 
+                /* Non-fatal errors simply mean that this communicator will not have
+                   any node awareness.  Node-aware collectives are an optimization. */
+                MPIU_DBG_MSG_P(COMM,VERBOSE,"MPIU_Nested_maps_for_communicators failed for comm_ptr=%p", comm);
+
+                FREE_HASH(comm->co_shared_vars->ptn_hash, Parent_to_Nested_comm_tables_coshared_hash_t);
+                FREE_HASH(comm->co_shared_vars->nested_uniform_vars.internode_rtw_hash, Nested_comm_rtwmap_hash_t);
+                FREE_HASH(comm->co_shared_vars->nested_uniform_vars.intranode_rtw_hash, Nested_comm_rtwmap_hash_t);
+                FREE_HASH(comm->co_shared_vars->nested_uniform_vars.intra_osproc_rtw_hash, Nested_comm_rtwmap_hash_t);
+
+                mpi_errno = MPI_SUCCESS;
+                goto fn_exit;
+            }
+            /* --END ERROR HANDLING-- */
+
+            MPIU_Assert(comm->co_shared_vars->ptn_hash);
+            MPIU_Assert(comm->co_shared_vars->nested_uniform_vars.internode_rtw_hash);
+            MPIU_Assert(comm->co_shared_vars->nested_uniform_vars.intranode_rtw_hash);
+            MPIU_Assert(comm->co_shared_vars->nested_uniform_vars.intra_osproc_rtw_hash);
+
+        }
+#else
         mpi_errno = MPIU_Find_local_and_external(comm,
                                                  &num_local,    &local_rank,    &local_procs,
                                                  &num_external, &external_rank, &external_procs,
                                                  &comm->intranode_table, &comm->internode_table);
+
         /* --BEGIN ERROR HANDLING-- */
         if (mpi_errno) {
             if (MPIR_Err_is_fatal(mpi_errno)) MPIU_ERR_POP(mpi_errno);
@@ -479,24 +562,57 @@ int MPIR_Comm_commit(MPID_Comm *comm)
             goto fn_exit;
         }
         /* --END ERROR HANDLING-- */
+#endif
 
+#if defined(FINEGRAIN_MPI)
+        num_local = comm->co_shared_vars->nested_uniform_vars.local_size;
+        num_external = comm->co_shared_vars->nested_uniform_vars.external_size;
+        num_fg_local = comm->co_shared_vars->nested_uniform_vars.fg_local_size;
+
+        Parent_to_Nested_comm_tables_coshared_hash_t *ptn_tables_hash_entry_stored = NULL;
+        HASH_FIND_INT( comm->co_shared_vars->ptn_hash, &(comm->rank), ptn_tables_hash_entry_stored );
+        MPIU_Assert( ptn_tables_hash_entry_stored != NULL);
+        fg_local_rank = ptn_tables_hash_entry_stored->parent_to_nested.intra_osproc_fg_rank;
+        local_rank = ptn_tables_hash_entry_stored->parent_to_nested.intranode_comm_local_rank;
+        external_rank = ptn_tables_hash_entry_stored->parent_to_nested.internode_comm_external_rank;
+#endif
         /* defensive checks */
         MPIU_Assert(num_local > 0);
+#if defined(FINEGRAIN_MPI)
+        MPIU_Assert(num_fg_local > 0);
+        MPIU_Assert(num_fg_local > 1 || local_rank >= 0);
+        MPIU_Assert(num_fg_local > 1 || num_local > 1 || external_rank >= 0);
+        MPIU_Assert(external_rank < 0 || (comm->co_shared_vars->nested_uniform_vars.internode_rtw_hash) != NULL);
+#else
         MPIU_Assert(num_local > 1 || external_rank >= 0);
         MPIU_Assert(external_rank < 0 || external_procs != NULL);
+#endif
 
         /* if the node_roots_comm and comm would be the same size, then creating
            the second communicator is useless and wasteful. */
+#if defined(FINEGRAIN_MPI)
+        if (num_external == comm->totprocs) {
+            FREE_HASH(comm->co_shared_vars->nested_uniform_vars.internode_rtw_hash, Nested_comm_rtwmap_hash_t);
+            FREE_HASH(comm->co_shared_vars->nested_uniform_vars.intranode_rtw_hash, Nested_comm_rtwmap_hash_t);
+            FREE_HASH(comm->co_shared_vars->nested_uniform_vars.intra_osproc_rtw_hash, Nested_comm_rtwmap_hash_t);
+#else
         if (num_external == comm->remote_size) {
+#endif
             MPIU_Assert(num_local == 1);
             goto fn_exit;
         }
-#if defined (FINEGRAIN_MPI)
-        goto fn_exit; /* FG: TODO This is temporary */
-#endif
+
         /* we don't need a local comm if this process is the only one on this node */
         if (num_local > 1) {
-            mpi_errno = MPIR_Comm_create(&comm->node_comm);
+#if defined(FINEGRAIN_MPI)
+            /* this process may not be a member of the node_comm */
+         if (fg_local_rank == 0) {
+#endif
+            mpi_errno = MPIR_Comm_create(&comm->node_comm); /* FG: TODO make
+                                                               MPIR_All_communicators
+                                                               per FGP in MPIR_CommL_remember
+                                                               and MPIR_CommL_forget
+                                                               (debugging: see dbginit.c) */
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
             comm->node_comm->context_id = comm->context_id + MPID_CONTEXT_INTRANODE_OFFSET;
@@ -506,7 +622,29 @@ int MPIR_Comm_commit(MPID_Comm *comm)
             comm->node_comm->hierarchy_kind = MPID_HIERARCHY_NODE;
             comm->node_comm->local_comm = NULL;
             MPIU_DBG_MSG_D(CH3_OTHER,VERBOSE,"Create node_comm=%p\n", comm->node_comm);
+#if defined(FINEGRAIN_MPI)
+            comm->node_comm->p_rank = comm->p_rank;
+            comm->node_comm->totprocs	= num_local;
+            comm->node_comm->local_size  = comm->local_size;
+            comm->node_comm->remote_size = comm->local_size;
+            comm->node_comm->vcrt           = vcrt_world;
+            comm->node_comm->vcr            = vcr_world;
+            comm->node_comm->co_shared_vars = (Coproclet_shared_vars_t *)MPIU_Calloc(1, sizeof(Coproclet_shared_vars_t));
+            MPIU_ERR_CHKANDJUMP(!(comm->node_comm->co_shared_vars), mpi_errno, MPI_ERR_OTHER, "**nomem");
 
+            comm->node_comm->co_shared_vars->rtw_map = (RTWmap*) RTWmapCreate(num_local);
+            int *rtw_blockinsert = (int*) MPIU_Malloc(sizeof(int) * num_local);
+            MPIU_ERR_CHKANDJUMP(!rtw_blockinsert, mpi_errno, MPI_ERR_OTHER, "**nomem");
+
+            EXTRACT_ARRAY_FREE_HASH(comm->co_shared_vars->nested_uniform_vars.intranode_rtw_hash, Nested_comm_rtwmap_hash_t, rtw_blockinsert, num_local);
+            RTWmapBlockInsert(comm->node_comm->co_shared_vars->rtw_map, num_local, rtw_blockinsert);
+            MPIU_Free(rtw_blockinsert);
+
+            MPIR_Comm_init_coshared_all_ref(comm->node_comm->co_shared_vars);
+
+            comm->node_comm->co_shared_vars->co_barrier_vars = NULL; /* co_barrier_vars are relevant for colocated comm only */
+            comm->node_comm->co_shared_vars->ptn_hash = NULL;
+#else
             comm->node_comm->local_size  = num_local;
             comm->node_comm->remote_size = num_local;
 
@@ -518,18 +656,32 @@ int MPIR_Comm_commit(MPID_Comm *comm)
                 MPID_VCR_Dup( comm->vcr[local_procs[i]], 
                               &comm->node_comm->vcr[i] );
             }
+#endif
 
             mpi_errno = set_collops(comm->node_comm);
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
             /* Notify device of communicator creation */
-            mpi_errno = MPID_Dev_comm_create_hook( comm->node_comm );
+            mpi_errno = MPID_Dev_comm_create_hook( comm->node_comm ); /* FG:
+TODO Temporary bypass inside. */
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
             /* don't call MPIR_Comm_commit here */
+#if defined(FINEGRAIN_MPI)
+         }
+#endif
         }
+#if defined(FINEGRAIN_MPI)
+        else {
+            FREE_HASH(comm->co_shared_vars->nested_uniform_vars.intranode_rtw_hash, Nested_comm_rtwmap_hash_t);
+        }
+#endif
 
 
-        /* this process may not be a member of the node_roots_comm */
+#if defined(FINEGRAIN_MPI)
+      /* we don't need a node_roots_comm if all processes are local on this node */
+      if (num_external > 1) {
+#endif
+      /* this process may not be a member of the node_roots_comm */
         if (local_rank == 0) {
             mpi_errno = MPIR_Comm_create(&comm->node_roots_comm);
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
@@ -540,7 +692,30 @@ int MPIR_Comm_commit(MPID_Comm *comm)
             comm->node_roots_comm->comm_kind = MPID_INTRACOMM;
             comm->node_roots_comm->hierarchy_kind = MPID_HIERARCHY_NODE_ROOTS;
             comm->node_roots_comm->local_comm = NULL;
+#if defined(FINEGRAIN_MPI)
+            comm->node_roots_comm->p_rank = comm->p_rank;
+            comm->node_roots_comm->totprocs	= num_external;
+            comm->node_roots_comm->local_size  = comm->local_size;
+            comm->node_roots_comm->remote_size = comm->local_size;
+            comm->node_roots_comm->vcrt           = vcrt_world;
+            comm->node_roots_comm->vcr            = vcr_world;
+            comm->node_roots_comm->co_shared_vars = (Coproclet_shared_vars_t *)MPIU_Calloc(1, sizeof(Coproclet_shared_vars_t));
+            MPIU_ERR_CHKANDJUMP(!(comm->node_roots_comm->co_shared_vars), mpi_errno, MPI_ERR_OTHER, "**nomem");
 
+
+            comm->node_roots_comm->co_shared_vars->rtw_map = (RTWmap*) RTWmapCreate(num_external);
+            int *rtw_blockinsert = (int*) MPIU_Malloc(sizeof(int) * num_external);
+            MPIU_ERR_CHKANDJUMP(!rtw_blockinsert, mpi_errno, MPI_ERR_OTHER, "**nomem");
+
+            EXTRACT_ARRAY_FREE_HASH(comm->co_shared_vars->nested_uniform_vars.internode_rtw_hash, Nested_comm_rtwmap_hash_t, rtw_blockinsert, num_external);
+            RTWmapBlockInsert(comm->node_roots_comm->co_shared_vars->rtw_map, num_external, rtw_blockinsert);
+            MPIU_Free(rtw_blockinsert);
+
+            MPIR_Comm_init_coshared_all_ref(comm->node_roots_comm->co_shared_vars);
+
+            comm->node_roots_comm->co_shared_vars->co_barrier_vars = NULL; /* co_barrier_vars are relevant for colocated comm only */
+            comm->node_roots_comm->co_shared_vars->ptn_hash = NULL;
+#else
             comm->node_roots_comm->local_size  = num_external;
             comm->node_roots_comm->remote_size = num_external;
 
@@ -552,7 +727,7 @@ int MPIR_Comm_commit(MPID_Comm *comm)
                 MPID_VCR_Dup( comm->vcr[external_procs[i]], 
                               &comm->node_roots_comm->vcr[i] );
             }
-
+#endif
             mpi_errno = set_collops(comm->node_roots_comm);
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
@@ -561,7 +736,75 @@ int MPIR_Comm_commit(MPID_Comm *comm)
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
             /* don't call MPIR_Comm_commit here */
         }
+#if defined(FINEGRAIN_MPI)
+      }
+      else {
+          FREE_HASH(comm->co_shared_vars->nested_uniform_vars.internode_rtw_hash, Nested_comm_rtwmap_hash_t);
+      }
 
+
+      if (num_fg_local > 1) {
+          mpi_errno = MPIR_Comm_create(&comm->osproc_colocated_comm);
+          if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+          comm->osproc_colocated_comm->context_id = comm->context_id + MPID_CONTEXT_COLOCATED_OFFSET;
+          comm->osproc_colocated_comm->recvcontext_id = comm->osproc_colocated_comm->context_id;
+          comm->osproc_colocated_comm->rank = fg_local_rank;
+          comm->osproc_colocated_comm->comm_kind = MPID_INTRACOMM;
+          comm->osproc_colocated_comm->hierarchy_kind = MPID_HIERARCHY_COLOCATED;
+          comm->osproc_colocated_comm->local_comm = NULL;
+          comm->osproc_colocated_comm->p_rank = comm->p_rank;
+          comm->osproc_colocated_comm->totprocs	= num_fg_local;
+          comm->osproc_colocated_comm->local_size  = comm->local_size;
+          comm->osproc_colocated_comm->remote_size = comm->local_size;
+          comm->osproc_colocated_comm->vcrt = vcrt_world;
+          comm->osproc_colocated_comm->vcr  = vcr_world;
+
+          stored = NULL;
+          CL_LookupHashFind(contextLeader_hshtbl, comm->osproc_colocated_comm->context_id, comm_leader_worldrank, &stored);
+          if(!stored) {
+              comm->osproc_colocated_comm->co_shared_vars = (Coproclet_shared_vars_t *)MPIU_Calloc(1, sizeof(Coproclet_shared_vars_t));
+              MPIU_ERR_CHKANDJUMP(!(comm->osproc_colocated_comm->co_shared_vars), mpi_errno, MPI_ERR_OTHER, "**nomem");
+              /* create RTWmap, populate it and insert in contextLeader_hshtbl */
+              comm->osproc_colocated_comm->co_shared_vars->rtw_map = (RTWmap*) RTWmapCreate(num_fg_local);
+              int *rtw_blockinsert = (int*) MPIU_Malloc(sizeof(int) * num_fg_local);
+              MPIU_ERR_CHKANDJUMP(!rtw_blockinsert, mpi_errno, MPI_ERR_OTHER, "**nomem");
+
+              EXTRACT_ARRAY_FREE_HASH(comm->co_shared_vars->nested_uniform_vars.intra_osproc_rtw_hash, Nested_comm_rtwmap_hash_t, rtw_blockinsert, num_fg_local);
+              RTWmapBlockInsert(comm->osproc_colocated_comm->co_shared_vars->rtw_map, num_fg_local, rtw_blockinsert);
+              MPIU_Free(rtw_blockinsert);
+
+              MPIR_Comm_init_coshared_all_ref(comm->osproc_colocated_comm->co_shared_vars);
+
+              comm->osproc_colocated_comm->co_shared_vars->co_barrier_vars =  (struct coproclet_barrier_vars *)MPIU_Malloc(sizeof(struct coproclet_barrier_vars));
+              MPIU_ERR_CHKANDJUMP(!(comm->osproc_colocated_comm->co_shared_vars->co_barrier_vars), mpi_errno, MPI_ERR_OTHER, "**nomem");
+              comm->osproc_colocated_comm->co_shared_vars->co_barrier_vars->coproclet_signal = 0;
+              comm->osproc_colocated_comm->co_shared_vars->co_barrier_vars->coproclet_counter = 0;
+              comm->osproc_colocated_comm->co_shared_vars->co_barrier_vars->leader_signal = 0;
+
+              comm->osproc_colocated_comm->co_shared_vars->ptn_hash = NULL;
+
+              stored = NULL;
+              CL_LookupHashInsert(contextLeader_hshtbl, comm->osproc_colocated_comm->context_id, comm_leader_worldrank, comm->osproc_colocated_comm->co_shared_vars, &stored);
+              MPIU_ERR_CHKANDJUMP(!stored, mpi_errno, MPI_ERR_OTHER,
+                                      "**hshstorefail" );
+
+          } else {
+              MPIR_Comm_add_coshared_all_ref(stored->coproclet_shared_vars);
+              comm->osproc_colocated_comm->co_shared_vars = ((Coproclet_shared_vars_t *)(stored->coproclet_shared_vars));
+          }
+
+          mpi_errno = set_collops(comm->osproc_colocated_comm);
+          if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+          /* Notify device of communicator creation */
+          mpi_errno = MPID_Dev_comm_create_hook( comm->osproc_colocated_comm );
+          if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+      } else {
+          FREE_HASH(comm->co_shared_vars->nested_uniform_vars.intra_osproc_rtw_hash, Nested_comm_rtwmap_hash_t);
+      }
+#endif
         comm->hierarchy_kind = MPID_HIERARCHY_PARENT;
     }
 
@@ -577,16 +820,19 @@ fn_exit:
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
 
+#if !defined(FINEGRAIN_MPI)
     if (external_procs != NULL)
         MPIU_Free(external_procs);
     if (local_procs != NULL)
         MPIU_Free(local_procs);
+#endif
 
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_COMM_COMMIT);
     return mpi_errno;
 fn_fail:
     goto fn_exit;
 }
+
 
 /* Returns true if the given communicator is aware of node topology information,
    false otherwise.  Such information could be used to implement more efficient
@@ -599,7 +845,7 @@ int MPIR_Comm_is_node_aware(MPID_Comm * comm)
 /* Returns true if the communicator is node-aware and processes in all the nodes
    are consecutive. For example, if node 0 contains "0, 1, 2, 3", node 1
    contains "4, 5, 6", and node 2 contains "7", we shall return true. */
-int MPIR_Comm_is_node_consecutive(MPID_Comm * comm)
+int MPIR_Comm_is_node_consecutive(MPID_Comm * comm) /* FG: TODO IMPORTANT*/
 {
     int i = 0, curr_nodeidx = 0;
     int *internode_table = comm->internode_table;
@@ -626,7 +872,7 @@ int MPIR_Comm_is_node_consecutive(MPID_Comm * comm)
  * Both the threaded and non-threaded routines use the same mask of
  * available context id values.
  */
-static uint32_t context_mask[MPIR_MAX_CONTEXT_MASK];
+static uint32_t context_mask[MPIR_MAX_CONTEXT_MASK]; /* FG: TODO IMPORTANT */
 static int initialize_context_mask = 1;
 
 /* Create a string that contains the context mask.  This is

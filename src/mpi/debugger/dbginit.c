@@ -448,7 +448,7 @@ typedef struct MPIR_Comm_list {
     MPID_Comm *head;       /* Head of the list */
 } MPIR_Comm_list;
 
-MPIR_Comm_list MPIR_All_communicators = { 0, 0 };
+MPIR_Comm_list MPIR_All_communicators = { 0, 0 }; /* FG: TODO Make per FGP */
 
 void MPIR_CommL_remember( MPID_Comm *comm_ptr )
 {   

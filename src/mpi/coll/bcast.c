@@ -143,7 +143,11 @@ static int MPIR_Bcast_binomial(
     MPID_Datatype *dtp;
     MPIU_CHKLMEM_DECL(1);
 
+#if defined(FINEGRAIN_MPI)
+    comm_size = comm_ptr->totprocs;
+#else
     comm_size = comm_ptr->local_size;
+#endif
     rank = comm_ptr->rank;
 
     /* If there is only one process, return */
@@ -347,7 +351,11 @@ static int scatter_for_bcast(
     int mpi_errno_ret = MPI_SUCCESS;
     int scatter_size, curr_size, recv_size = 0, send_size;
 
+#if defined(FINEGRAIN_MPI)
+    comm_size = comm_ptr->totprocs;
+#else
     comm_size = comm_ptr->local_size;
+#endif
     rank = comm_ptr->rank;
     relative_rank = (rank >= root) ? rank - root : rank - root + comm_size;
 
@@ -498,7 +506,11 @@ static int MPIR_Bcast_scatter_doubling_allgather(
     MPI_Aint true_extent, true_lb;
     void *tmp_buf;
 
+#if defined(FINEGRAIN_MPI)
+    comm_size = comm_ptr->totprocs;
+#else
     comm_size = comm_ptr->local_size;
+#endif
     rank = comm_ptr->rank;
     relative_rank = (rank >= root) ? rank - root : rank - root + comm_size;
 
@@ -805,7 +817,11 @@ static int MPIR_Bcast_scatter_ring_allgather(
     MPI_Aint true_extent, true_lb;
     MPIU_CHKLMEM_DECL(1);
 
+#if defined(FINEGRAIN_MPI)
+    comm_size = comm_ptr->totprocs;
+#else
     comm_size = comm_ptr->local_size;
+#endif
     rank = comm_ptr->rank;
 
     /* If there is only one process, return */
@@ -1002,6 +1018,9 @@ static int MPIR_SMP_Bcast(
     MPI_Aint type_size, nbytes=0;
     MPI_Status status;
     int recvd_size;
+#if defined(FINEGRAIN_MPI)
+    int comm_size = comm_ptr->totprocs;
+#endif
 
     if (!MPIR_CVAR_ENABLE_SMP_COLLECTIVES || !MPIR_CVAR_ENABLE_SMP_BCAST) {
         MPIU_Assert(0);
@@ -1032,7 +1051,11 @@ static int MPIR_SMP_Bcast(
     if (nbytes == 0)
         goto fn_exit; /* nothing to do */
 
+#if defined(FINEGRAIN_MPI)
+    if ((nbytes < MPIR_CVAR_BCAST_SHORT_MSG_SIZE) || (comm_size < MPIR_CVAR_BCAST_MIN_PROCS))
+#else
     if ((nbytes < MPIR_CVAR_BCAST_SHORT_MSG_SIZE) || (comm_ptr->local_size < MPIR_CVAR_BCAST_MIN_PROCS))
+#endif
     {
         /* send to intranode-rank 0 on the root's node */
         if (comm_ptr->node_comm != NULL &&
@@ -1093,7 +1116,11 @@ static int MPIR_SMP_Bcast(
         /* supposedly...
            smp+doubling good for pof2
            reg+ring better for non-pof2 */
+#if defined(FINEGRAIN_MPI)
+        if (nbytes < MPIR_CVAR_BCAST_LONG_MSG_SIZE && MPIU_is_pof2(comm_size, NULL))
+#else
         if (nbytes < MPIR_CVAR_BCAST_LONG_MSG_SIZE && MPIU_is_pof2(comm_ptr->local_size, NULL))
+#endif
         {
             /* medium-sized msg and pof2 np */
 
@@ -1113,7 +1140,11 @@ static int MPIR_SMP_Bcast(
             /* perform the internode broadcast */
             if (comm_ptr->node_roots_comm != NULL)
             {
+#if defined(FINEGRAIN_MPI)
+                if (MPIU_is_pof2(comm_ptr->node_roots_comm->totprocs, NULL))
+#else
                 if (MPIU_is_pof2(comm_ptr->node_roots_comm->local_size, NULL))
+#endif
                 {
                     MPIR_Bcast_fn_or_override(MPIR_Bcast_scatter_doubling_allgather, mpi_errno_ret,
                                               buffer, count, datatype,
@@ -1252,7 +1283,11 @@ int MPIR_Bcast_intra (
         goto fn_exit;
     }
 
+#if defined(FINEGRAIN_MPI)
+    comm_size = comm_ptr->totprocs;
+#else
     comm_size = comm_ptr->local_size;
+#endif
 
     is_homogeneous = 1;
 #ifdef MPID_HAS_HETERO

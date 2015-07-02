@@ -998,7 +998,12 @@ MPID_Request * MPIDI_CH3U_Recvq_FDP_or_AEU(MPIDI_Message_match * match,
     }
     MPIR_T_PVAR_TIMER_END(RECVQ, time_failed_matching_postedq);
 
-#if !defined(FINEGRAIN_MPI) /* FG: TODO temporary bypass. MPIDI_CH3I_Comm_find uses comm->node_comm */
+#if !defined(FINEGRAIN_MPI) /* FG: TODO temporary
+                               bypass. MPIDI_CH3I_Comm_find uses
+                               comm->node_comm See comment in
+                               MPIDI_CH3I_Comm_find. Will not work
+                               with MPICH context-id since they are
+                               not unique. */
     /* If we didn't match the request, look to see if the communicator is
      * revoked. If so, just throw this request away since it won't be used
      * anyway. */
@@ -1194,7 +1199,7 @@ int MPIDI_CH3U_Clean_recvq(MPID_Comm *comm_ptr)
             }
         }
 
-        if (MPIR_Comm_is_node_aware(comm_ptr)) { /* FG: TODO */
+        if (MPIR_Comm_is_node_aware(comm_ptr)) {
             int offset;
             offset = (comm_ptr->comm_kind == MPID_INTRACOMM) ?  MPID_CONTEXT_INTRA_PT2PT : MPID_CONTEXT_INTER_PT2PT;
             match.parts.context_id = comm_ptr->recvcontext_id + MPID_CONTEXT_INTRANODE_OFFSET + offset;
@@ -1318,7 +1323,7 @@ int MPIDI_CH3U_Clean_recvq(MPID_Comm *comm_ptr)
             }
         }
 
-        if (MPIR_Comm_is_node_aware(comm_ptr)) { /* FG: TODO */
+        if (MPIR_Comm_is_node_aware(comm_ptr)) {
             int offset;
             offset = (comm_ptr->comm_kind == MPID_INTRACOMM) ?  MPID_CONTEXT_INTRA_PT2PT : MPID_CONTEXT_INTER_PT2PT;
             match.parts.context_id = comm_ptr->recvcontext_id + MPID_CONTEXT_INTRANODE_OFFSET + offset;

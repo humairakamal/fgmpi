@@ -194,6 +194,8 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     MPIU_Assert(worldcomm_rtw_map != NULL);
     world_co_shared_vars->rtw_map =  worldcomm_rtw_map;
 
+    world_co_shared_vars->ptn_hash = NULL;
+
     worldcomm_barrier_vars = NULL;
     worldcomm_barrier_vars = (struct coproclet_barrier_vars *)MPIU_Malloc(sizeof(struct coproclet_barrier_vars));
     MPIU_Assert(worldcomm_barrier_vars != NULL);
@@ -210,6 +212,40 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     cidLookup_hshtbl = CidLookupHashCreate();    /* FG: This is the hash type used for context_id lookup used
                                                     with CID = <LID,LBI> context-id generation algorithm */
     MPIU_Assert(cidLookup_hshtbl != NULL);
+
+    /* FG: Adding the predefined context-ids of communicators such as
+       MPI_COMM_WORLD, MPI_COMM_SELF, MPIR_ICOMM_WORLD to
+       cidLookup_hshtbl and contextLeader_hshtbl
+    */
+    cidLookupHashItemptr stored = NULL;
+    comm = MPIR_Process.comm_world;
+    CidLookupHashInsert(cidLookup_hshtbl, comm->context_id, world_co_shared_vars, &stored);
+    MPIU_Assert(stored);
+    stored = NULL;
+    comm = MPIR_Process.comm_self;
+    CidLookupHashInsert(cidLookup_hshtbl, comm->context_id, world_co_shared_vars, &stored);
+    MPIU_Assert(stored);
+    stored = NULL;
+    comm = MPIR_Process.icomm_world;
+    CidLookupHashInsert(cidLookup_hshtbl, comm->context_id, world_co_shared_vars, &stored);
+    MPIU_Assert(stored);
+
+    cLitemptr cLstored = NULL;
+    int comm_leader_worldrank = 0;
+    comm = MPIR_Process.comm_world;
+    CL_LookupHashInsert(contextLeader_hshtbl, comm->context_id, comm_leader_worldrank, world_co_shared_vars, &cLstored);
+    MPIU_Assert(cLstored);
+    cLstored = NULL;
+    comm_leader_worldrank = 0;
+    comm = MPIR_Process.comm_self;
+    CL_LookupHashInsert(contextLeader_hshtbl, comm->context_id, comm_leader_worldrank, world_co_shared_vars, &cLstored);
+    MPIU_Assert(cLstored);
+    cLstored = NULL;
+    comm_leader_worldrank = 0;
+    comm = MPIR_Process.icomm_world;
+    CL_LookupHashInsert(contextLeader_hshtbl, comm->context_id, comm_leader_worldrank, world_co_shared_vars, &cLstored);
+    MPIU_Assert(cLstored);
+
 #endif
 
     /* We intentionally call this before the channel init so that the channel
@@ -266,12 +302,6 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     comm->rank = my_fgrank;
     PMI_Get_totprocs(&(comm->totprocs));
     comm->co_shared_vars = world_co_shared_vars;
-    comm->coFGP_comm = NULL; /* FG: TODO for hierarchy-based colls? */
-    comm->pid_comm = NULL; /* FG: TODO for hierarchy-based colls? */
-    comm->isRepresentative = 0;
-    comm->numofcoFGPs = 0;
-    comm->numPidsInComm = 0;
-    comm->barrier_vars = NULL;
 #endif
 
 #if defined(FINEGRAIN_MPI)
@@ -300,16 +330,10 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     MPIU_Assert( (vcrt_world != NULL) && (vcr_world != NULL) );
     comm->vcrt = vcrt_world;
     comm->vcr  = vcr_world;
-    if(FGP_WITHIN_INIT == FGP_init_state) { /* FG: TODO IMPORTANT */
-        world_ch3i_ptr = &(comm->dev);
-        printf("MPID_CONTEXT_PREFIX_SHIFT=%d, MPIR_Process.icomm_world->context_id=%d\n", MPID_CONTEXT_PREFIX_SHIFT, MPIR_Process.icomm_world->context_id);
-    }
-    else {
-        //MPIR_Copy_ch3i_comm_ch(comm, world_ch3i_ptr); /* FG: TODO IMPORTANT. defintion changed! */
-    }
-    mpi_errno = MPIR_Comm_commit(comm); /*FG: TODO IMPORTANT */
+
+    mpi_errno = MPIR_Comm_commit(comm); /*FG: TODO Check all places it is called in MPI_Init */
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-    //world_co_shared_vars->ch3i_ptr = world_ch3i_ptr; /* FG: TODO IMPORTANT */
+
 #else
     mpi_errno = MPID_VCRT_Create(comm->remote_size, &comm->vcrt);
     if (mpi_errno != MPI_SUCCESS)
@@ -351,12 +375,6 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     comm->rank = 0;
     comm->totprocs = 1;
     comm->co_shared_vars = NULL; /* FG: TODO FIX Double-check */
-    comm->coFGP_comm = NULL;
-    comm->pid_comm = NULL;
-    comm->isRepresentative = 0;
-    comm->numofcoFGPs = 0;
-    comm->numPidsInComm = 0;
-    comm->barrier_vars = NULL;
 #endif
     
     mpi_errno = MPID_VCRT_Create(comm->remote_size, &comm->vcrt);
@@ -375,7 +393,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     
     MPID_VCR_Dup(&pg->vct[pg_rank], &comm->vcr[0]);
 
-    //    mpi_errno = MPIR_Comm_commit(comm); /* FG:TODO IMPORTANT  Needs comm->co_shared_vars */
+    //    mpi_errno = MPIR_Comm_commit(comm); /* FG:TODO IMPORTANT comm_self needs comm->co_shared_vars */
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     /* Currently, mpidpre.h always defines MPID_NEEDS_ICOMM_WORLD. */
@@ -397,41 +415,19 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     comm->rank = my_fgrank;
     PMI_Get_totprocs(&(comm->totprocs));
     comm->co_shared_vars = world_co_shared_vars;
-    comm->coFGP_comm = NULL;
-    comm->pid_comm = NULL;
-    comm->isRepresentative = 0;
-    comm->numofcoFGPs = 0;
-    comm->numPidsInComm = 0;
-    comm->barrier_vars = NULL;
 #endif
     MPID_VCRT_Add_ref( MPIR_Process.comm_world->vcrt );
     comm->vcrt = MPIR_Process.comm_world->vcrt;
     comm->vcr  = MPIR_Process.comm_world->vcr;
     
-    //    mpi_errno = MPIR_Comm_commit(comm); /* FG: TODO IMPORTANT segfault -nfg 30K*/
+    //mpi_errno = MPIR_Comm_commit(comm); /* FG: TODO IMPORTANT */
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 #endif
 
 
-#if defined(FINEGRAIN_MPI) /* HK: Adding the predefined context-ids of
-                              communicators such as MPI_COMM_WORLD (context-id=0),
-                              MPI_COMM_SELF (context-id=4), MPIR_ICOMM_WORLD (context-id=8)
-                              to cidLookup_hshtbl
-                           */
+#if defined(FINEGRAIN_MPI)
     if(FGP_WITHIN_INIT == FGP_init_state)
     {
-        cidLookupHashItemptr stored = NULL;
-        comm = MPIR_Process.comm_world;
-        CidLookupHashInsert(cidLookup_hshtbl, comm->context_id, world_co_shared_vars, &stored);
-        assert(stored);
-        stored = NULL;
-        comm = MPIR_Process.comm_self;
-        CidLookupHashInsert(cidLookup_hshtbl, comm->context_id, world_co_shared_vars, &stored);
-        assert(stored);
-        stored = NULL;
-        comm = MPIR_Process.icomm_world;
-        CidLookupHashInsert(cidLookup_hshtbl, comm->context_id, world_co_shared_vars, &stored);
-        assert(stored);
 
         /* HK: Creating an array of pre-posted receive requests */
         int numfgps;

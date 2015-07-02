@@ -74,16 +74,9 @@ int MPIU_Find_local_and_external(MPID_Comm *comm, int *local_size_p, int *local_
     MPID_Node_id_t max_node_id;
     MPID_Node_id_t node_id;
     MPID_Node_id_t my_node_id;
-#if defined(FINEGRAIN_MPI)
-    int pid, worldrank, mypid;
-    int *coFGP_reps;
-    MPIU_CHKLMEM_DECL(2);
-    MPIU_CHKPMEM_DECL(2); /* FG: TODO Fix intranode_table and internode_table */
-#else
     MPIU_CHKLMEM_DECL(1);
     MPIU_CHKPMEM_DECL(4);
-#endif
-    
+
     /* Scan through the list of processes in comm and add one
        process from each node to the list of "external" processes.  We
        add the first process we find from each node.  nodes[] is an
@@ -95,40 +88,25 @@ int MPIU_Find_local_and_external(MPID_Comm *comm, int *local_size_p, int *local_
        shrunk - so using realloc is not an appropriate strategy. */
     MPIU_CHKPMEM_MALLOC (external_ranks, int *, sizeof(int) * comm->remote_size, mpi_errno, "external_ranks");
     MPIU_CHKPMEM_MALLOC (local_ranks, int *, sizeof(int) * comm->remote_size, mpi_errno, "local_ranks");
-#if defined(FINEGRAIN_MPI)
-    internode_table = NULL;
-    intranode_table = NULL;
-#else
+
     MPIU_CHKPMEM_MALLOC (internode_table, int *, sizeof(int) * comm->remote_size, mpi_errno, "internode_table");
     MPIU_CHKPMEM_MALLOC (intranode_table, int *, sizeof(int) * comm->remote_size, mpi_errno, "intranode_table");
-#endif
+
     mpi_errno = MPID_Get_max_node_id(comm, &max_node_id);
     if (mpi_errno) MPIU_ERR_POP (mpi_errno);
     MPIU_Assert(max_node_id >= 0);
     MPIU_CHKLMEM_MALLOC (nodes, int *, sizeof(int) * (max_node_id + 1), mpi_errno, "nodes");
-#if defined(FINEGRAIN_MPI)
-    MPIU_CHKLMEM_MALLOC (coFGP_reps, int *, sizeof(int) * comm->local_size, mpi_errno, "coFGP_reps");
-#endif
 
     /* nodes maps node_id to rank in external_ranks of leader for that node */
     for (i = 0; i < (max_node_id + 1); ++i)
         nodes[i] = -1;
-#if !defined(FINEGRAIN_MPI)
+
     for (i = 0; i < comm->remote_size; ++i)
         intranode_table[i] = -1;
-#endif
+    
     external_size = 0;
 
-#if defined(FINEGRAIN_MPI)
-    for (i = 0; i < comm->local_size; ++i)
-        coFGP_reps[i] = 0;
-    mypid = -1;
-    worldrank = -1;
-    MPIDI_Comm_get_pid_worldrank(comm, comm->rank, &mypid, &worldrank);
-    mpi_errno = MPID_Get_node_id(comm, mypid, &my_node_id);
-#else
     mpi_errno = MPID_Get_node_id(comm, comm->rank, &my_node_id);
-#endif
     if (mpi_errno) MPIU_ERR_POP (mpi_errno);
     MPIU_Assert(my_node_id >= 0);
     MPIU_Assert(my_node_id <= max_node_id);
@@ -136,18 +114,10 @@ int MPIU_Find_local_and_external(MPID_Comm *comm, int *local_size_p, int *local_
     local_size = 0;
     local_rank = -1;
     external_rank = -1;
-
-#if defined(FINEGRAIN_MPI)
-    for (i = 0; i < comm->totprocs; ++i)
-    {
-        pid = -1;
-        MPIDI_Comm_get_pid_worldrank(comm, i, &pid, &worldrank);
-        mpi_errno = MPID_Get_node_id(comm, pid, &node_id);
-#else
+    
     for (i = 0; i < comm->remote_size; ++i)
     {
         mpi_errno = MPID_Get_node_id(comm, i, &node_id);
-#endif
         if (mpi_errno) MPIU_ERR_POP (mpi_errno);
 
         /* The upper level can catch this non-fatal error and should be
@@ -165,27 +135,19 @@ int MPIU_Find_local_and_external(MPID_Comm *comm, int *local_size_p, int *local_
             external_ranks[external_size] = i;
             ++external_size;
         }
-#if !defined(FINEGRAIN_MPI)
+
         /* build the map from rank in comm to rank in external_ranks */
-        internode_table[i] = nodes[node_id]; // FG: TODO IMPORTANT - Non-scalable!!
-#endif
+        internode_table[i] = nodes[node_id];
+
         /* build list of local processes */
         if (node_id == my_node_id)
         {
-#if defined(FINEGRAIN_MPI)
-            if (coFGP_reps[pid] == 0){
-#endif
              if (i == comm->rank)
                  local_rank = local_size;
-#if !defined(FINEGRAIN_MPI)
-             intranode_table[i] = local_size; // FG: TODO IMPORTANT -  Non-scalable!!
-#endif
+
+             intranode_table[i] = local_size;
              local_ranks[local_size] = i;
              ++local_size;
-#if defined(FINEGRAIN_MPI)
-             coFGP_reps[pid] = 1;
-            }
-#endif
         }
     }
 
@@ -241,6 +203,176 @@ int MPIU_Find_local_and_external(MPID_Comm *comm, int *local_size_p, int *local_
     goto fn_exit;
 }
 
+#if defined(FINEGRAIN_MPI)
+#undef FUNCNAME
+#define FUNCNAME MPIU_Nested_maps_for_communicators
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+
+int MPIU_Nested_maps_for_communicators(MPID_Comm *comm)
+{
+    int mpi_errno = MPI_SUCCESS;
+    int *nodes;
+    int external_size;
+    int local_size;
+    int fg_local_size;
+    int *osprocs;
+    int i;
+    MPID_Node_id_t max_node_id;
+    MPID_Node_id_t node_id;
+    MPID_Node_id_t my_node_id;
+    int pid, worldrank, mypid;
+    MPIU_CHKLMEM_DECL(2);
+
+    Parent_to_Nested_comm_tables_coshared_hash_t *parent_to_nested_hash_p = NULL;
+    Nested_comm_rtwmap_hash_t *internode_rtw_hash_p = NULL;
+    Nested_comm_rtwmap_hash_t *intranode_rtw_hash_p = NULL;
+    Nested_comm_rtwmap_hash_t *intra_osproc_rtw_hash_p = NULL;
+
+    /* Scan through the list of processes in comm and add one
+       process from each node to the list of "external" processes.  We
+       add the first process we find from each node.  nodes[] is an
+       array where we keep track of whether we have already added that
+       node to the list. */
+
+    mpi_errno = MPID_Get_max_node_id(comm, &max_node_id);
+    if (mpi_errno) MPIU_ERR_POP (mpi_errno);
+    MPIU_Assert(max_node_id >= 0);
+    MPIU_CHKLMEM_MALLOC (nodes, int *, sizeof(int) * (max_node_id + 1), mpi_errno, "nodes");
+    MPIU_CHKLMEM_MALLOC (osprocs, int *, sizeof(int) * (comm->local_size + 1), mpi_errno, "osprocs");
+    /* nodes[] maps a process's node_id to internode_comm_root for its node */
+    for (i = 0; i < (max_node_id + 1); ++i) {
+        nodes[i] = -1;
+    }
+    /* osprocs[] maps a process's process_id to intranode_comm_local_rank for its os-process */
+    for (i = 0; i < (comm->local_size + 1); ++i) {
+        osprocs[i] = -1;
+    }
+
+    external_size = 0;
+    fg_local_size = 0;
+    local_size = 0;
+    mypid = -1;
+    worldrank = -1;
+    MPIDI_Comm_get_pid_worldrank(comm, comm->rank, &mypid, &worldrank);
+    mpi_errno = MPID_Get_node_id(comm, mypid, &my_node_id);
+
+    if (mpi_errno) MPIU_ERR_POP (mpi_errno);
+    MPIU_Assert(my_node_id >= 0);
+    MPIU_Assert(my_node_id <= max_node_id);
+
+    for (i = 0; i < comm->totprocs; ++i)
+    {
+        Parent_to_Nested_comm_tables_coshared_hash_t *ptn_tables_hash_entry = MPIU_Malloc(sizeof(struct Parent_to_Nested_comm_tables_coshared_hash));
+        MPIU_Assert(ptn_tables_hash_entry);
+        ptn_tables_hash_entry->parent_comm_rank = i; /* key */
+        pid = -1;
+        MPIDI_Comm_get_pid_worldrank(comm, i, &pid, &worldrank);
+
+        if (mypid == pid) {
+            ptn_tables_hash_entry->parent_to_nested.intra_osproc_fg_rank = fg_local_size;
+            Nested_comm_rtwmap_hash_t *intra_osproc_rtw_hash_entry = MPIU_Malloc(sizeof(struct Nested_comm_rtwmap_hash));
+            MPIU_Assert(intra_osproc_rtw_hash_entry);
+            intra_osproc_rtw_hash_entry->rank = fg_local_size;
+            intra_osproc_rtw_hash_entry->worldrank = worldrank;
+            HASH_ADD_INT( intra_osproc_rtw_hash_p, rank, intra_osproc_rtw_hash_entry);
+            ++fg_local_size;
+        } else {
+            ptn_tables_hash_entry->parent_to_nested.intra_osproc_fg_rank = -1;
+        }
+
+        mpi_errno = MPID_Get_node_id(comm, pid, &node_id);
+        if (mpi_errno) MPIU_ERR_POP (mpi_errno);
+
+        /* The upper level can catch this non-fatal error and should be
+           able to recover gracefully. */
+        MPIU_ERR_CHKANDJUMP(node_id < 0, mpi_errno, MPI_ERR_OTHER, "**dynamic_node_ids");
+
+        MPIU_Assert(node_id <= max_node_id);
+
+        /* build list of external processes */
+        if (nodes[node_id] == -1)
+        {
+            ptn_tables_hash_entry->parent_to_nested.internode_comm_external_rank = external_size;
+
+            Nested_comm_rtwmap_hash_t *internode_rtw_hash_entry = MPIU_Malloc(sizeof(struct Nested_comm_rtwmap_hash));
+            MPIU_Assert(NULL != internode_rtw_hash_entry);
+            internode_rtw_hash_entry->rank = external_size;
+            internode_rtw_hash_entry->worldrank = worldrank;
+            HASH_ADD_INT( internode_rtw_hash_p, rank, internode_rtw_hash_entry);
+
+            nodes[node_id] = external_size;
+            ++external_size;
+        } else {
+            ptn_tables_hash_entry->parent_to_nested.internode_comm_external_rank = -1;
+        }
+        ptn_tables_hash_entry->parent_to_nested.internode_comm_root = nodes[node_id];
+
+        /* build list of local processes */
+        if (node_id == my_node_id)
+        {
+            if ( -1 == osprocs[pid] ) {
+
+                ptn_tables_hash_entry->parent_to_nested.intranode_comm_local_rank = local_size;
+
+                Nested_comm_rtwmap_hash_t *intranode_rtw_hash_entry = MPIU_Malloc(sizeof(struct Nested_comm_rtwmap_hash));
+                MPIU_Assert(intranode_rtw_hash_entry);
+                intranode_rtw_hash_entry->rank = local_size;
+                intranode_rtw_hash_entry->worldrank = worldrank;
+                HASH_ADD_INT( intranode_rtw_hash_p, rank, intranode_rtw_hash_entry);
+
+                osprocs[pid] = local_size;
+                ++local_size;
+            } else {
+                ptn_tables_hash_entry->parent_to_nested.intranode_comm_local_rank = -1; /* this rank is not part of intranode comm */
+            }
+        } else {
+            ptn_tables_hash_entry->parent_to_nested.intranode_comm_local_rank = -1; /* this rank is not part of intranode comm */
+        }
+
+        ptn_tables_hash_entry->parent_to_nested.intranode_comm_root = osprocs[pid]; /* leader of colocated processes inside my OS-process and -1 (as per initialization of osprocs[]) if this process is not colocated to me */
+
+        HASH_ADD_INT( parent_to_nested_hash_p, parent_comm_rank, ptn_tables_hash_entry);
+    }
+
+    comm->co_shared_vars->nested_uniform_vars.fg_local_size = fg_local_size;
+    comm->co_shared_vars->nested_uniform_vars.local_size = local_size;
+    comm->co_shared_vars->nested_uniform_vars.external_size = external_size;
+
+    comm->co_shared_vars->nested_uniform_vars.internode_rtw_hash = internode_rtw_hash_p;
+    comm->co_shared_vars->nested_uniform_vars.intranode_rtw_hash = intranode_rtw_hash_p;
+    comm->co_shared_vars->nested_uniform_vars.intra_osproc_rtw_hash = intra_osproc_rtw_hash_p;
+
+    comm->co_shared_vars->ptn_hash = parent_to_nested_hash_p;
+
+    /*
+      for (i = 0; i < comm->totprocs; ++i)
+      {
+          Parent_to_Nested_comm_tables_coshared_hash_t *ptn_tables_hash_entry_stored = NULL;
+          HASH_FIND_INT( parent_to_nested_hash_p, &i, ptn_tables_hash_entry_stored );
+          MPIU_Assert( ptn_tables_hash_entry_stored != NULL);
+
+          printf("my_fgrank=%d:parent_comm_rank=%d:\n\tfg_local_size=%d\n\tintra_osproc_fg_rank=%d\n", comm->rank, i, fg_local_size, ptn_tables_hash_entry_stored->parent_to_nested.intra_osproc_fg_rank);
+
+          printf("\tlocal_size=%d\n\tintranode_comm_local_rank=%d\n\tintranode_comm_root=%d\n", local_size, ptn_tables_hash_entry_stored->parent_to_nested.intranode_comm_local_rank, ptn_tables_hash_entry_stored->parent_to_nested.intranode_comm_root);
+
+          printf("\texternal_size=%d\n\tinternode_comm_external_rank=%d\n\tinternode_comm_root=%d\n", external_size, ptn_tables_hash_entry_stored->parent_to_nested.internode_comm_external_rank, ptn_tables_hash_entry_stored->parent_to_nested.internode_comm_root);
+          printf("--------------------------\n");
+
+      }
+
+     //*/
+
+
+ fn_exit:
+    MPIU_CHKLMEM_FREEALL();
+    return mpi_errno;
+ fn_fail:
+    goto fn_exit;
+}
+#endif /* matches #if defined(FINEGRAIN_MPI) */
+
+
 #else /* !defined(MPID_USE_NODE_IDS) */
 int MPIU_Find_local_and_external(MPID_Comm *comm, int *local_size_p, int *local_rank_p, int **local_ranks_p,
                                  int *external_size_p, int *external_rank_p, int **external_ranks_p,
@@ -254,6 +386,17 @@ int MPIU_Find_local_and_external(MPID_Comm *comm, int *local_size_p, int *local_
 fn_fail:
     return mpi_errno;
 }
+
+#if defined(FINEGRAIN_MPI)
+int MPIU_Nested_maps_for_communicators(MPID_Comm *comm)
+{
+    int mpi_errno = MPI_SUCCESS;
+
+    MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**notimpl");
+fn_fail:
+    return mpi_errno;
+}
+#endif
 
 #endif
 
@@ -272,11 +415,27 @@ int MPIU_Get_internode_rank(MPID_Comm *comm_ptr, int r)
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm_valid_ptr( comm_ptr, mpi_errno, TRUE );
     MPIU_Assert(mpi_errno == MPI_SUCCESS);
+#if defined(FINEGRAIN_MPI)
+    MPIU_Assert(r < comm_ptr->totprocs);
+#else
     MPIU_Assert(r < comm_ptr->remote_size);
+#endif
     MPIU_Assert(comm_ptr->comm_kind == MPID_INTRACOMM);
+
+#if defined(FINEGRAIN_MPI)
+    Parent_to_Nested_comm_tables_coshared_hash_t *ptn_tables_hash_entry_stored = NULL;
+    MPIU_Assert(comm_ptr->co_shared_vars != NULL);
+    MPIU_Assert(comm_ptr->co_shared_vars->ptn_hash != NULL);
+
+    HASH_FIND_INT(comm_ptr->co_shared_vars->ptn_hash, &r, ptn_tables_hash_entry_stored );
+    MPIU_Assert(ptn_tables_hash_entry_stored != NULL);
+    return (ptn_tables_hash_entry_stored->parent_to_nested.internode_comm_root);
+
+#else
     MPIU_Assert(comm_ptr->internode_table != NULL);
 
     return comm_ptr->internode_table[r];
+#endif
 }
 
 /* maps rank r in comm_ptr to the rank in comm_ptr->node_comm or -1 if r is not
@@ -293,12 +452,28 @@ int MPIU_Get_intranode_rank(MPID_Comm *comm_ptr, int r)
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm_valid_ptr( comm_ptr, mpi_errno, TRUE );
     MPIU_Assert(mpi_errno == MPI_SUCCESS);
+#if defined(FINEGRAIN_MPI)
+    MPIU_Assert(r < comm_ptr->totprocs);
+#else
     MPIU_Assert(r < comm_ptr->remote_size);
+#endif
     MPIU_Assert(comm_ptr->comm_kind == MPID_INTRACOMM);
+
+#if defined(FINEGRAIN_MPI)
+    Parent_to_Nested_comm_tables_coshared_hash_t *ptn_tables_hash_entry_stored = NULL;
+    MPIU_Assert(comm_ptr->co_shared_vars != NULL);
+    MPIU_Assert(comm_ptr->co_shared_vars->ptn_hash != NULL);
+
+    HASH_FIND_INT(comm_ptr->co_shared_vars->ptn_hash, &r, ptn_tables_hash_entry_stored );
+    MPIU_Assert(ptn_tables_hash_entry_stored != NULL);
+    return (ptn_tables_hash_entry_stored->parent_to_nested.intranode_comm_local_rank);
+
+#else
     MPIU_Assert(comm_ptr->intranode_table != NULL);
 
     /* FIXME this could/should be a list of ranks on the local node, which
        should take up much less space on a typical thin(ish)-node system. */
     return comm_ptr->intranode_table[r];
+#endif
 }
 

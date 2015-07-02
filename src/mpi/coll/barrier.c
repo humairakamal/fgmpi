@@ -75,6 +75,20 @@ static int barrier_smp_intra(MPID_Comm *comm_ptr, mpir_errflag_t *errflag)
     MPIU_Assert(MPIR_CVAR_ENABLE_SMP_COLLECTIVES && MPIR_CVAR_ENABLE_SMP_BARRIER &&
                 MPIR_Comm_is_node_aware(comm_ptr));
 
+#if defined(FINEGRAIN_MPI)
+    /* do  barrier on osproc_colocated_comm */
+    if (comm_ptr->osproc_colocated_comm != NULL)
+    {
+        mpi_errno = MPIR_Barrier_impl(comm_ptr->osproc_colocated_comm, errflag);
+        if (mpi_errno) {
+            /* for communication errors, just record the error but continue */
+            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+            MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+            MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+        }
+    }
+#endif
+
     /* do the intranode barrier on all nodes */
     if (comm_ptr->node_comm != NULL)
     {
@@ -113,6 +127,23 @@ static int barrier_smp_intra(MPID_Comm *comm_ptr, mpir_errflag_t *errflag)
         }
     }
 
+#if defined(FINEGRAIN_MPI)
+    /* release the colocated processes in each OS-process with a 1-byte
+       broadcast (0-byte broadcast just returns without doing
+       anything) */
+    if (comm_ptr->osproc_colocated_comm != NULL)
+    {
+        int i=0;
+        mpi_errno = MPIR_Bcast_impl(&i, 1, MPI_BYTE, 0, comm_ptr->osproc_colocated_comm, errflag);
+        if (mpi_errno) {
+            /* for communication errors, just record the error but continue */
+            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+            MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+            MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+        }
+    }
+#endif
+
  fn_exit:
     if (mpi_errno_ret)
         mpi_errno = mpi_errno_ret;
@@ -137,7 +168,11 @@ int MPIR_Barrier_intra( MPID_Comm *comm_ptr, mpir_errflag_t *errflag )
        time */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
 
+#if defined(FINEGRAIN_MPI)
+    size = comm_ptr->totprocs;
+#else
     size = comm_ptr->local_size;
+#endif
     /* Trivial barriers return immediately */
     if (size == 1) goto fn_exit;
 

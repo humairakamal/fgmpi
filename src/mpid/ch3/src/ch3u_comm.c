@@ -274,8 +274,10 @@ int comm_created(MPID_Comm *comm, void *param)
     /* Initialize the last acked failure to -1 */
     comm->dev.last_ack_rank = -1;
 
-#if !defined(FINEGRAIN_MPI) /* FG: TODO. This is temporary. Need to add reference counting
-                               if that communicator has already been added to the list */
+#if !defined(FINEGRAIN_MPI) /* FG: TODO. This is temporary. Not
+                               scalable. Need to add reference
+                               counting? if that communicator has
+                               already been added to the list */
     COMM_ADD(comm);
 #endif
 
@@ -401,6 +403,9 @@ int MPIDI_CH3I_Comm_handle_failed_procs(MPID_Group *new_failed_procs)
     goto fn_exit;
 }
 
+/* FG: TODO MPIDI_CH3I_Comm_find() will not work with MPICH context_id
+since it is not unique among two disjoint colocated
+communicators. Check: Need leader_wid as well */
 void MPIDI_CH3I_Comm_find(MPIR_Context_id_t context_id, MPID_Comm **comm)
 {
     MPIDI_STATE_DECL(MPIDI_STATE_MPIDI_CH3I_COMM_FIND);
