@@ -95,10 +95,12 @@ int MPI_File_call_errhandler(MPI_File fh, int errorcode)
        not integers.  */
 
     if (e->handle == MPI_ERRORS_RETURN) {
-	mpi_errno = errorcode;
 	goto fn_exit;
     }
 
+    if (e->handle == MPI_ERRORS_ARE_FATAL) {
+	MPIR_Handle_fatal_error(NULL, "MPI_File_call_errhandler", errorcode);
+    }
 
     switch (e->language) {
     case MPID_LANG_C:

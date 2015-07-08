@@ -386,8 +386,14 @@ MPID_Request * MPIDI_CH3U_Recvq_FDU(MPI_Request sreq_id,
     MPIR_TAG_CLEAR_ERROR_BITS(mask.parts.tag);
 
     /* Note that since this routine is used only in the case of send_cancel,
-       there can be only one match if at all. */
-    /* FIXME: Why doesn't this exit after it finds the first match? */
+     * there can be only one match, if at all. The reason the loop continues
+     * after finding a match is that send request handles are reused. In the
+     * case multiple requests with the same sender_req_id are present, only
+     * the last message is cancellable. This is because previous instances
+     * must have been tested or waited on the sender side, indicating completion
+     * and freeing the handle for reuse. Those completed operations cannot be
+     * cancelled.
+     */
 #if defined(FINEGRAIN_MPI)
     GET_MATCH_QUEUE_INDEX(match->parts.dest_rank, &fg_offset);
     cur_rreq = FG_recvq_unexpected_head[fg_offset];
@@ -602,7 +608,7 @@ lock_exit:
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 MPID_Request * MPIDI_CH3U_Recvq_FDU_or_AEP(int source, int tag, 
                                            int context_id, MPID_Comm *comm, void *user_buf,
-                                           int user_count, MPI_Datatype datatype, int * foundp)
+                                           MPI_Aint user_count, MPI_Datatype datatype, int * foundp)
 {
     int mpi_errno = MPI_SUCCESS;
     int found = FALSE;

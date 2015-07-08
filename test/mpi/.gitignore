@@ -5,6 +5,8 @@
 /f90/datatype/Makefile.am
 /f90/datatype/hindex1f90.f90
 /f90/datatype/hindexed_blockf90.f90
+/f90/datatype/bottomf90.f90
+/f90/datatype/bottomc.c
 /f90/ext/Makefile.am
 /f90/ext/stamp-Makefile.am
 /f90/io/Makefile.am
@@ -187,6 +189,7 @@
 /cxx/io/writeatallbenosx
 /cxx/io/writeallbenosx
 /cxx/pt2pt/bsend1cxx
+/cxx/spawn/testlist
 /cxx/spawn/namepubx
 /cxx/spawn/spawnintrax
 /cxx/spawn/spawnintrax
@@ -228,9 +231,11 @@
 /errors/f77/testlist
 /errors/group/rerr
 /errors/io/fileerrret
+/errors/io/file_errhdl
 /errors/pt2pt/proberank
 /errors/pt2pt/truncmsg2
 /errors/spawn/badport
+/errors/spawn/testlist
 /errors/topo/cartsmall
 /f77/testlist
 /f77/attr/baseattr
@@ -451,6 +456,7 @@
 /f08/datatype/get_elem_d
 /f08/datatype/get_elem_u
 /f08/rma/testlist
+/f08/spawn/testlist
 /f08/io/iwriteatallf90.f90
 /f08/io/iwriteatallf90
 /f08/io/i_fcoll_test
@@ -530,6 +536,16 @@
 /rma/putfence1
 /rma/putpscw1
 /rma/wintest
+/rma/manyget
+/rma/lock_dt
+/rma/lock_dt_flush
+/rma/lock_dt_flushlocal
+/rma/lockall_dt
+/rma/lockall_dt_flush
+/rma/lockall_dt_flushall
+/rma/lockall_dt_flushlocal
+/rma/lockall_dt_flushlocalall
+/rma/lock_contention_dt
 /spawn/namepub
 /spawn/disconnect3
 /spawn/spaiccreate
@@ -571,6 +587,7 @@
 /coll/bcastzerotype
 /coll/gather
 /coll/gather2
+/coll/gather_big
 /coll/iallred
 /coll/ibarrier
 /coll/icalltoallv
@@ -796,6 +813,7 @@
 /f77/datatype/typenamef
 /f77/datatype/typesnamef
 /f77/datatype/typesubf
+/f77/datatype/bottom
 /f77/ext/c2fmult
 /f77/ext/ctypesinf
 /f77/info/infotest2f
@@ -944,6 +962,7 @@
 /pt2pt/rqstatus
 /pt2pt/scancel
 /pt2pt/scancel2
+/pt2pt/scancel_unmatch
 /pt2pt/sendall
 /pt2pt/sendflood
 /pt2pt/sendrecv1
@@ -1029,6 +1048,7 @@
 /rma/win_shared_noncontig_put
 /rma/wincall
 /rma/window_creation
+/spawn/testlist
 /spawn/concurrent_spawns
 /spawn/disconnect
 /spawn/disconnect2

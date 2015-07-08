@@ -209,6 +209,53 @@
          PROC_SYNC with origin will see the latest data.
 */
 
+/*
+=== BEGIN_MPI_T_CVAR_INFO_BLOCK ===
+
+cvars:
+    - name        : MPIR_CVAR_CH3_RMA_SCALABLE_FENCE_PROCESS_NUM
+      category    : CH3
+      type        : int
+      default     : 1024
+      class       : none
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+          Specify the threshold of switching the algorithm used in
+          FENCE from the basic algorithm to the scalable algorithm.
+          The value can be nagative, zero or positive.
+          When the number of processes is larger than or equal to
+          this value, FENCE will use a scalable algorithm which do
+          not use O(P) data structure; when the number of processes
+          is smaller than the value, FENCE will use a basic but fast
+          algorithm which requires an O(P) data structure.
+
+    - name        : MPIR_CVAR_CH3_RMA_DELAY_ISSUING_FOR_PIGGYBACKING
+      category    : CH3
+      type        : int
+      default     : 0
+      class       : none
+      verbosity   : MPI_T_VERBOSITY_USER_BASIC
+      scope       : MPI_T_SCOPE_ALL_EQ
+      description : >-
+        Specify if delay issuing of RMA operations for piggybacking
+        LOCK/UNLOCK/FLUSH is enabled. It can be either 0 or 1. When
+        it is set to 1, the issuing of LOCK message is delayed until
+        origin process see the first RMA operation and piggyback
+        LOCK with that operation, and the origin process always keeps
+        the current last operation until the ending synchronization
+        call in order to piggyback UNLOCK/FLUSH with that operation.
+        When it is set to 0, in WIN_LOCK/UNLOCK case, the LOCK message
+        is sent out as early as possible, in WIN_LOCK_ALL/UNLOCK_ALL
+        case, the origin process still tries to piggyback LOCK message
+        with the first operation; for UNLOCK/FLUSH message, the origin
+        process no longer keeps the current last operation but only
+        piggyback UNLOCK/FLUSH if there is an operation avaliable in
+        the ending synchronization call.
+
+=== END_MPI_T_CVAR_INFO_BLOCK ===
+*/
+
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(RMA, rma_lockqueue_alloc);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(RMA, rma_winlock_getlocallock);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(RMA, rma_wincreate_allgather);
@@ -280,6 +327,145 @@ void MPIDI_CH3_RMA_Init_sync_pvars(void)
 
 #define SYNC_POST_TAG 100
 
+#undef FUNCNAME
+#define FUNCNAME flush_local_all
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static inline int flush_local_all(MPID_Win * win_ptr)
+{
+    int i, made_progress = 0;
+    MPIDI_RMA_Target_t *curr_target = NULL;
+    int local_completed = 0, remote_completed = 0;
+    int total_remote_complete_cnt = 0, total_local_complete_cnt = 0;
+    int curr_remote_complete_cnt = 0, curr_local_complete_cnt = 0;
+    int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPID_STATE_FLUSH_LOCAL_ALL);
+
+    MPIDI_RMA_FUNC_ENTER(MPID_STATE_FLUSH_LOCAL_ALL);
+
+    /* Set sync_flag in sync struct. */
+    for (i = 0; i < win_ptr->num_slots; i++) {
+        curr_target = win_ptr->slots[i].target_list_head;
+        while (curr_target != NULL) {
+            if (curr_target->sync.upgrade_flush_local) {
+                if (curr_target->sync.sync_flag < MPIDI_RMA_SYNC_FLUSH) {
+                    curr_target->sync.sync_flag = MPIDI_RMA_SYNC_FLUSH;
+                }
+                total_remote_complete_cnt++;
+            }
+            else {
+                if (curr_target->sync.sync_flag < MPIDI_RMA_SYNC_FLUSH_LOCAL) {
+                    curr_target->sync.sync_flag = MPIDI_RMA_SYNC_FLUSH_LOCAL;
+                }
+                total_local_complete_cnt++;
+            }
+
+            curr_target = curr_target->next;
+        }
+    }
+
+    /* issue out all operations. */
+    mpi_errno = MPIDI_CH3I_RMA_Make_progress_win(win_ptr, &made_progress);
+    if (mpi_errno != MPI_SUCCESS)
+        MPIU_ERR_POP(mpi_errno);
+
+    /* wait for remote completion for those targets that disable flush_local,
+     * and wait for local completion for other targets */
+    do {
+        curr_local_complete_cnt = 0, curr_remote_complete_cnt = 0;
+        for (i = 0; i < win_ptr->num_slots; i++) {
+            curr_target = win_ptr->slots[i].target_list_head;
+            while (curr_target != NULL) {
+                mpi_errno = MPIDI_CH3I_RMA_Cleanup_ops_target(win_ptr, curr_target);
+                if (mpi_errno != MPI_SUCCESS)
+                    MPIU_ERR_POP(mpi_errno);
+
+                MPIDI_CH3I_RMA_ops_completion(win_ptr, curr_target, local_completed,
+                                              remote_completed);
+
+                if (curr_target->sync.upgrade_flush_local) {
+                    if (remote_completed) {
+                        curr_remote_complete_cnt++;
+                    }
+                }
+                else {
+                    if (local_completed) {
+                        curr_local_complete_cnt++;
+                    }
+                }
+                curr_target = curr_target->next;
+            }
+        }
+
+        if (curr_remote_complete_cnt < total_remote_complete_cnt ||
+            curr_local_complete_cnt < total_local_complete_cnt) {
+            mpi_errno = wait_progress_engine();
+            if (mpi_errno != MPI_SUCCESS)
+                MPIU_ERR_POP(mpi_errno);
+        }
+    } while (curr_remote_complete_cnt < total_remote_complete_cnt ||
+             curr_local_complete_cnt < total_local_complete_cnt);
+
+  fn_exit:
+    MPIDI_RMA_FUNC_EXIT(MPID_STATE_FLUSH_LOCAL_ALL);
+    return mpi_errno;
+    /* --BEGIN ERROR HANDLING-- */
+  fn_fail:
+    goto fn_exit;
+    /* --END ERROR HANDLING-- */
+}
+
+#undef FUNCNAME
+#define FUNCNAME flush_all
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static inline int flush_all(MPID_Win * win_ptr)
+{
+    int i, made_progress = 0;
+    int local_completed = 0, remote_completed = 0;
+    MPIDI_RMA_Target_t *curr_target = NULL;
+    int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPID_STATE_FLUSH_ALL);
+
+    MPIDI_RMA_FUNC_ENTER(MPID_STATE_FLUSH_ALL);
+
+    /* Set sync_flag in sync struct. */
+    for (i = 0; i < win_ptr->num_slots; i++) {
+        curr_target = win_ptr->slots[i].target_list_head;
+        while (curr_target != NULL) {
+            if (curr_target->sync.sync_flag < MPIDI_RMA_SYNC_FLUSH) {
+                curr_target->sync.sync_flag = MPIDI_RMA_SYNC_FLUSH;
+            }
+
+            curr_target = curr_target->next;
+        }
+    }
+
+    /* Issue out all operations. */
+    mpi_errno = MPIDI_CH3I_RMA_Make_progress_win(win_ptr, &made_progress);
+    if (mpi_errno != MPI_SUCCESS)
+        MPIU_ERR_POP(mpi_errno);
+
+    /* Wait for remote completion. */
+    do {
+        mpi_errno = MPIDI_CH3I_RMA_Cleanup_ops_win(win_ptr, &local_completed, &remote_completed);
+        if (mpi_errno != MPI_SUCCESS)
+            MPIU_ERR_POP(mpi_errno);
+        if (!remote_completed) {
+            mpi_errno = wait_progress_engine();
+            if (mpi_errno != MPI_SUCCESS)
+                MPIU_ERR_POP(mpi_errno);
+        }
+    } while (!remote_completed);
+
+  fn_exit:
+    MPIDI_RMA_FUNC_EXIT(MPID_STATE_FLUSH_ALL);
+    return mpi_errno;
+    /* --BEGIN ERROR HANDLING-- */
+  fn_fail:
+    goto fn_exit;
+    /* --END ERROR HANDLING-- */
+}
 
 /********************************************************************************/
 /* Active Target synchronization (including WIN_FENCE, WIN_POST, WIN_START,     */
@@ -292,12 +478,14 @@ void MPIDI_CH3_RMA_Init_sync_pvars(void)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_Win_fence(int assert, MPID_Win * win_ptr)
 {
-    int i, made_progress = 0;
-    int local_completed = 0, remote_completed = 0;
+    int i;
     MPIDI_RMA_Target_t *curr_target = NULL;
     mpir_errflag_t errflag = MPIR_ERR_NONE;
-    int progress_engine_triggered = 0;
+    int comm_size = win_ptr->comm_ptr->local_size;
+    int scalable_fence_enabled = 0;
+    int *rma_target_marks = NULL;
     int mpi_errno = MPI_SUCCESS;
+    MPIU_CHKLMEM_DECL(1);
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_FENCE);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_WIN_FENCE);
@@ -307,6 +495,11 @@ int MPIDI_Win_fence(int assert, MPID_Win * win_ptr)
                          win_ptr->states.access_state != MPIDI_RMA_FENCE_GRANTED) ||
                         win_ptr->states.exposure_state != MPIDI_RMA_NONE,
                         mpi_errno, MPI_ERR_RMA_SYNC, "**rmasync");
+
+    /* Judge if we should switch to scalable FENCE algorithm */
+    if (comm_size >= MPIR_CVAR_CH3_RMA_SCALABLE_FENCE_PROCESS_NUM) {
+        scalable_fence_enabled = 1;
+    }
 
     /* Ensure ordering of load/store operations. */
     if (win_ptr->shm_allocated == TRUE) {
@@ -327,6 +520,8 @@ int MPIDI_Win_fence(int assert, MPID_Win * win_ptr)
                 MPID_Request_release(req_ptr);
                 win_ptr->fence_sync_req = MPI_REQUEST_NULL;
                 win_ptr->states.access_state = MPIDI_RMA_NONE;
+                MPIDI_CH3I_num_active_issued_win--;
+                MPIU_Assert(MPIDI_CH3I_num_active_issued_win >= 0);
             }
 
             if (win_ptr->shm_allocated == TRUE) {
@@ -336,123 +531,150 @@ int MPIDI_Win_fence(int assert, MPID_Win * win_ptr)
                 if (mpi_errno != MPI_SUCCESS)
                     MPIU_ERR_POP(mpi_errno);
                 MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
-
-                /* Mark that we triggered the progress engine
-                 * in this function call. */
-                progress_engine_triggered = 1;
             }
 
             mpi_errno = MPIR_Ibarrier_impl(win_ptr->comm_ptr, &(win_ptr->fence_sync_req));
             if (mpi_errno != MPI_SUCCESS)
                 MPIU_ERR_POP(mpi_errno);
 
-            /* Set window access state properly. */
-            win_ptr->states.access_state = MPIDI_RMA_FENCE_ISSUED;
-            num_active_issued_win++;
+            if (win_ptr->fence_sync_req == MPI_REQUEST_NULL) {
+                /* ibarrier completed immediately. */
+                win_ptr->states.access_state = MPIDI_RMA_FENCE_GRANTED;
+            }
+            else {
+                /* Set window access state properly. */
+                win_ptr->states.access_state = MPIDI_RMA_FENCE_ISSUED;
+                MPIDI_CH3I_num_active_issued_win++;
+            }
 
             goto finish_fence;
         }
     }
 
-    if (win_ptr->states.access_state == MPIDI_RMA_FENCE_ISSUED) {
-        while (win_ptr->states.access_state != MPIDI_RMA_FENCE_GRANTED) {
-            mpi_errno = wait_progress_engine();
-            if (mpi_errno != MPI_SUCCESS)
-                MPIU_ERR_POP(mpi_errno);
+    /* Perform basic algorithm by calling reduce-scatter */
+    if (!scalable_fence_enabled) {
+        /* If the IBARRIER is not completed, do not need to wait for
+         * it since we are going to call reduce-scatter */
+        if (win_ptr->fence_sync_req != MPI_REQUEST_NULL) {
+            MPID_Request *req_ptr;
+            MPID_Request_get_ptr(win_ptr->fence_sync_req, req_ptr);
+            MPID_Request_release(req_ptr);
+            win_ptr->fence_sync_req = MPI_REQUEST_NULL;
+            MPIDI_CH3I_num_active_issued_win--;
+            MPIU_Assert(MPIDI_CH3I_num_active_issued_win >= 0);
 
-            /* Mark that we triggered the progress engine
-             * in this function call. */
-            progress_engine_triggered = 1;
+            win_ptr->states.access_state = MPIDI_RMA_NONE;
         }
-    }
+        MPIU_CHKLMEM_MALLOC(rma_target_marks, int *, comm_size * sizeof(int),
+                            mpi_errno, "rma_target_marks");
+        for (i = 0; i < comm_size; i++)
+            rma_target_marks[i] = 0;
 
-    /* Set sync_flag in target structs. */
-    for (i = 0; i < win_ptr->num_slots; i++) {
-        curr_target = win_ptr->slots[i].target_list;
-        while (curr_target != NULL) {
-
-            /* set sync_flag in sync struct */
-            if (curr_target->sync.sync_flag < MPIDI_RMA_SYNC_FLUSH) {
-                curr_target->sync.sync_flag = MPIDI_RMA_SYNC_FLUSH;
-                curr_target->sync.have_remote_incomplete_ops = 0;
-                curr_target->sync.outstanding_acks++;
+        for (i = 0; i < win_ptr->num_slots; i++) {
+            curr_target = win_ptr->slots[i].target_list_head;
+            while (curr_target != NULL) {
+                rma_target_marks[curr_target->target_rank] = 1;
+                curr_target = curr_target->next;
             }
-            curr_target = curr_target->next;
         }
-    }
 
-    /* Issue out all operations. */
-    mpi_errno = MPIDI_CH3I_RMA_Make_progress_win(win_ptr, &made_progress);
-    if (mpi_errno != MPI_SUCCESS)
-        MPIU_ERR_POP(mpi_errno);
+        win_ptr->at_completion_counter += comm_size;
 
-    /* Wait for remote completion. */
-    do {
-        mpi_errno = MPIDI_CH3I_RMA_Cleanup_ops_win(win_ptr, &local_completed, &remote_completed);
+        mpi_errno = MPIR_Reduce_scatter_block_impl(MPI_IN_PLACE, rma_target_marks, 1,
+                                                   MPI_INT, MPI_SUM, win_ptr->comm_ptr, &errflag);
         if (mpi_errno != MPI_SUCCESS)
             MPIU_ERR_POP(mpi_errno);
-        if (!remote_completed) {
-            mpi_errno = wait_progress_engine();
-            if (mpi_errno != MPI_SUCCESS)
-                MPIU_ERR_POP(mpi_errno);
 
-            /* Mark that we triggered the progress engine
-             * in this function call. */
-            progress_engine_triggered = 1;
+        MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+
+        win_ptr->at_completion_counter -= comm_size;
+        win_ptr->at_completion_counter += rma_target_marks[0];
+        MPIU_Assert(win_ptr->at_completion_counter >= 0);
+
+        win_ptr->states.access_state = MPIDI_RMA_FENCE_GRANTED;
+    }
+
+    if (!scalable_fence_enabled) {
+        for (i = 0; i < win_ptr->num_slots; i++) {
+            curr_target = win_ptr->slots[i].target_list_head;
+            while (curr_target != NULL) {
+                /* flag is set in order to decrement complete counter on target */
+                curr_target->win_complete_flag = 1;
+
+                curr_target = curr_target->next;
+            }
         }
-    } while (!remote_completed);
+
+        mpi_errno = flush_local_all(win_ptr);
+        if (mpi_errno != MPI_SUCCESS)
+            MPIU_ERR_POP(mpi_errno);
+    }
+    else {
+        mpi_errno = flush_all(win_ptr);
+        if (mpi_errno != MPI_SUCCESS)
+            MPIU_ERR_POP(mpi_errno);
+    }
 
     /* Cleanup all targets on window. */
     mpi_errno = MPIDI_CH3I_RMA_Cleanup_targets_win(win_ptr);
     if (mpi_errno != MPI_SUCCESS)
         MPIU_ERR_POP(mpi_errno);
 
-    mpi_errno = MPIR_Barrier_impl(win_ptr->comm_ptr, &errflag);
-    if (mpi_errno != MPI_SUCCESS)
-        MPIU_ERR_POP(mpi_errno);
-    MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+    if (scalable_fence_enabled) {
+        mpi_errno = MPIR_Barrier_impl(win_ptr->comm_ptr, &errflag);
+        if (mpi_errno != MPI_SUCCESS)
+            MPIU_ERR_POP(mpi_errno);
+        MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 
-    /* Mark that we triggered the progress engine
-     * in this function call. */
-    progress_engine_triggered = 1;
-
-    /* Set window access state properly. */
-    if (assert & MPI_MODE_NOSUCCEED) {
-        win_ptr->states.access_state = MPIDI_RMA_NONE;
+        /* Set window access state properly. */
+        if (assert & MPI_MODE_NOSUCCEED) {
+            win_ptr->states.access_state = MPIDI_RMA_NONE;
+        }
+        else {
+            win_ptr->states.access_state = MPIDI_RMA_FENCE_GRANTED;
+        }
     }
     else {
-        win_ptr->states.access_state = MPIDI_RMA_FENCE_GRANTED;
+        /* Waiting for all operations targeting at me to be finished. */
+        while (win_ptr->at_completion_counter) {
+            mpi_errno = wait_progress_engine();
+            if (mpi_errno != MPI_SUCCESS)
+                MPIU_ERR_POP(mpi_errno);
+        }
+
+        if (assert & MPI_MODE_NOSUCCEED) {
+            win_ptr->states.access_state = MPIDI_RMA_NONE;
+        }
+        else {
+            /* Prepare for the next possible epoch */
+            mpi_errno = MPIR_Ibarrier_impl(win_ptr->comm_ptr, &(win_ptr->fence_sync_req));
+            if (mpi_errno != MPI_SUCCESS)
+                MPIU_ERR_POP(mpi_errno);
+
+            if (win_ptr->fence_sync_req == MPI_REQUEST_NULL) {
+                /* ibarrier completed immediately. */
+                win_ptr->states.access_state = MPIDI_RMA_FENCE_GRANTED;
+            }
+            else {
+                MPIDI_CH3I_num_active_issued_win++;
+                win_ptr->states.access_state = MPIDI_RMA_FENCE_ISSUED;
+            }
+
+            if (win_ptr->shm_allocated == TRUE) {
+                MPID_Comm *node_comm_ptr = win_ptr->comm_ptr->node_comm;
+                mpi_errno = MPIR_Barrier_impl(node_comm_ptr, &errflag);
+                if (mpi_errno != MPI_SUCCESS)
+                    MPIU_ERR_POP(mpi_errno);
+                MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+            }
+        }
     }
 
   finish_fence:
     /* Make sure that all targets are freed. */
     MPIU_Assert(win_ptr->non_empty_slots == 0);
 
-    if (assert & MPI_MODE_NOPRECEDE) {
-        /* BEGINNING synchronization: the following counter should be zero. */
-        MPIU_Assert(win_ptr->accumulated_ops_cnt == 0);
-    }
-    else {
-        /* ENDING synchronization: correctly decrement the following counter. */
-        win_ptr->accumulated_ops_cnt = 0;
-    }
-
     MPIU_Assert(win_ptr->active_req_cnt == 0);
-
-    if (!(assert & MPI_MODE_NOPRECEDE)) {
-        if (!progress_engine_triggered) {
-            /* In some cases (e.g. target is myself, or process on SHM),
-             * this function call does not go through the progress engine.
-             * Therefore, it is possible that this process never process
-             * events coming from other processes. This may cause deadlock in
-             * applications where the program execution on this process depends
-             * on the happening of events from other processes. Here we poke
-             * the progress engine once to avoid such issue.  */
-            mpi_errno = poke_progress_engine();
-            if (mpi_errno != MPI_SUCCESS)
-                MPIU_ERR_POP(mpi_errno);
-        }
-    }
 
     /* Ensure ordering of load/store operations. */
     if (win_ptr->shm_allocated == TRUE) {
@@ -460,6 +682,7 @@ int MPIDI_Win_fence(int assert, MPID_Win * win_ptr)
     }
 
   fn_exit:
+    MPIU_CHKLMEM_FREEALL();
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_WIN_FENCE);
     return mpi_errno;
     /* --BEGIN ERROR HANDLING-- */
@@ -669,13 +892,9 @@ int MPIDI_Win_start(MPID_Group * group_ptr, int assert, MPID_Win * win_ptr)
         }
     }
 
-  finish_start:
     /* Set window access state properly. */
     win_ptr->states.access_state = MPIDI_RMA_PSCW_ISSUED;
-    num_active_issued_win++;
-
-    /* BEGINNING synchronization: the following counter should be zero. */
-    MPIU_Assert(win_ptr->accumulated_ops_cnt == 0);
+    MPIDI_CH3I_num_active_issued_win++;
 
     MPIU_Assert(win_ptr->active_req_cnt == 0);
 
@@ -703,11 +922,8 @@ int MPIDI_Win_complete(MPID_Win * win_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
     int i, dst, rank = win_ptr->comm_ptr->rank;
-    int local_completed = 0, remote_completed = 0;
     MPID_Comm *win_comm_ptr = win_ptr->comm_ptr;
     MPIDI_RMA_Target_t *curr_target;
-    int progress_engine_triggered = 0;
-    int made_progress;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_COMPLETE);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_WIN_COMPLETE);
@@ -727,10 +943,6 @@ int MPIDI_Win_complete(MPID_Win * win_ptr)
             mpi_errno = wait_progress_engine();
             if (mpi_errno != MPI_SUCCESS)
                 MPIU_ERR_POP(mpi_errno);
-
-            /* Mark that we triggered the progress engine
-             * in this function call. */
-            progress_engine_triggered = 1;
         }
     }
 
@@ -743,57 +955,33 @@ int MPIDI_Win_complete(MPID_Win * win_ptr)
         }
 
         if (win_comm_ptr->local_size <= win_ptr->num_slots)
-            curr_target = win_ptr->slots[dst].target_list;
+            curr_target = win_ptr->slots[dst].target_list_head;
         else {
-            curr_target = win_ptr->slots[dst % win_ptr->num_slots].target_list;
+            curr_target = win_ptr->slots[dst % win_ptr->num_slots].target_list_head;
             while (curr_target != NULL && curr_target->target_rank != dst)
                 curr_target = curr_target->next;
         }
 
         if (curr_target != NULL) {
-            /* set sync_flag in sync struct */
-            if (curr_target->sync.sync_flag < MPIDI_RMA_SYNC_FLUSH) {
-                curr_target->sync.sync_flag = MPIDI_RMA_SYNC_FLUSH;
-                curr_target->sync.have_remote_incomplete_ops = 0;
-                curr_target->sync.outstanding_acks++;
-            }
             curr_target->win_complete_flag = 1;
         }
         else {
             /* FIXME: do we need to wait for remote completion? */
-            mpi_errno = send_decr_at_cnt_msg(dst, win_ptr);
+            mpi_errno = send_decr_at_cnt_msg(dst, win_ptr, MPIDI_CH3_PKT_FLAG_NONE);
             if (mpi_errno != MPI_SUCCESS)
                 MPIU_ERR_POP(mpi_errno);
         }
     }
 
-    /* issue out all operations */
-    mpi_errno = MPIDI_CH3I_RMA_Make_progress_win(win_ptr, &made_progress);
+    mpi_errno = flush_local_all(win_ptr);
     if (mpi_errno != MPI_SUCCESS)
         MPIU_ERR_POP(mpi_errno);
-
-    /* wait until all slots are empty */
-    do {
-        mpi_errno = MPIDI_CH3I_RMA_Cleanup_ops_win(win_ptr, &local_completed, &remote_completed);
-        if (mpi_errno != MPI_SUCCESS)
-            MPIU_ERR_POP(mpi_errno);
-        if (!remote_completed) {
-            mpi_errno = wait_progress_engine();
-            if (mpi_errno != MPI_SUCCESS)
-                MPIU_ERR_POP(mpi_errno);
-
-            /* Mark that we triggered the progress engine
-             * in this function call. */
-            progress_engine_triggered = 1;
-        }
-    } while (!remote_completed);
 
     /* Cleanup all targets on this window. */
     mpi_errno = MPIDI_CH3I_RMA_Cleanup_targets_win(win_ptr);
     if (mpi_errno != MPI_SUCCESS)
         MPIU_ERR_POP(mpi_errno);
 
-  finish_complete:
     /* Set window access state properly. */
     win_ptr->states.access_state = MPIDI_RMA_NONE;
 
@@ -805,23 +993,7 @@ int MPIDI_Win_complete(MPID_Win * win_ptr)
     /* Make sure that all targets are freed. */
     MPIU_Assert(win_ptr->non_empty_slots == 0);
 
-    /* ENDING synchronization: correctly decrement the following counter. */
-    win_ptr->accumulated_ops_cnt = 0;
-
     MPIU_Assert(win_ptr->active_req_cnt == 0);
-
-    if (!progress_engine_triggered) {
-        /* In some cases (e.g. target is myself, or process on SHM),
-         * this function call does not go through the progress engine.
-         * Therefore, it is possible that this process never process
-         * events coming from other processes. This may cause deadlock in
-         * applications where the program execution on this process depends
-         * on the happening of events from other processes. Here we poke
-         * the progress engine once to avoid such issue.  */
-        mpi_errno = poke_progress_engine();
-        if (mpi_errno != MPI_SUCCESS)
-            MPIU_ERR_POP(mpi_errno);
-    }
 
   fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_WIN_COMPLETE);
@@ -840,7 +1012,6 @@ int MPIDI_Win_complete(MPID_Win * win_ptr)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_Win_wait(MPID_Win * win_ptr)
 {
-    int progress_engine_triggered = 0;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_WAIT);
 
@@ -854,28 +1025,10 @@ int MPIDI_Win_wait(MPID_Win * win_ptr)
         mpi_errno = wait_progress_engine();
         if (mpi_errno != MPI_SUCCESS)
             MPIU_ERR_POP(mpi_errno);
-
-        /* Mark that we triggered the progress engine
-         * in this function call. */
-        progress_engine_triggered = 1;
     }
 
-  finish_wait:
     /* Set window exposure state properly. */
     win_ptr->states.exposure_state = MPIDI_RMA_NONE;
-
-    if (!progress_engine_triggered) {
-        /* In some cases (e.g. target is myself, or process on SHM),
-         * this function call does not go through the progress engine.
-         * Therefore, it is possible that this process never process
-         * events coming from other processes. This may cause deadlock in
-         * applications where the program execution on this process depends
-         * on the happening of events from other processes. Here we poke
-         * the progress engine once to avoid such issue.  */
-        mpi_errno = poke_progress_engine();
-        if (mpi_errno != MPI_SUCCESS)
-            MPIU_ERR_POP(mpi_errno);
-    }
 
     /* Ensure ordering of load/store operations. */
     if (win_ptr->shm_allocated == TRUE) {
@@ -983,7 +1136,7 @@ int MPIDI_Win_lock(int lock_type, int dest, int assert, MPID_Win * win_ptr)
     if (win_ptr->lock_epoch_count == 0) {
         /* Set window access state properly. */
         win_ptr->states.access_state = MPIDI_RMA_PER_TARGET;
-        num_passive_win++;
+        MPIDI_CH3I_num_passive_win++;
     }
     win_ptr->lock_epoch_count++;
 
@@ -1013,24 +1166,28 @@ int MPIDI_Win_lock(int lock_type, int dest, int assert, MPID_Win * win_ptr)
 
     /* If Destination is myself or process on SHM, acquire the lock,
      * wait until lock is granted. */
-    if (!(assert & MPI_MODE_NOCHECK) && (dest == rank || shm_target)) {
-        mpi_errno = MPIDI_CH3I_RMA_Make_progress_target(win_ptr, dest, &made_progress);
-        if (mpi_errno != MPI_SUCCESS)
-            MPIU_ERR_POP(mpi_errno);
+    if (!(assert & MPI_MODE_NOCHECK)) {
+        if (dest == rank || shm_target) {
+            mpi_errno = MPIDI_CH3I_RMA_Make_progress_target(win_ptr, dest, &made_progress);
+            if (mpi_errno != MPI_SUCCESS)
+                MPIU_ERR_POP(mpi_errno);
 
-        while (target->access_state != MPIDI_RMA_LOCK_GRANTED) {
-            mpi_errno = wait_progress_engine();
+            while (target->access_state != MPIDI_RMA_LOCK_GRANTED) {
+                mpi_errno = wait_progress_engine();
+                if (mpi_errno != MPI_SUCCESS)
+                    MPIU_ERR_POP(mpi_errno);
+            }
+        }
+        else if (!MPIR_CVAR_CH3_RMA_DELAY_ISSUING_FOR_PIGGYBACKING) {
+            /* if DELAY_ISSUING_FOR_PIGGYBACKING is turned off, send lock request now
+             * since we do not want to piggyback LOCK with future OP */
+            mpi_errno = MPIDI_CH3I_RMA_Make_progress_target(win_ptr, dest, &made_progress);
             if (mpi_errno != MPI_SUCCESS)
                 MPIU_ERR_POP(mpi_errno);
         }
     }
 
   finish_lock:
-    if (win_ptr->lock_epoch_count == 1) {
-        /* BEGINNING synchronization: the following counter should be zero. */
-        MPIU_Assert(win_ptr->accumulated_ops_cnt == 0);
-    }
-
     /* Ensure ordering of load/store operations. */
     if (win_ptr->shm_allocated == TRUE) {
         OPA_read_write_barrier();
@@ -1052,10 +1209,9 @@ int MPIDI_Win_lock(int lock_type, int dest, int assert, MPID_Win * win_ptr)
 int MPIDI_Win_unlock(int dest, MPID_Win * win_ptr)
 {
     int made_progress = 0;
-    int local_completed = 0, remote_completed = 0;
+    int local_completed ATTRIBUTE((unused)) = 0, remote_completed = 0;
     MPIDI_RMA_Target_t *target = NULL;
     enum MPIDI_RMA_sync_types sync_flag;
-    int progress_engine_triggered = 0;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_UNLOCK);
 
@@ -1090,8 +1246,6 @@ int MPIDI_Win_unlock(int dest, MPID_Win * win_ptr)
         sync_flag = MPIDI_RMA_SYNC_UNLOCK;
     if (target->sync.sync_flag < sync_flag) {
         target->sync.sync_flag = sync_flag;
-        target->sync.have_remote_incomplete_ops = 0;
-        target->sync.outstanding_acks++;
     }
 
     /* Issue out all operations. */
@@ -1101,45 +1255,22 @@ int MPIDI_Win_unlock(int dest, MPID_Win * win_ptr)
 
     /* Wait for remote completion. */
     do {
-        mpi_errno = MPIDI_CH3I_RMA_Cleanup_ops_target(win_ptr, target,
-                                                      &local_completed, &remote_completed);
+        mpi_errno = MPIDI_CH3I_RMA_Cleanup_ops_target(win_ptr, target);
         if (mpi_errno != MPI_SUCCESS)
             MPIU_ERR_POP(mpi_errno);
+
+        MPIDI_CH3I_RMA_ops_completion(win_ptr, target, local_completed, remote_completed);
+
         if (!remote_completed) {
             mpi_errno = wait_progress_engine();
             if (mpi_errno != MPI_SUCCESS)
                 MPIU_ERR_POP(mpi_errno);
-
-            /* Mark that we triggered the progress engine
-             * in this function call. */
-            progress_engine_triggered = 1;
         }
     } while (!remote_completed);
 
   finish_unlock:
-    win_ptr->lock_epoch_count--;
-    if (win_ptr->lock_epoch_count == 0) {
-        /* Set window access state properly. */
-        win_ptr->states.access_state = MPIDI_RMA_NONE;
-        num_passive_win--;
-        MPIU_Assert(num_passive_win >= 0);
-    }
-
-    if (target != NULL) {
-        /* ENDING synchronization: correctly decrement the following counter. */
-        win_ptr->accumulated_ops_cnt -= target->accumulated_ops_cnt;
-        if (win_ptr->lock_epoch_count == 0) {
-            MPIU_Assert(win_ptr->accumulated_ops_cnt == 0);
-        }
-
-        /* Cleanup the target. */
-        mpi_errno = MPIDI_CH3I_RMA_Cleanup_single_target(win_ptr, target);
-        if (mpi_errno != MPI_SUCCESS)
-            MPIU_ERR_POP(mpi_errno);
-    }
-
-    if (!progress_engine_triggered) {
-        /* In some cases (e.g. target is myself, or process on SHM),
+    if (win_ptr->comm_ptr->rank == dest) {
+        /* In some cases (e.g. target is myself),
          * this function call does not go through the progress engine.
          * Therefore, it is possible that this process never process
          * events coming from other processes. This may cause deadlock in
@@ -1147,6 +1278,21 @@ int MPIDI_Win_unlock(int dest, MPID_Win * win_ptr)
          * on the happening of events from other processes. Here we poke
          * the progress engine once to avoid such issue.  */
         mpi_errno = poke_progress_engine();
+        if (mpi_errno != MPI_SUCCESS)
+            MPIU_ERR_POP(mpi_errno);
+    }
+
+    win_ptr->lock_epoch_count--;
+    if (win_ptr->lock_epoch_count == 0) {
+        /* Set window access state properly. */
+        win_ptr->states.access_state = MPIDI_RMA_NONE;
+        MPIDI_CH3I_num_passive_win--;
+        MPIU_Assert(MPIDI_CH3I_num_passive_win >= 0);
+    }
+
+    if (target != NULL) {
+        /* Cleanup the target. */
+        mpi_errno = MPIDI_CH3I_Win_target_dequeue_and_free(win_ptr, target);
         if (mpi_errno != MPI_SUCCESS)
             MPIU_ERR_POP(mpi_errno);
     }
@@ -1168,10 +1314,9 @@ int MPIDI_Win_unlock(int dest, MPID_Win * win_ptr)
 int MPIDI_Win_flush(int dest, MPID_Win * win_ptr)
 {
     int made_progress = 0;
-    int local_completed = 0, remote_completed = 0;
+    int local_completed ATTRIBUTE((unused)) = 0, remote_completed = 0;
     int rank = win_ptr->comm_ptr->rank;
     MPIDI_RMA_Target_t *target = NULL;
-    int progress_engine_triggered = 0;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_FLUSH);
 
@@ -1211,8 +1356,6 @@ int MPIDI_Win_flush(int dest, MPID_Win * win_ptr)
     /* Set sync_flag in sync struct. */
     if (target->sync.sync_flag < MPIDI_RMA_SYNC_FLUSH) {
         target->sync.sync_flag = MPIDI_RMA_SYNC_FLUSH;
-        target->sync.have_remote_incomplete_ops = 0;
-        target->sync.outstanding_acks++;
     }
 
     /* Issue out all operations. */
@@ -1222,30 +1365,22 @@ int MPIDI_Win_flush(int dest, MPID_Win * win_ptr)
 
     /* Wait for remote completion. */
     do {
-        mpi_errno = MPIDI_CH3I_RMA_Cleanup_ops_target(win_ptr, target,
-                                                      &local_completed, &remote_completed);
+        mpi_errno = MPIDI_CH3I_RMA_Cleanup_ops_target(win_ptr, target);
         if (mpi_errno != MPI_SUCCESS)
             MPIU_ERR_POP(mpi_errno);
+
+        MPIDI_CH3I_RMA_ops_completion(win_ptr, target, local_completed, remote_completed);
+
         if (!remote_completed) {
             mpi_errno = wait_progress_engine();
             if (mpi_errno != MPI_SUCCESS)
                 MPIU_ERR_POP(mpi_errno);
-
-            /* Mark that we triggered the progress engine
-             * in this function call. */
-            progress_engine_triggered = 1;
         }
     } while (!remote_completed);
 
   finish_flush:
-    if (target != NULL) {
-        /* ENDING synchronization: correctly decrement the following counters. */
-        win_ptr->accumulated_ops_cnt -= target->accumulated_ops_cnt;
-        target->accumulated_ops_cnt = 0;
-    }
-
-    if (!progress_engine_triggered) {
-        /* In some cases (e.g. target is myself, or process on SHM),
+    if (win_ptr->comm_ptr->rank == dest) {
+        /* In some cases (e.g. target is myself),
          * this function call does not go through the progress engine.
          * Therefore, it is possible that this process never process
          * events coming from other processes. This may cause deadlock in
@@ -1255,6 +1390,11 @@ int MPIDI_Win_flush(int dest, MPID_Win * win_ptr)
         mpi_errno = poke_progress_engine();
         if (mpi_errno != MPI_SUCCESS)
             MPIU_ERR_POP(mpi_errno);
+    }
+
+    if (target != NULL && target->sync.upgrade_flush_local) {
+        /* reset upgrade_flush_local flag in target to 0 */
+        target->sync.upgrade_flush_local = 0;
     }
 
   fn_exit:
@@ -1277,7 +1417,6 @@ int MPIDI_Win_flush_local(int dest, MPID_Win * win_ptr)
     int local_completed = 0, remote_completed = 0;
     int rank = win_ptr->comm_ptr->rank;
     MPIDI_RMA_Target_t *target = NULL;
-    int progress_engine_triggered = 0;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_FLUSH_LOCAL);
 
@@ -1315,11 +1454,9 @@ int MPIDI_Win_flush_local(int dest, MPID_Win * win_ptr)
     }
 
     /* Set sync_flag in sync struct. */
-    if (target->disable_flush_local) {
+    if (target->sync.upgrade_flush_local) {
         if (target->sync.sync_flag < MPIDI_RMA_SYNC_FLUSH) {
             target->sync.sync_flag = MPIDI_RMA_SYNC_FLUSH;
-            target->sync.have_remote_incomplete_ops = 0;
-            target->sync.outstanding_acks++;
         }
     }
     else {
@@ -1334,44 +1471,25 @@ int MPIDI_Win_flush_local(int dest, MPID_Win * win_ptr)
 
     /* Wait for local completion. */
     do {
-        mpi_errno = MPIDI_CH3I_RMA_Cleanup_ops_target(win_ptr, target,
-                                                      &local_completed, &remote_completed);
+        mpi_errno = MPIDI_CH3I_RMA_Cleanup_ops_target(win_ptr, target);
         if (mpi_errno != MPI_SUCCESS)
             MPIU_ERR_POP(mpi_errno);
-        if ((target->disable_flush_local && !remote_completed) ||
-            (!target->disable_flush_local && !local_completed)) {
+
+        MPIDI_CH3I_RMA_ops_completion(win_ptr, target, local_completed, remote_completed);
+
+        if ((target->sync.upgrade_flush_local && !remote_completed) ||
+            (!target->sync.upgrade_flush_local && !local_completed)) {
             mpi_errno = wait_progress_engine();
             if (mpi_errno != MPI_SUCCESS)
                 MPIU_ERR_POP(mpi_errno);
-
-            /* Mark that we triggered the progress engine
-             * in this function call. */
-            progress_engine_triggered = 1;
         }
-    } while ((target->disable_flush_local && !remote_completed) ||
-             (!target->disable_flush_local && !local_completed));
+    } while ((target->sync.upgrade_flush_local && !remote_completed) ||
+             (!target->sync.upgrade_flush_local && !local_completed));
 
   finish_flush_local:
     if (target != NULL) {
-        /* reset disable_flush_local flag in target to 0 */
-        target->disable_flush_local = 0;
-
-        /* ENDING synchronization: correctly decrement the following counters. */
-        win_ptr->accumulated_ops_cnt -= target->accumulated_ops_cnt;
-        target->accumulated_ops_cnt = 0;
-    }
-
-    if (!progress_engine_triggered) {
-        /* In some cases (e.g. target is myself, or process on SHM),
-         * this function call does not go through the progress engine.
-         * Therefore, it is possible that this process never process
-         * events coming from other processes. This may cause deadlock in
-         * applications where the program execution on this process depends
-         * on the happening of events from other processes. Here we poke
-         * the progress engine once to avoid such issue.  */
-        mpi_errno = poke_progress_engine();
-        if (mpi_errno != MPI_SUCCESS)
-            MPIU_ERR_POP(mpi_errno);
+        /* reset upgrade_flush_local flag in target to 0 */
+        target->sync.upgrade_flush_local = 0;
     }
 
   fn_exit:
@@ -1411,7 +1529,7 @@ int MPIDI_Win_lock_all(int assert, MPID_Win * win_ptr)
         win_ptr->states.access_state = MPIDI_RMA_LOCK_ALL_GRANTED;
     else
         win_ptr->states.access_state = MPIDI_RMA_LOCK_ALL_CALLED;
-    num_passive_win++;
+    MPIDI_CH3I_num_passive_win++;
 
     win_ptr->lock_all_assert = assert;
 
@@ -1449,10 +1567,6 @@ int MPIDI_Win_lock_all(int assert, MPID_Win * win_ptr)
         }
     }
 
-  finish_lock_all:
-    /* BEGINNING synchronization: the following counter should be zero. */
-    MPIU_Assert(win_ptr->accumulated_ops_cnt == 0);
-
     MPIU_Assert(win_ptr->active_req_cnt == 0);
 
     /* Ensure ordering of load/store operations. */
@@ -1480,7 +1594,6 @@ int MPIDI_Win_unlock_all(MPID_Win * win_ptr)
     int local_completed = 0, remote_completed = 0;
     int rank = win_ptr->comm_ptr->rank;
     MPIDI_RMA_Target_t *curr_target = NULL;
-    int progress_engine_triggered = 0;
     enum MPIDI_RMA_sync_types sync_flag;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_UNLOCK_ALL);
@@ -1527,12 +1640,10 @@ int MPIDI_Win_unlock_all(MPID_Win * win_ptr)
 
     if (win_ptr->states.access_state == MPIDI_RMA_LOCK_ALL_CALLED) {
         for (i = 0; i < win_ptr->num_slots; i++) {
-            curr_target = win_ptr->slots[i].target_list;
+            curr_target = win_ptr->slots[i].target_list_head;
             while (curr_target != NULL) {
                 if (curr_target->sync.sync_flag < sync_flag) {
                     curr_target->sync.sync_flag = sync_flag;
-                    curr_target->sync.have_remote_incomplete_ops = 0;
-                    curr_target->sync.outstanding_acks++;
                 }
                 curr_target = curr_target->next;
             }
@@ -1541,9 +1652,9 @@ int MPIDI_Win_unlock_all(MPID_Win * win_ptr)
     else {
         for (i = 0; i < win_ptr->comm_ptr->local_size; i++) {
             if (win_ptr->comm_ptr->local_size <= win_ptr->num_slots)
-                curr_target = win_ptr->slots[i].target_list;
+                curr_target = win_ptr->slots[i].target_list_head;
             else {
-                curr_target = win_ptr->slots[i % win_ptr->num_slots].target_list;
+                curr_target = win_ptr->slots[i % win_ptr->num_slots].target_list_head;
                 while (curr_target != NULL && curr_target->target_rank != i)
                     curr_target = curr_target->next;
             }
@@ -1551,8 +1662,6 @@ int MPIDI_Win_unlock_all(MPID_Win * win_ptr)
             if (curr_target != NULL) {
                 if (curr_target->sync.sync_flag < sync_flag) {
                     curr_target->sync.sync_flag = sync_flag;
-                    curr_target->sync.have_remote_incomplete_ops = 0;
-                    curr_target->sync.outstanding_acks++;
                 }
             }
             else {
@@ -1589,10 +1698,6 @@ int MPIDI_Win_unlock_all(MPID_Win * win_ptr)
             mpi_errno = wait_progress_engine();
             if (mpi_errno != MPI_SUCCESS)
                 MPIU_ERR_POP(mpi_errno);
-
-            /* Mark that we triggered the progress engine
-             * in this function call. */
-            progress_engine_triggered = 1;
         }
     } while (!remote_completed);
 
@@ -1601,11 +1706,10 @@ int MPIDI_Win_unlock_all(MPID_Win * win_ptr)
     if (mpi_errno != MPI_SUCCESS)
         MPIU_ERR_POP(mpi_errno);
 
-  finish_unlock_all:
     /* Set window access state properly. */
     win_ptr->states.access_state = MPIDI_RMA_NONE;
-    num_passive_win--;
-    MPIU_Assert(num_passive_win >= 0);
+    MPIDI_CH3I_num_passive_win--;
+    MPIU_Assert(MPIDI_CH3I_num_passive_win >= 0);
 
     /* reset lock_all assert on window. */
     win_ptr->lock_all_assert = 0;
@@ -1613,23 +1717,7 @@ int MPIDI_Win_unlock_all(MPID_Win * win_ptr)
     /* Make sure that all targets are freed. */
     MPIU_Assert(win_ptr->non_empty_slots == 0);
 
-    /* ENDING synchronization: correctly decrement the following counter. */
-    win_ptr->accumulated_ops_cnt = 0;
-
     MPIU_Assert(win_ptr->active_req_cnt == 0);
-
-    if (!progress_engine_triggered) {
-        /* In some cases (e.g. target is myself, or process on SHM),
-         * this function call does not go through the progress engine.
-         * Therefore, it is possible that this process never process
-         * events coming from other processes. This may cause deadlock in
-         * applications where the program execution on this process depends
-         * on the happening of events from other processes. Here we poke
-         * the progress engine once to avoid such issue.  */
-        mpi_errno = poke_progress_engine();
-        if (mpi_errno != MPI_SUCCESS)
-            MPIU_ERR_POP(mpi_errno);
-    }
 
   fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_WIN_UNLOCK_ALL);
@@ -1647,10 +1735,8 @@ int MPIDI_Win_unlock_all(MPID_Win * win_ptr)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_Win_flush_all(MPID_Win * win_ptr)
 {
-    int i, made_progress = 0;
-    int local_completed = 0, remote_completed = 0;
+    int i;
     MPIDI_RMA_Target_t *curr_target = NULL;
-    int progress_engine_triggered = 0;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPIDI_STATE_MPIDI_WIN_FLUSH_ALL);
 
@@ -1667,61 +1753,19 @@ int MPIDI_Win_flush_all(MPID_Win * win_ptr)
         OPA_read_write_barrier();
     }
 
-    /* Set sync_flag in sync struct. */
-    for (i = 0; i < win_ptr->num_slots; i++) {
-        curr_target = win_ptr->slots[i].target_list;
-        while (curr_target != NULL) {
-            if (curr_target->sync.sync_flag < MPIDI_RMA_SYNC_FLUSH) {
-                curr_target->sync.sync_flag = MPIDI_RMA_SYNC_FLUSH;
-                curr_target->sync.have_remote_incomplete_ops = 0;
-                curr_target->sync.outstanding_acks++;
-            }
-
-            /* ENDING synchronization: correctly decrement the following counters. */
-            curr_target->accumulated_ops_cnt = 0;
-
-            curr_target = curr_target->next;
-        }
-    }
-
-    /* Issue out all operations. */
-    mpi_errno = MPIDI_CH3I_RMA_Make_progress_win(win_ptr, &made_progress);
+    mpi_errno = flush_all(win_ptr);
     if (mpi_errno != MPI_SUCCESS)
         MPIU_ERR_POP(mpi_errno);
 
-    /* Wait for remote completion. */
-    do {
-        mpi_errno = MPIDI_CH3I_RMA_Cleanup_ops_win(win_ptr, &local_completed, &remote_completed);
-        if (mpi_errno != MPI_SUCCESS)
-            MPIU_ERR_POP(mpi_errno);
-        if (!remote_completed) {
-            mpi_errno = wait_progress_engine();
-            if (mpi_errno != MPI_SUCCESS)
-                MPIU_ERR_POP(mpi_errno);
-
-            /* Mark that we triggered the progress engine
-             * in this function call. */
-            progress_engine_triggered = 1;
-        }
-    } while (!remote_completed);
-
-  finish_flush_all:
-    /* ENDING synchronization: correctly decrement the following counter. */
-    win_ptr->accumulated_ops_cnt = 0;
-
     MPIU_Assert(win_ptr->active_req_cnt == 0);
 
-    if (!progress_engine_triggered) {
-        /* In some cases (e.g. target is myself, or process on SHM),
-         * this function call does not go through the progress engine.
-         * Therefore, it is possible that this process never process
-         * events coming from other processes. This may cause deadlock in
-         * applications where the program execution on this process depends
-         * on the happening of events from other processes. Here we poke
-         * the progress engine once to avoid such issue.  */
-        mpi_errno = poke_progress_engine();
-        if (mpi_errno != MPI_SUCCESS)
-            MPIU_ERR_POP(mpi_errno);
+    /* reset upgrade_flush_local flag in target to 0 */
+    for (i = 0; i < win_ptr->num_slots; i++) {
+        curr_target = win_ptr->slots[i].target_list_head;
+        while (curr_target != NULL) {
+            curr_target->sync.upgrade_flush_local = 0;
+            curr_target = curr_target->next;
+        }
     }
 
   fn_exit:
@@ -1740,12 +1784,8 @@ int MPIDI_Win_flush_all(MPID_Win * win_ptr)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_Win_flush_local_all(MPID_Win * win_ptr)
 {
-    int i, made_progress = 0;
-    int local_completed = 0, remote_completed = 0;
+    int i;
     MPIDI_RMA_Target_t *curr_target = NULL;
-    int enable_flush_local_cnt = 0, disable_flush_local_cnt = 0;
-    int remote_completed_cnt = 0, local_completed_cnt = 0;
-    int progress_engine_triggered = 0;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_FLUSH_LOCAL_ALL);
 
@@ -1762,99 +1802,19 @@ int MPIDI_Win_flush_local_all(MPID_Win * win_ptr)
         OPA_read_write_barrier();
     }
 
-    /* Set sync_flag in sync struct. */
-    for (i = 0; i < win_ptr->num_slots; i++) {
-        curr_target = win_ptr->slots[i].target_list;
-        while (curr_target != NULL) {
-            if (curr_target->disable_flush_local) {
-                if (curr_target->sync.sync_flag < MPIDI_RMA_SYNC_FLUSH) {
-                    curr_target->sync.sync_flag = MPIDI_RMA_SYNC_FLUSH;
-                    curr_target->sync.have_remote_incomplete_ops = 0;
-                    curr_target->sync.outstanding_acks++;
-                }
-                disable_flush_local_cnt++;
-            }
-            else {
-                if (curr_target->sync.sync_flag < MPIDI_RMA_SYNC_FLUSH_LOCAL) {
-                    curr_target->sync.sync_flag = MPIDI_RMA_SYNC_FLUSH_LOCAL;
-                }
-                enable_flush_local_cnt++;
-            }
-
-            /* ENDING synchronization: correctly decrement the following counters. */
-            curr_target->accumulated_ops_cnt = 0;
-
-            curr_target = curr_target->next;
-        }
-    }
-
-    /* issue out all operations. */
-    mpi_errno = MPIDI_CH3I_RMA_Make_progress_win(win_ptr, &made_progress);
+    mpi_errno = flush_local_all(win_ptr);
     if (mpi_errno != MPI_SUCCESS)
         MPIU_ERR_POP(mpi_errno);
 
-    /* wait for remote completion for those targets that disable flush_local,
-     * and wait for local completion for other targets */
-    do {
-        for (i = 0; i < win_ptr->num_slots; i++) {
-            curr_target = win_ptr->slots[i].target_list;
-            while (curr_target != NULL) {
-                mpi_errno = MPIDI_CH3I_RMA_Cleanup_ops_target(win_ptr, curr_target,
-                                                              &local_completed, &remote_completed);
-                if (mpi_errno != MPI_SUCCESS)
-                    MPIU_ERR_POP(mpi_errno);
+    MPIU_Assert(win_ptr->active_req_cnt == 0);
 
-                if (curr_target->disable_flush_local) {
-                    if (remote_completed) {
-                        remote_completed_cnt++;
-                    }
-                }
-                else {
-                    if (local_completed) {
-                        local_completed_cnt++;
-                    }
-                }
-                curr_target = curr_target->next;
-            }
-        }
-
-        if (remote_completed_cnt < disable_flush_local_cnt ||
-            local_completed_cnt < enable_flush_local_cnt) {
-            mpi_errno = wait_progress_engine();
-            if (mpi_errno != MPI_SUCCESS)
-                MPIU_ERR_POP(mpi_errno);
-
-            /* Mark that we triggered the progress engine
-             * in this function call. */
-            progress_engine_triggered = 1;
-        }
-    } while (remote_completed_cnt < disable_flush_local_cnt ||
-             local_completed_cnt < enable_flush_local_cnt);
-
-  finish_flush_local_all:
-    /* reset disable_flush_local flag in target to 0 */
+    /* reset upgrade_flush_local flag in target to 0 */
     for (i = 0; i < win_ptr->num_slots; i++) {
-        curr_target = win_ptr->slots[i].target_list;
+        curr_target = win_ptr->slots[i].target_list_head;
         while (curr_target != NULL) {
-            curr_target->disable_flush_local = 0;
+            curr_target->sync.upgrade_flush_local = 0;
             curr_target = curr_target->next;
         }
-    }
-
-    /* ENDING synchronization: correctly decrement the following counter. */
-    win_ptr->accumulated_ops_cnt = 0;
-
-    if (!progress_engine_triggered) {
-        /* In some cases (e.g. target is myself, or process on SHM),
-         * this function call does not go through the progress engine.
-         * Therefore, it is possible that this process never process
-         * events coming from other processes. This may cause deadlock in
-         * applications where the program execution on this process depends
-         * on the happening of events from other processes. Here we poke
-         * the progress engine once to avoid such issue.  */
-        mpi_errno = poke_progress_engine();
-        if (mpi_errno != MPI_SUCCESS)
-            MPIU_ERR_POP(mpi_errno);
     }
 
   fn_exit:

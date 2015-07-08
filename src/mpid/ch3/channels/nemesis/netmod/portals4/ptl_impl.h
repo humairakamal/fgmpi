@@ -43,14 +43,13 @@ typedef int (* event_handler_fn)(const ptl_event_t *e);
 
 typedef struct {
     struct MPID_nem_ptl_pack_overflow overflow[MPID_NEM_PTL_NUM_CHUNK_BUFFERS];
-    int noncontig;
     int large;
     ptl_handle_md_t md;
     ptl_handle_me_t put_me;
     ptl_handle_me_t *get_me_p;
     int num_gets;
     int put_done;
-    ptl_size_t chunk_offset;
+    void *recv_ptr;  /* used for reordering in ptl_nm */
     void *chunk_buffer[MPID_NEM_PTL_NUM_CHUNK_BUFFERS];
     MPIDI_msg_sz_t bytes_put;
     int found; /* used in probes with PtlMESearch() */
@@ -65,10 +64,8 @@ static inline MPID_nem_ptl_req_area * REQ_PTL(MPID_Request *req) {
 #define MPID_nem_ptl_init_req(req_) do {                        \
         int i;                                                  \
         for (i = 0; i < MPID_NEM_PTL_NUM_CHUNK_BUFFERS; ++i) {  \
-            REQ_PTL(req_)->overflow[i].len  = 0;                \
             REQ_PTL(req_)->chunk_buffer[i] = NULL;              \
         }                                                       \
-        REQ_PTL(req_)->noncontig     = FALSE;                   \
         REQ_PTL(req_)->large         = FALSE;                   \
         REQ_PTL(req_)->md            = PTL_INVALID_HANDLE;      \
         REQ_PTL(req_)->put_me        = PTL_INVALID_HANDLE;      \
@@ -76,7 +73,6 @@ static inline MPID_nem_ptl_req_area * REQ_PTL(MPID_Request *req) {
         REQ_PTL(req_)->num_gets      = 0;                       \
         REQ_PTL(req_)->put_done     = 0;                       \
         REQ_PTL(req_)->event_handler = NULL;                    \
-        REQ_PTL(req_)->chunk_offset  = 0;                       \
     } while (0)
 
 #define MPID_nem_ptl_request_create_sreq(sreq_, errno_, comm_) do {                                             \
@@ -95,6 +91,9 @@ static inline MPID_nem_ptl_req_area * REQ_PTL(MPID_Request *req) {
         (sreq_)->dev.state          = 0;                                                                        \
         (sreq_)->dev.datatype_ptr   = NULL;                                                                     \
         (sreq_)->dev.segment_ptr    = NULL;                                                                     \
+        (sreq_)->dev.tmpbuf         = NULL;                                                                     \
+        (sreq_)->dev.ext_hdr_ptr    = NULL;                                                                     \
+        (sreq_)->dev.ext_hdr_sz     = 0;                                                                        \
                                                                                                                 \
         MPID_nem_ptl_init_req(sreq_);                                                                           \
     } while (0)
@@ -152,7 +151,7 @@ typedef struct {
 #define NPTL_MATCH(tag_, ctx_, rank_) ((((ptl_match_bits_t)(tag_) << NPTL_MATCH_TAG_OFFSET) & NPTL_MATCH_TAG_MASK) | \
                                        (((ptl_match_bits_t)(ctx_) << NPTL_MATCH_CTX_OFFSET) & NPTL_MATCH_CTX_MASK) | \
                                        ((ptl_match_bits_t)(rank_) & NPTL_MATCH_RANK_MASK))
-#define NPTL_MATCH_IGNORE NPTL_MATCH_RANK_MASK
+#define NPTL_MATCH_IGNORE (NPTL_MATCH_RANK_MASK | (ptl_match_bits_t)(MPIR_TAG_ERROR_BIT | MPIR_TAG_PROC_FAILURE_BIT) << 32)
 #define NPTL_MATCH_IGNORE_ANY_TAG (NPTL_MATCH_IGNORE | NPTL_MATCH_TAG_MASK)
 
 #define NPTL_MATCH_GET_RANK(match_bits_) ((match_bits_) & NPTL_MATCH_RANK_MASK)
@@ -182,10 +181,10 @@ int MPID_nem_ptl_unpack_byte(MPID_Segment *segment, MPI_Aint first, MPI_Aint las
 /* comm override functions */
 int MPID_nem_ptl_recv_posted(struct MPIDI_VC *vc, struct MPID_Request *req);
 /* isend is also used to implement send, rsend and irsend */
-int MPID_nem_ptl_isend(struct MPIDI_VC *vc, const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+int MPID_nem_ptl_isend(struct MPIDI_VC *vc, const void *buf, MPI_Aint count, MPI_Datatype datatype, int dest, int tag,
                        MPID_Comm *comm, int context_offset, struct MPID_Request **request);
 /* issend is also used to implement ssend */
-int MPID_nem_ptl_issend(struct MPIDI_VC *vc, const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+int MPID_nem_ptl_issend(struct MPIDI_VC *vc, const void *buf, MPI_Aint count, MPI_Datatype datatype, int dest, int tag,
                         MPID_Comm *comm, int context_offset, struct MPID_Request **request);
 int MPID_nem_ptl_cancel_send(struct MPIDI_VC *vc,  struct MPID_Request *sreq);
 int MPID_nem_ptl_cancel_recv(struct MPIDI_VC *vc,  struct MPID_Request *rreq);
@@ -200,6 +199,7 @@ int MPID_nem_ptl_anysource_improbe(int tag, MPID_Comm * comm, int context_offset
 void MPID_nem_ptl_anysource_posted(MPID_Request *rreq);
 int MPID_nem_ptl_anysource_matched(MPID_Request *rreq);
 int MPID_nem_ptl_init_id(MPIDI_VC_t *vc);
+int MPID_nem_ptl_get_ordering(int *ordering);
 
 int MPID_nem_ptl_lmt_initiate_lmt(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *rts_pkt, MPID_Request *req);
 int MPID_nem_ptl_lmt_start_recv(MPIDI_VC_t *vc,  MPID_Request *rreq, MPID_IOV s_cookie);
@@ -220,7 +220,7 @@ int MPID_nem_ptl_pkt_cancel_send_resp_handler(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *p
 typedef enum MPIDI_nem_ptl_pkt_type {
     MPIDI_NEM_PTL_PKT_CANCEL_SEND_REQ,
     MPIDI_NEM_PTL_PKT_CANCEL_SEND_RESP,
-    MPIDI_NEM_TCP_PKT_INVALID = -1 /* force signed, to avoid warnings */
+    MPIDI_NEM_PTL_PKT_INVALID = -1 /* force signed, to avoid warnings */
 } MPIDI_nem_ptl_pkt_type_t;
 
 typedef struct MPIDI_nem_ptl_pkt_cancel_send_req

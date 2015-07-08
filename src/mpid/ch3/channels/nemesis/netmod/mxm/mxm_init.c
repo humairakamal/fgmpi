@@ -71,7 +71,8 @@ MPID_nem_netmod_funcs_t MPIDI_nem_mxm_funcs = {
     MPID_nem_mxm_vc_destroy,
     MPID_nem_mxm_vc_terminate,
     MPID_nem_mxm_anysource_iprobe,
-    MPID_nem_mxm_anysource_improbe
+    MPID_nem_mxm_anysource_improbe,
+    MPID_nem_mxm_get_ordering
 };
 
 static MPIDI_Comm_ops_t comm_ops = {
@@ -388,6 +389,16 @@ int MPID_nem_mxm_vc_terminate(MPIDI_VC_t * vc)
     goto fn_exit;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPID_nem_mxm_get_ordering
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPID_nem_mxm_get_ordering(int *ordering)
+{
+    (*ordering) = 1;
+    return MPI_SUCCESS;
+}
+
 static int _mxm_conf(void)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -514,6 +525,8 @@ static int _mxm_fini(void)
 
         if (_mxm_obj.endpoint)
             MPIU_Free(_mxm_obj.endpoint);
+
+        _mxm_barrier();
 
         if (_mxm_obj.mxm_ep)
             mxm_ep_destroy(_mxm_obj.mxm_ep);

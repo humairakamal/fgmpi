@@ -28,6 +28,15 @@ lockcontention2 4
 lockcontention2 8
 lockcontention3 8
 lockopts 2
+lock_dt 2
+lock_dt_flush 2
+lock_dt_flushlocal 2
+lockall_dt 4
+lockall_dt_flush 4
+lockall_dt_flushall 4
+lockall_dt_flushlocal 4
+lockall_dt_flushlocalall 4
+lock_contention_dt 4
 transpose4 2
 fetchandadd 7
 fetchandadd_tree 7
@@ -119,8 +128,8 @@ linked_list_bench_lock_shr_nocheck 4 mpiversion=3.0
 mutex_bench 4 mpiversion=3.0
 mutex_bench_shared 4 mpiversion=3.0
 mutex_bench_shm 4 mpiversion=3.0
-mutex_bench_shm_ordered 4 mpiversion=3.0 xfail=ticket2127
-rma-contig 2 mpiversion=3.0 timeLimit=600
+mutex_bench_shm_ordered 4 mpiversion=3.0
+rma-contig 2 mpiversion=3.0 timeLimit=720
 badrma 2 mpiversion=3.0
 acc-loc 4
 fence_shm 2 mpiversion=3.0
@@ -131,8 +140,13 @@ at_complete 2
 atomic_rmw_fop 3
 atomic_rmw_cas 3
 atomic_rmw_gacc 3
-@mpix@aint 2 strict=false
+atomic_get 3 mpiversion=3.0 timeLimit=300
+aint 2 mpiversion=3.1
 acc-pairtype 2
+manyget 2
+derived-acc-flush_local 3 mpiversion=3.0
+large-acc-flush_local 3 mpiversion=3.0
+large-small-acc 2
 
 ## This test is not strictly correct.  This was meant to test out the
 ## case when MPI_Test is not nonblocking.  However, we ended up

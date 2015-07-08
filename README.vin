@@ -286,10 +286,10 @@ MPICH library being compiled/linked with these flags and the flags
 internally being used in mpicc and friends.
 
 (b) MPICHLIB_CFLAGS, MPICHLIB_CPPFLAGS, MPICHLIB_CXXFLAGS,
-MPICHLIB_FFLAGS, MPICHLIB_FCFLAGS, MPICHLIB_LDFLAGS and
-MPICHLIB_LIBS (abbreviated as MPICHLIB_xFLAGS): Setting these flags
-would result in the MPICH library being compiled/linked with these
-flags. However, these flags will *not* be used by mpicc and friends.
+MPICHLIB_FFLAGS, and MPICHLIB_FCFLAGS (abbreviated as
+MPICHLIB_xFLAGS): Setting these flags would result in the MPICH
+library being compiled with these flags.  However, these flags will
+*not* be used by mpicc and friends.
 
 (c) MPICH_MAKE_CFLAGS: Setting these flags would result in MPICH's
 configure tests to not use these flags, but the makefile's to use
@@ -297,11 +297,11 @@ them. This is a temporary hack for certain cases that advanced
 developers might be interested in, but which break existing configure
 tests (e.g., -Werror). These are NOT recommended for regular users.
 
-(d) MPICH_MPICC_FLAGS, MPICH_MPICPP_FLAGS, MPICH_MPICXX_FLAGS,
-MPICH_MPIFC_FLAGS, MPICH_LDFLAGS and MPICH_LIBS (abbreviated as
-MPICH_MPIX_FLAGS): These flags do *not* affect the compilation of the
-MPICH library itself, but will be internally used by mpicc and
-friends.
+(d) MPICH_MPICC_CFLAGS, MPICH_MPICC_CPPFLAGS, MPICH_MPICC_LDFLAGS,
+MPICH_MPICC_LIBS, and so on for MPICXX, MPIF77 and MPIFORT
+(abbreviated as MPICH_MPIX_FLAGS): These flags do *not* affect the
+compilation of the MPICH library itself, but will be internally used
+by mpicc and friends.
 
 
   +--------------------------------------------------------------------+
@@ -501,45 +501,6 @@ to "error" instead of the default "warn" by using:
 
   MXM_LOG_LEVEL=error
   export MXM_LOG_LEVEL
-
-ib network module
-`````````````````
-The IB netmod provides support for InfiniBand on x86_64 platforms
-(including Xeon Phi). It can be built in the following
-configurations:
-
-1. InfiniBand Open Fabrics, x86_64 (host), Linux
-
-   For this mode, configure with the following option:
-
-       --with-device=ch3:nemesis:ib
-
-2. InfiniBand Open Fabrics, Xeon Phi, Intel MPSS Linux
-
-   For this mode, configure with the following options:
-
-       --with-device=ch3:nemesis:ib
-       --with-cross=<mpich-source>/src/mpid/ch3/channels/nemesis/netmod/ib/cross_values.txt
-       --host=x86_64-k1om-linux
-       --with-ib=/opt/intel/mic/ofed/card/usr
-       CC=icc CXX=icpc FC=ifort
-       CFLAGS=-mmic CXXFLAGS=-mmic FCFLAGS=-mmic LDFLAGS=-mmic
-
-3. InfiniBand Open Fabrics, Xeon Phi, McKernel (developed by
-   University of Tokyo)
-
-   For this mode, configure with the following options:
-
-       --with-device=ch3:nemesis:ib
-       --with-cross=<mpich-source>/src/mpid/ch3/channels/nemesis/netmod/ib/cross_values.txt
-       --host=x86_64-k1om-linux
-       --with-ib=<mckernel-source>/attached
-       --disable-shared
-       CC=icc CXX=icpc FC=ifort
-       CFLAGS=-mmic CXXFLAGS=-mmic FCFLAGS=-mmic LDFLAGS=-mmic
-
-    Note that shared builds are not supported for the third
-    configuration right now.
 
 
 portals4 network module

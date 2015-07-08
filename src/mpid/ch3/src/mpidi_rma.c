@@ -63,7 +63,7 @@ cvars:
         targets) that stores information about RMA targets that
         could not be issued immediatly.  Requires a positive value.
 
-    - name        : MPIR_CVAR_CH3_RMA_LOCK_ENTRY_WIN_POOL_SIZE
+    - name        : MPIR_CVAR_CH3_RMA_TARGET_LOCK_ENTRY_WIN_POOL_SIZE
       category    : CH3
       type        : int
       default     : 256
@@ -75,27 +75,14 @@ cvars:
         lock entries) that stores information about RMA lock requests that
         could not be satisfied immediatly.  Requires a positive value.
 
-    - name        : MPIR_CVAR_CH3_RMA_LOCK_ENTRY_GLOBAL_POOL_SIZE
-      category    : CH3
-      type        : int
-      default     : 16384
-      class       : none
-      verbosity   : MPI_T_VERBOSITY_USER_BASIC
-      scope       : MPI_T_SCOPE_ALL_EQ
-      description : >-
-        Size of the Global RMA lock entries pool (in number of
-        lock entries) that stores information about RMA lock requests that
-        could not be satisfied immediatly.  Requires a positive value.
-
 === END_MPI_T_CVAR_INFO_BLOCK ===
 */
 
 
-MPIDI_RMA_Op_t *global_rma_op_pool = NULL, *global_rma_op_pool_tail =
+MPIDI_RMA_Op_t *global_rma_op_pool_head = NULL, *global_rma_op_pool_tail =
     NULL, *global_rma_op_pool_start = NULL;
-MPIDI_RMA_Target_t *global_rma_target_pool = NULL, *global_rma_target_pool_tail =
+MPIDI_RMA_Target_t *global_rma_target_pool_head = NULL, *global_rma_target_pool_tail =
     NULL, *global_rma_target_pool_start = NULL;
-MPIDI_RMA_Pkt_orderings_t *MPIDI_RMA_Pkt_orderings = NULL;
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_RMA_init
@@ -116,7 +103,8 @@ int MPIDI_RMA_init(void)
                         mpi_errno, "RMA op pool");
     for (i = 0; i < MPIR_CVAR_CH3_RMA_OP_GLOBAL_POOL_SIZE; i++) {
         global_rma_op_pool_start[i].pool_type = MPIDI_RMA_POOL_GLOBAL;
-        MPL_LL_APPEND(global_rma_op_pool, global_rma_op_pool_tail, &(global_rma_op_pool_start[i]));
+        MPL_LL_APPEND(global_rma_op_pool_head, global_rma_op_pool_tail,
+                      &(global_rma_op_pool_start[i]));
     }
 
     MPIU_CHKPMEM_MALLOC(global_rma_target_pool_start, MPIDI_RMA_Target_t *,
@@ -124,15 +112,9 @@ int MPIDI_RMA_init(void)
                         mpi_errno, "RMA target pool");
     for (i = 0; i < MPIR_CVAR_CH3_RMA_TARGET_GLOBAL_POOL_SIZE; i++) {
         global_rma_target_pool_start[i].pool_type = MPIDI_RMA_POOL_GLOBAL;
-        MPL_LL_APPEND(global_rma_target_pool, global_rma_target_pool_tail,
+        MPL_LL_APPEND(global_rma_target_pool_head, global_rma_target_pool_tail,
                       &(global_rma_target_pool_start[i]));
     }
-
-    MPIU_CHKPMEM_MALLOC(MPIDI_RMA_Pkt_orderings, struct MPIDI_RMA_Pkt_orderings *,
-                        sizeof(struct MPIDI_RMA_Pkt_orderings), mpi_errno, "RMA packet orderings");
-    /* FIXME: here we should let channel to set ordering flags. For now we just set them
-     * in CH3 layer. */
-    MPIDI_RMA_Pkt_orderings->flush_remote = 1;
 
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_RMA_INIT);
@@ -156,7 +138,6 @@ void MPIDI_RMA_finalize(void)
 
     MPIU_Free(global_rma_op_pool_start);
     MPIU_Free(global_rma_target_pool_start);
-    MPIU_Free(MPIDI_RMA_Pkt_orderings);
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_RMA_FINALIZE);
 }
@@ -186,6 +167,8 @@ int MPIDI_Win_free(MPID_Win ** win_ptr)
         MPID_Request_release(req_ptr);
         (*win_ptr)->fence_sync_req = MPI_REQUEST_NULL;
         (*win_ptr)->states.access_state = MPIDI_RMA_NONE;
+        MPIDI_CH3I_num_active_issued_win--;
+        MPIU_Assert(MPIDI_CH3I_num_active_issued_win >= 0);
     }
 
     if ((*win_ptr)->states.access_state == MPIDI_RMA_FENCE_GRANTED)
@@ -207,7 +190,8 @@ int MPIDI_Win_free(MPID_Win ** win_ptr)
      * entering Win_free. */
     while ((*win_ptr)->current_lock_type != MPID_LOCK_NONE ||
            (*win_ptr)->at_completion_counter != 0 ||
-           (*win_ptr)->lock_queue != NULL || (*win_ptr)->current_lock_data_bytes != 0) {
+           (*win_ptr)->target_lock_queue_head != NULL ||
+           (*win_ptr)->current_target_lock_data_bytes != 0) {
         mpi_errno = wait_progress_engine();
         if (mpi_errno != MPI_SUCCESS)
             MPIU_ERR_POP(mpi_errno);
@@ -231,6 +215,9 @@ int MPIDI_Win_free(MPID_Win ** win_ptr)
     MPL_LL_DELETE(MPIDI_RMA_Win_list, MPIDI_RMA_Win_list_tail, win_elem);
     MPIU_Free(win_elem);
 
+    if (MPIDI_RMA_Win_list == NULL)
+        MPID_Progress_deregister_hook(MPIDI_CH3I_RMA_Make_progress_global);
+
     comm_ptr = (*win_ptr)->comm_ptr;
     mpi_errno = MPIR_Comm_free_impl(comm_ptr);
     if (mpi_errno)
@@ -241,10 +228,9 @@ int MPIDI_Win_free(MPID_Win ** win_ptr)
     MPIU_Free((*win_ptr)->op_pool_start);
     MPIU_Free((*win_ptr)->target_pool_start);
     MPIU_Free((*win_ptr)->slots);
-    if (!(*win_ptr)->info_args.no_locks) {
-        MPIU_Free((*win_ptr)->lock_entry_pool_start);
-    }
-    MPIU_Assert((*win_ptr)->current_lock_data_bytes == 0);
+    MPIU_Free((*win_ptr)->target_lock_entry_pool_start);
+
+    MPIU_Assert((*win_ptr)->current_target_lock_data_bytes == 0);
 
     /* Free the attached buffer for windows created with MPI_Win_allocate() */
     if ((*win_ptr)->create_flavor == MPI_WIN_FLAVOR_ALLOCATE ||

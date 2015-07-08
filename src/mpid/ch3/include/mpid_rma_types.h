@@ -23,23 +23,6 @@ enum MPIDI_RMA_Datatype {
  * a Request.
  */
 
-/* to send derived datatype across in RMA ops */
-typedef struct MPIDI_RMA_dtype_info {   /* for derived datatypes */
-    int is_contig;
-    int max_contig_blocks;
-    MPI_Aint size;
-    MPI_Aint extent;
-    int dataloop_size;          /* not needed because this info is sent in
-                                 * packet header. remove it after lock/unlock
-                                 * is implemented in the device */
-    void *dataloop;             /* pointer needed to update pointers
-                                 * within dataloop on remote side */
-    int dataloop_depth;
-    int basic_type;
-    MPI_Aint ub, lb, true_ub, true_lb;
-    int has_sticky_ub, has_sticky_lb;
-} MPIDI_RMA_dtype_info;
-
 typedef enum MPIDI_RMA_Pool_type {
     MPIDI_RMA_POOL_WIN = 6,
     MPIDI_RMA_POOL_GLOBAL = 7
@@ -60,20 +43,16 @@ typedef struct MPIDI_RMA_Op {
     int result_count;
     MPI_Datatype result_datatype;
 
-    /* used in streaming ACCs */
-    void *original_target_addr;
-
-    struct MPID_Request **reqs;
-    int reqs_size;
-
-    MPIDI_RMA_dtype_info dtype_info;
-    void *dataloop;
+    struct MPID_Request *single_req;    /* used for unstreamed RMA ops */
+    struct MPID_Request **multi_reqs;   /* used for streamed RMA ops */
+    MPI_Aint reqs_size;         /* when reqs_size == 0, neither single_req nor multi_reqs is used;
+                                 * when reqs_size == 1, single_req is used;
+                                 * when reqs_size > 1, multi_reqs is used. */
 
     int target_rank;
 
     MPIDI_CH3_Pkt_t pkt;
     MPIDI_RMA_Pool_type_t pool_type;
-    int is_dt;
     int piggyback_lock_candidate;
 
     int issued_stream_count;    /* when >= 0, it specifies number of stream units that have been issued;
@@ -83,18 +62,16 @@ typedef struct MPIDI_RMA_Op {
 } MPIDI_RMA_Op_t;
 
 typedef struct MPIDI_RMA_Target {
-    struct MPIDI_RMA_Op *read_op_list, *read_op_list_tail;
-    struct MPIDI_RMA_Op *write_op_list, *write_op_list_tail;
-    struct MPIDI_RMA_Op *dt_op_list, *dt_op_list_tail;
-    struct MPIDI_RMA_Op *pending_op_list, *pending_op_list_tail;
+    struct MPIDI_RMA_Op *issued_read_op_list_head, *issued_read_op_list_tail;
+    struct MPIDI_RMA_Op *issued_write_op_list_head, *issued_write_op_list_tail;
+    struct MPIDI_RMA_Op *issued_dt_op_list_head, *issued_dt_op_list_tail;
+    struct MPIDI_RMA_Op *pending_op_list_head, *pending_op_list_tail;
     struct MPIDI_RMA_Op *next_op_to_issue;
     struct MPIDI_RMA_Target *next;
     int target_rank;
     enum MPIDI_RMA_states access_state;
     int lock_type;              /* NONE, SHARED, EXCLUSIVE */
     int lock_mode;              /* e.g., MODE_NO_CHECK */
-    int accumulated_ops_cnt;
-    int disable_flush_local;
     int win_complete_flag;
     int put_acc_issued;         /* indicate if PUT/ACC is issued in this epoch
                                  * after the previous synchronization calls. */
@@ -103,7 +80,6 @@ typedef struct MPIDI_RMA_Target {
      * following conditions hold true:
      *   - No operations are queued up (op_list == NULL)
      *   - There are no outstanding acks (outstanding_acks == 0)
-     *   - There are no incomplete ops (have_remote_incomplete_ops == 0)
      *   - There are no sync messages to be sent (sync_flag == NONE)
      */
     struct {
@@ -114,18 +90,15 @@ typedef struct MPIDI_RMA_Target {
         /* packets sent out that we are expecting an ack for */
         int outstanding_acks;
 
-        /* if we sent out any operations, but have not waited for
-         * their remote completion, this flag is set.  When the next
-         * FLUSH or UNLOCK sync flag is set, we will clear this
-         * variable. */
-        int have_remote_incomplete_ops; /* have ops that have not completed remotely */
+        /* Marked when FLUSH_LOCAL is upgraded to FLUSH */
+        int upgrade_flush_local;
     } sync;
 
     MPIDI_RMA_Pool_type_t pool_type;
 } MPIDI_RMA_Target_t;
 
 typedef struct MPIDI_RMA_Slot {
-    struct MPIDI_RMA_Target *target_list;
+    struct MPIDI_RMA_Target *target_list_head;
     struct MPIDI_RMA_Target *target_list_tail;
 } MPIDI_RMA_Slot_t;
 
@@ -136,14 +109,14 @@ typedef struct MPIDI_RMA_Win_list {
 
 extern MPIDI_RMA_Win_list_t *MPIDI_RMA_Win_list, *MPIDI_RMA_Win_list_tail;
 
-typedef struct MPIDI_RMA_Lock_entry {
-    struct MPIDI_RMA_Lock_entry *next;
+typedef struct MPIDI_RMA_Target_lock_entry {
+    struct MPIDI_RMA_Target_lock_entry *next;
     MPIDI_CH3_Pkt_t pkt;        /* all information for this request packet */
     MPIDI_VC_t *vc;
     void *data;                 /* for queued PUTs / ACCs / GACCs, data is copied here */
     int buf_size;
     int all_data_recved;        /* indicate if all data has been received */
-} MPIDI_RMA_Lock_entry_t;
+} MPIDI_RMA_Target_lock_entry_t;
 
 typedef MPIDI_RMA_Op_t *MPIDI_RMA_Ops_list_t;
 

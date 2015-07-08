@@ -40,9 +40,9 @@ static void dequeue_req(const ptl_event_t *e)
         /* truncated data */
         MPIR_STATUS_SET_COUNT(rreq->status, r_len);
         MPIU_ERR_SET2(rreq->status.MPI_ERROR, MPI_ERR_TRUNCATE, "**truncate", "**truncate %d %d", s_len, r_len);
+    } else {
+        MPIR_STATUS_SET_COUNT(rreq->status, s_len);
     }
-    
-    MPIR_STATUS_SET_COUNT(rreq->status, s_len);
 }
 
 #undef FUNCNAME
@@ -210,6 +210,8 @@ static int handler_recv_unpack_complete(const ptl_event_t *e)
     int mpi_errno = MPI_SUCCESS;
     MPID_Request *const rreq = e->user_ptr;
     void *buf;
+    MPI_Aint last;
+
     MPIDI_STATE_DECL(MPID_STATE_HANDLER_RECV_UNPACK_COMPLETE);
 
     MPIDI_FUNC_ENTER(MPID_STATE_HANDLER_RECV_UNPACK_COMPLETE);
@@ -221,10 +223,9 @@ static int handler_recv_unpack_complete(const ptl_event_t *e)
     else
         buf = REQ_PTL(rreq)->chunk_buffer[0];
 
-    mpi_errno = MPID_nem_ptl_unpack_byte(rreq->dev.segment_ptr, rreq->dev.segment_first,
-                                         rreq->dev.segment_first + e->mlength, buf,
-                                         &REQ_PTL(rreq)->overflow[0]);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    last = rreq->dev.segment_first + e->mlength;
+    MPID_Segment_unpack(rreq->dev.segment_ptr, rreq->dev.segment_first, &last, buf);
+    MPIU_Assert(last == rreq->dev.segment_first + e->mlength);
     
     mpi_errno = handler_recv_complete(e);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
@@ -702,7 +703,7 @@ int MPID_nem_ptl_lmt_start_recv(MPIDI_VC_t *vc,  MPID_Request *rreq, MPID_IOV s_
                             rreq->dev.match.parts.rank);
     MPIDI_CH3U_Request_increment_cc(rreq, &was_incomplete);
     MPIU_Assert(was_incomplete == 0);
-    MPIU_Object_add_ref(rreq);
+    MPIR_Request_add_ref(rreq);
 
     MPIDI_Datatype_get_info(rreq->dev.user_count, rreq->dev.datatype, dt_contig, data_sz, dt_ptr,
                             dt_true_lb);

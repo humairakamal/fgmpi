@@ -23,7 +23,7 @@ cvars:
         a linked list of target elements. The distribution of ranks among
         slots follows a round-robin pattern. Requires a positive value.
 
-    - name        : MPIR_CVAR_CH3_RMA_LOCK_DATA_BYTES
+    - name        : MPIR_CVAR_CH3_RMA_TARGET_LOCK_DATA_BYTES
       category    : CH3
       type        : int
       default     : 655360
@@ -309,13 +309,12 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
     /* (*win_ptr)->basic_info_table[] is set by caller; */
     (*win_ptr)->current_lock_type = MPID_LOCK_NONE;
     (*win_ptr)->shared_lock_ref_cnt = 0;
-    (*win_ptr)->lock_queue = NULL;
-    (*win_ptr)->lock_queue_tail = NULL;
+    (*win_ptr)->target_lock_queue_head = NULL;
+    (*win_ptr)->target_lock_queue_tail = NULL;
     (*win_ptr)->shm_allocated = FALSE;
     (*win_ptr)->states.access_state = MPIDI_RMA_NONE;
     (*win_ptr)->states.exposure_state = MPIDI_RMA_NONE;
     (*win_ptr)->non_empty_slots = 0;
-    (*win_ptr)->accumulated_ops_cnt = 0;
     (*win_ptr)->active_req_cnt = 0;
     (*win_ptr)->fence_sync_req = MPI_REQUEST_NULL;
     (*win_ptr)->start_req = NULL;
@@ -324,7 +323,7 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
     (*win_ptr)->lock_all_assert = 0;
     (*win_ptr)->lock_epoch_count = 0;
     (*win_ptr)->outstanding_locks = 0;
-    (*win_ptr)->current_lock_data_bytes = 0;
+    (*win_ptr)->current_target_lock_data_bytes = 0;
 
     /* Initialize the info flags */
     (*win_ptr)->info_args.no_locks = 0;
@@ -346,11 +345,11 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
     MPIU_CHKPMEM_MALLOC((*win_ptr)->op_pool_start, MPIDI_RMA_Op_t *,
                         sizeof(MPIDI_RMA_Op_t) * MPIR_CVAR_CH3_RMA_OP_WIN_POOL_SIZE, mpi_errno,
                         "RMA op pool");
-    (*win_ptr)->op_pool = NULL;
+    (*win_ptr)->op_pool_head = NULL;
     (*win_ptr)->op_pool_tail = NULL;
     for (i = 0; i < MPIR_CVAR_CH3_RMA_OP_WIN_POOL_SIZE; i++) {
         (*win_ptr)->op_pool_start[i].pool_type = MPIDI_RMA_POOL_WIN;
-        MPL_LL_APPEND((*win_ptr)->op_pool, (*win_ptr)->op_pool_tail,
+        MPL_LL_APPEND((*win_ptr)->op_pool_head, (*win_ptr)->op_pool_tail,
                       &((*win_ptr)->op_pool_start[i]));
     }
 
@@ -359,11 +358,11 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
     MPIU_CHKPMEM_MALLOC((*win_ptr)->target_pool_start, MPIDI_RMA_Target_t *,
                         sizeof(MPIDI_RMA_Target_t) * win_target_pool_size, mpi_errno,
                         "RMA target pool");
-    (*win_ptr)->target_pool = NULL;
+    (*win_ptr)->target_pool_head = NULL;
     (*win_ptr)->target_pool_tail = NULL;
     for (i = 0; i < win_target_pool_size; i++) {
         (*win_ptr)->target_pool_start[i].pool_type = MPIDI_RMA_POOL_WIN;
-        MPL_LL_APPEND((*win_ptr)->target_pool, (*win_ptr)->target_pool_tail,
+        MPL_LL_APPEND((*win_ptr)->target_pool_head, (*win_ptr)->target_pool_tail,
                       &((*win_ptr)->target_pool_start[i]));
     }
 
@@ -371,27 +370,33 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
     MPIU_CHKPMEM_MALLOC((*win_ptr)->slots, MPIDI_RMA_Slot_t *,
                         sizeof(MPIDI_RMA_Slot_t) * (*win_ptr)->num_slots, mpi_errno, "RMA slots");
     for (i = 0; i < (*win_ptr)->num_slots; i++) {
-        (*win_ptr)->slots[i].target_list = NULL;
+        (*win_ptr)->slots[i].target_list_head = NULL;
         (*win_ptr)->slots[i].target_list_tail = NULL;
     }
 
-    if (!(*win_ptr)->info_args.no_locks) {
-        MPIU_CHKPMEM_MALLOC((*win_ptr)->lock_entry_pool_start, MPIDI_RMA_Lock_entry_t *,
-                            sizeof(MPIDI_RMA_Lock_entry_t) *
-                            MPIR_CVAR_CH3_RMA_LOCK_ENTRY_WIN_POOL_SIZE, mpi_errno,
-                            "RMA lock entry pool");
-        (*win_ptr)->lock_entry_pool = NULL;
-        (*win_ptr)->lock_entry_pool_tail = NULL;
-        for (i = 0; i < MPIR_CVAR_CH3_RMA_LOCK_ENTRY_WIN_POOL_SIZE; i++) {
-            MPL_LL_APPEND((*win_ptr)->lock_entry_pool, (*win_ptr)->lock_entry_pool_tail,
-                          &((*win_ptr)->lock_entry_pool_start[i]));
-        }
+    MPIU_CHKPMEM_MALLOC((*win_ptr)->target_lock_entry_pool_start,
+                        MPIDI_RMA_Target_lock_entry_t *,
+                        sizeof(MPIDI_RMA_Target_lock_entry_t) *
+                        MPIR_CVAR_CH3_RMA_TARGET_LOCK_ENTRY_WIN_POOL_SIZE, mpi_errno,
+                        "RMA lock entry pool");
+    (*win_ptr)->target_lock_entry_pool_head = NULL;
+    (*win_ptr)->target_lock_entry_pool_tail = NULL;
+    for (i = 0; i < MPIR_CVAR_CH3_RMA_TARGET_LOCK_ENTRY_WIN_POOL_SIZE; i++) {
+        MPL_LL_APPEND((*win_ptr)->target_lock_entry_pool_head,
+                      (*win_ptr)->target_lock_entry_pool_tail,
+                      &((*win_ptr)->target_lock_entry_pool_start[i]));
     }
 
     /* enqueue window into the global list */
     MPIU_CHKPMEM_MALLOC(win_elem, MPIDI_RMA_Win_list_t *, sizeof(MPIDI_RMA_Win_list_t), mpi_errno,
                         "Window list element");
     win_elem->win_ptr = *win_ptr;
+
+    if (MPIDI_RMA_Win_list == NULL) {
+        mpi_errno = MPID_Progress_register_hook(MPIDI_CH3I_RMA_Make_progress_global);
+        if (mpi_errno)
+            MPIU_ERR_POP(mpi_errno);
+    }
     MPL_LL_APPEND(MPIDI_RMA_Win_list, MPIDI_RMA_Win_list_tail, win_elem);
 
     if (MPIDI_CH3U_Win_hooks.win_init != NULL) {

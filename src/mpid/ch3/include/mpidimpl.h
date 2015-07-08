@@ -92,6 +92,13 @@ typedef struct MPIDI_PG
        find a particular process group. */
     void * id;
 
+    /* Flag to mark a procress group which is finalizing. This means thay
+       the VCs for this process group are closing, (normally becuase
+       MPI_Finalize was called). This is required to avoid a reconnection
+       of the VCs when the PG is closed due to unused elements in the event
+       queue  */
+    int finalize;
+
     /* Replacement abstraction for connection information */
     /* Connection information needed to access processes in this process 
        group and to share the data with other processes.  The items are
@@ -361,6 +368,9 @@ extern MPID_Request ** FG_recvq_unexpected_tail;
     (sreq_)->dev.OnFinal	   = NULL;                      \
     (sreq_)->dev.iov_count	   = 0;                         \
     (sreq_)->dev.iov_offset	   = 0;                         \
+    (sreq_)->dev.tmpbuf            = NULL;                      \
+    (sreq_)->dev.ext_hdr_ptr       = NULL;                      \
+    (sreq_)->dev.ext_hdr_sz        = 0;                         \
     MPIDI_Request_clear_dbg(sreq_);                             \
 }
 #else
@@ -401,6 +411,9 @@ extern MPID_Request ** FG_recvq_unexpected_tail;
     (sreq_)->dev.OnFinal	   = NULL;                      \
     (sreq_)->dev.iov_count	   = 0;                         \
     (sreq_)->dev.iov_offset	   = 0;                         \
+    (sreq_)->dev.tmpbuf            = NULL;                      \
+    (sreq_)->dev.ext_hdr_ptr       = NULL;                      \
+    (sreq_)->dev.ext_hdr_sz        = 0;                         \
     MPIDI_Request_clear_dbg(sreq_);                             \
 }
 #endif
@@ -436,6 +449,9 @@ extern MPID_Request ** FG_recvq_unexpected_tail;
     (rreq_)->dev.OnDataAvail	   = NULL;                      \
     (rreq_)->dev.OnFinal	   = NULL;                      \
     (rreq_)->dev.drop_data = FALSE;                             \
+    (rreq_)->dev.tmpbuf            = NULL;                      \
+    (rreq_)->dev.ext_hdr_ptr       = NULL;                      \
+    (rreq_)->dev.ext_hdr_sz        = 0;                         \
      MPIDI_CH3_REQUEST_INIT(rreq_);\
 }
 
@@ -796,35 +812,35 @@ typedef struct MPIDI_Comm_ops
     /* Overriding calls in case of matching-capable interfaces */
     int (*recv_posted)(struct MPIDI_VC *vc, struct MPID_Request *req);
     
-    int (*send)(struct MPIDI_VC *vc, const void *buf, int count, MPI_Datatype datatype,
+    int (*send)(struct MPIDI_VC *vc, const void *buf, MPI_Aint count, MPI_Datatype datatype,
 		int dest, int tag, MPID_Comm *comm, int context_offset,
 		struct MPID_Request **request);
-    int (*rsend)(struct MPIDI_VC *vc, const void *buf, int count, MPI_Datatype datatype,
-		 int dest, int tag, MPID_Comm *comm, int context_offset,
+    int (*rsend)(struct MPIDI_VC *vc, const void *buf, MPI_Aint count, MPI_Datatype datatype,
+		 int dest, int tag, MPID_Comm *comm, MPI_Aint context_offset,
 		 struct MPID_Request **request);
-    int (*ssend)(struct MPIDI_VC *vc, const void *buf, int count, MPI_Datatype datatype,
+    int (*ssend)(struct MPIDI_VC *vc, const void *buf, MPI_Aint count, MPI_Datatype datatype,
 		 int dest, int tag, MPID_Comm *comm, int context_offset,
 		 struct MPID_Request **request );
-    int (*isend)(struct MPIDI_VC *vc, const void *buf, int count, MPI_Datatype datatype,
+    int (*isend)(struct MPIDI_VC *vc, const void *buf, MPI_Aint count, MPI_Datatype datatype,
 		 int dest, int tag, MPID_Comm *comm, int context_offset,
 		 struct MPID_Request **request );
-    int (*irsend)(struct MPIDI_VC *vc, const void *buf, int count, MPI_Datatype datatype,
+    int (*irsend)(struct MPIDI_VC *vc, const void *buf, MPI_Aint count, MPI_Datatype datatype,
 		  int dest, int tag, MPID_Comm *comm, int context_offset,
 		  struct MPID_Request **request );
-    int (*issend)(struct MPIDI_VC *vc, const void *buf, int count, MPI_Datatype datatype,
+    int (*issend)(struct MPIDI_VC *vc, const void *buf, MPI_Aint count, MPI_Datatype datatype,
 		  int dest, int tag, MPID_Comm *comm, int context_offset,
 		  struct MPID_Request **request );
     
-    int (*send_init)(struct MPIDI_VC *vc, const void *buf, int count, MPI_Datatype datatype,
+    int (*send_init)(struct MPIDI_VC *vc, const void *buf, MPI_Aint count, MPI_Datatype datatype,
 		     int dest, int tag, MPID_Comm *comm, int context_offset,
 		     struct MPID_Request **request );
     int (*bsend_init)(struct MPIDI_VC *vc, const void *buf, int count, MPI_Datatype datatype,
 		      int dest, int tag, MPID_Comm *comm, int context_offset,
 		      struct MPID_Request **request);
-    int (*rsend_init)(struct MPIDI_VC *vc, const void *buf, int count, MPI_Datatype datatype,
+    int (*rsend_init)(struct MPIDI_VC *vc, const void *buf, MPI_Aint count, MPI_Datatype datatype,
 		      int dest, int tag, MPID_Comm *comm, int context_offset,
 		      struct MPID_Request **request );
-    int (*ssend_init)(struct MPIDI_VC *vc, const void *buf, int count, MPI_Datatype datatype,
+    int (*ssend_init)(struct MPIDI_VC *vc, const void *buf, MPI_Aint count, MPI_Datatype datatype,
 		      int dest, int tag, MPID_Comm *comm, int context_offset,
 		      struct MPID_Request **request );
     int (*startall)(struct MPIDI_VC *vc, int count,  struct MPID_Request *requests[]);
@@ -893,7 +909,7 @@ typedef struct MPIDI_VC
 
     /* rendezvous function pointers.  Called to send a rendevous
        message or when one is matched */
-    int (* rndvSend_fn)( struct MPID_Request **sreq_p, const void * buf, int count, 
+    int (* rndvSend_fn)( struct MPID_Request **sreq_p, const void * buf, MPI_Aint count,
                          MPI_Datatype datatype, int dt_contig, MPIDI_msg_sz_t data_sz, 
                          MPI_Aint dt_true_lb, int rank, int tag,
                          struct MPID_Comm * comm, int context_offset );
@@ -1027,6 +1043,11 @@ extern MPIDI_CH3U_SRBuf_element_t * MPIDI_CH3U_SRBuf_pool;
 /*-------------------------------
   END SEND/RECEIVE BUFFER SECTION
   -------------------------------*/
+
+/* define ACC stream size as the SRBuf size */
+#if !defined(MPIDI_CH3U_Acc_stream_size)
+#define MPIDI_CH3U_Acc_stream_size MPIDI_CH3U_SRBuf_size
+#endif
 
 /*----------------------------
   BEGIN DEBUGGING TOOL SECTION
@@ -1168,10 +1189,10 @@ const char * MPIDI_VC_GetStateString(int);
 
 /* Prototypes for internal device routines */
 #if defined(FINEGRAIN_MPI)
-int MPIDI_Isend_self(const void **, int, MPI_Datatype, int, int, MPID_Comm *,
+int MPIDI_Isend_self(const void **, MPI_Aint, MPI_Datatype, int, int, MPID_Comm *,
                      int, int, MPID_Request **);
 #else
-int MPIDI_Isend_self(const void *, int, MPI_Datatype, int, int, MPID_Comm *, 
+int MPIDI_Isend_self(const void *, MPI_Aint, MPI_Datatype, int, int, MPID_Comm *,
 		     int, int, MPID_Request **);
 #endif
 
@@ -1246,12 +1267,26 @@ typedef struct {
 
 extern MPIDI_CH3U_Win_hooks_t MPIDI_CH3U_Win_hooks;
 
+typedef struct MPIDI_CH3U_Win_pkt_ordering {
+
+    /* Ordered AM flush.
+     * It means whether AM flush is guaranteed to be finished after all previous
+     * RMA operations. It initialized by Nemesis and used by CH3.
+     * Note that we use single global flag for all targets including both
+     * intra-node and inter-node processes.*/
+    int am_flush_ordered;
+} MPIDI_CH3U_Win_pkt_ordering_t;
+
+extern MPIDI_CH3U_Win_pkt_ordering_t MPIDI_CH3U_Win_pkt_orderings;
+
 /* CH3 and Channel window functions initializers */
 int MPIDI_Win_fns_init(MPIDI_CH3U_Win_fns_t *win_fns);
 int MPIDI_CH3_Win_fns_init(MPIDI_CH3U_Win_fns_t *win_fns);
 
 /* Channel window hooks initializer */
 int MPIDI_CH3_Win_hooks_init(MPIDI_CH3U_Win_hooks_t *win_hooks);
+
+int MPIDI_CH3_Win_pkt_orderings_init(MPIDI_CH3U_Win_pkt_ordering_t * win_pkt_orderings);
 
 /* Default window creation functions provided by CH3 */
 int MPIDI_CH3U_Win_create(void *, MPI_Aint, int, MPID_Info *, MPID_Comm *,
@@ -1654,7 +1689,7 @@ MPID_Request * MPIDI_CH3U_Recvq_FDU_matchonly(int source, int tag, int context_i
                                    int *foundp);
 MPID_Request * MPIDI_CH3U_Recvq_FDU_or_AEP(int source, int tag, 
                                           int context_id, MPID_Comm *comm, void *user_buf,
-                                           int user_count, MPI_Datatype datatype, int * foundp);
+                                           MPI_Aint user_count, MPI_Datatype datatype, int * foundp);
 int MPIDI_CH3U_Recvq_DP(MPID_Request * rreq);
 MPID_Request * MPIDI_CH3U_Recvq_FDP_or_AEU(MPIDI_Message_match * match, 
 					   int * found);
@@ -1669,9 +1704,9 @@ int MPIDI_CH3U_Request_load_recv_iov(MPID_Request * const rreq);
 int MPIDI_CH3U_Request_unpack_uebuf(MPID_Request * rreq);
 int MPIDI_CH3U_Request_unpack_srbuf(MPID_Request * rreq);
 
-void MPIDI_CH3U_Buffer_copy(const void * const sbuf, int scount, 
+void MPIDI_CH3U_Buffer_copy(const void * const sbuf, MPI_Aint scount,
 			    MPI_Datatype sdt, int * smpi_errno,
-			    void * const rbuf, int rcount, MPI_Datatype rdt, 
+			    void * const rbuf, MPI_Aint rcount, MPI_Datatype rdt,
 			    MPIDI_msg_sz_t * rdata_sz, int * rmpi_errno);
 int MPIDI_CH3U_Post_data_receive(int found, MPID_Request ** rreqp);
 int MPIDI_CH3U_Post_data_receive_found(MPID_Request * rreqp);
@@ -1966,8 +2001,8 @@ int MPIDI_CH3_PktHandler_Unlock( MPIDI_VC_t *, MPIDI_CH3_Pkt_t *,
                                  MPIDI_msg_sz_t *, MPID_Request ** );
 int MPIDI_CH3_PktHandler_Flush( MPIDI_VC_t *, MPIDI_CH3_Pkt_t *,
                                 MPIDI_msg_sz_t *, MPID_Request ** );
-int MPIDI_CH3_PktHandler_FlushAck( MPIDI_VC_t *, MPIDI_CH3_Pkt_t *,
-				    MPIDI_msg_sz_t *, MPID_Request ** );
+int MPIDI_CH3_PktHandler_Ack( MPIDI_VC_t *, MPIDI_CH3_Pkt_t *,
+                              MPIDI_msg_sz_t *, MPID_Request ** );
 int MPIDI_CH3_PktHandler_DecrAtCnt( MPIDI_VC_t *, MPIDI_CH3_Pkt_t *,
                                     MPIDI_msg_sz_t *, MPID_Request ** );
 int MPIDI_CH3_PktHandler_FlowCntlUpdate( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
@@ -1996,7 +2031,7 @@ int MPIDI_CH3_PktPrint_EagerSyncAck( FILE *fp, MPIDI_CH3_Pkt_t *pkt );
 
 /* Routines to create packets (used in implementing MPI communications */
 int MPIDI_CH3_EagerNoncontigSend( MPID_Request **, MPIDI_CH3_Pkt_type_t, 
-				  const void *, int, 
+				  const void *, MPI_Aint,
 				  MPI_Datatype, MPIDI_msg_sz_t, int, int, MPID_Comm *, 
 				  int );
 int MPIDI_CH3_EagerContigSend( MPID_Request **, MPIDI_CH3_Pkt_type_t, 
@@ -2010,7 +2045,7 @@ int MPIDI_CH3_EagerContigIsend( MPID_Request **, MPIDI_CH3_Pkt_type_t,
 				int, MPID_Comm *, int );
 
 
-int MPIDI_CH3_RndvSend( MPID_Request **, const void *, int, MPI_Datatype, 
+int MPIDI_CH3_RndvSend( MPID_Request **, const void *, MPI_Aint, MPI_Datatype,
 			int, MPIDI_msg_sz_t, MPI_Aint, int, int, MPID_Comm *, int );
 
 int MPIDI_CH3_EagerSyncNoncontigSend( MPID_Request **, const void *, int, 
@@ -2025,9 +2060,9 @@ int MPIDI_CH3_SendNoncontig_iov( struct MPIDI_VC *vc, struct MPID_Request *sreq,
    message is matched */
 int MPIDI_CH3_EagerSyncAck( MPIDI_VC_t *, MPID_Request * );
 #if defined(FINEGRAIN_MPI)
-int MPIDI_CH3_RecvFromSelf( MPID_Request *, void **, int, MPI_Datatype );
+int MPIDI_CH3_RecvFromSelf( MPID_Request *, void **, MPI_Aint, MPI_Datatype );
 #else
-int MPIDI_CH3_RecvFromSelf( MPID_Request *, void *, int, MPI_Datatype );
+int MPIDI_CH3_RecvFromSelf( MPID_Request *, void *, MPI_Aint, MPI_Datatype );
 #endif
 int MPIDI_CH3_RecvRndv( MPIDI_VC_t *, MPID_Request * );
 
@@ -2052,12 +2087,12 @@ int MPIDI_CH3_ReqHandler_GaccumRecvComplete( MPIDI_VC_t *, MPID_Request *,
                                              int * );
 int MPIDI_CH3_ReqHandler_FOPRecvComplete( MPIDI_VC_t *, MPID_Request *,
                                           int * );
-int MPIDI_CH3_ReqHandler_AccumDerivedDTRecvComplete( MPIDI_VC_t *,
-						     MPID_Request *,
-						     int * );
-int MPIDI_CH3_ReqHandler_GaccumDerivedDTRecvComplete( MPIDI_VC_t *,
-                                                      MPID_Request *,
-                                                      int * );
+int MPIDI_CH3_ReqHandler_AccumMetadataRecvComplete( MPIDI_VC_t *,
+                                                    MPID_Request *,
+                                                    int * );
+int MPIDI_CH3_ReqHandler_GaccumMetadataRecvComplete( MPIDI_VC_t *,
+                                                     MPID_Request *,
+                                                     int * );
 int MPIDI_CH3_ReqHandler_GetDerivedDTRecvComplete( MPIDI_VC_t *,
 						   MPID_Request *, int * );
 int MPIDI_CH3_ReqHandler_PiggybackLockOpRecvComplete( MPIDI_VC_t *,
@@ -2138,5 +2173,12 @@ int MPIDI_CH3_ReqHandler_ReqOpsComplete(MPIDI_VC_t *, MPID_Request *,
         else                                                        \
             *(eager_threshold_p) = (vc)->eager_max_msg_sz;          \
     } while (0)
+
+
+int MPIDI_CH3I_Progress_register_hook(int (*progress_fn)(int*));
+int MPIDI_CH3I_Progress_deregister_hook(int (*progress_fn)(int*));
+
+#define MPID_Progress_register_hook(fn_) MPIDI_CH3I_Progress_register_hook(fn_)
+#define MPID_Progress_deregister_hook(fn_) MPIDI_CH3I_Progress_deregister_hook(fn_)
 
 #endif /* !defined(MPICH_MPIDIMPL_H_INCLUDED) */

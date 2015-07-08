@@ -49,7 +49,7 @@ errnames_txt_files =
 
 external_subdirs = @mplsrcdir@ @opasrcdir@ @pclsrcdir@ @fgutilsrcdir@
 external_ldflags = @mpllibdir@ @opalibdir@ -L@pcllibdir@ -L@fgutillibdir@
-external_libs = @EXTERNAL_LIBS@
+external_libs = @WRAPPER_LIBS@
 mpi_convenience_libs =
 pmpi_convenience_libs = @mpllib@ @opalib@
 fgmpi_libs = -l@PCLLIBNAME@ -l@FGUTILLIBNAME@
@@ -496,6 +496,7 @@ install-html-local:
 	fi ; \
 	export dir ; \
 	if test ! -z $$dir && test -d $$dir && cd $$dir ; then \
+	 if [ ! -e ${DESTDIR}${htmldir} ] ; then $(MKDIR_P) ${DESTDIR}${htmldir} ; fi ; \
 	 for name in * ; do \
 	  if [ "$$name" = "*" ] ; then continue ; fi ; \
 	  if [ -f $$name ] ; then \

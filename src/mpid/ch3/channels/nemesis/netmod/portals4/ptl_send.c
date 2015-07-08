@@ -48,7 +48,6 @@ static void big_meappend(void *buf, ptl_size_t left_to_send, MPIDI_VC_t *vc, ptl
         /* increment the cc for each get operation */
         MPIDI_CH3U_Request_increment_cc(sreq, &was_incomplete);
         MPIU_Assert(was_incomplete);
-        REQ_PTL(sreq)->num_gets++;
 
         /* account for what has been sent */
         me.start = (char *)me.start + me.length;
@@ -64,10 +63,8 @@ static int handler_send(const ptl_event_t *e)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Request *const sreq = e->user_ptr;
-    MPIDI_VC_t *vc = sreq->ch.vc;
-    MPID_nem_ptl_vc_area *const vc_ptl = VC_PTL(vc);
 
-    int i, ret, incomplete;
+    int i, ret;
 
     MPIDI_STATE_DECL(MPID_STATE_HANDLER_SEND);
 
@@ -75,7 +72,7 @@ static int handler_send(const ptl_event_t *e)
 
     MPIU_Assert(e->type == PTL_EVENT_SEND || e->type == PTL_EVENT_GET);
 
-    /* if we are done, release all resources and complete the request */
+    /* if we are done, release all netmod resources */
     if (MPID_cc_get(sreq->cc) == 1) {
         if (REQ_PTL(sreq)->md != PTL_INVALID_HANDLE) {
             ret = PtlMDRelease(REQ_PTL(sreq)->md);
@@ -88,15 +85,8 @@ static int handler_send(const ptl_event_t *e)
 
         if (REQ_PTL(sreq)->get_me_p)
             MPIU_Free(REQ_PTL(sreq)->get_me_p);
-    
-        MPIDI_CH3U_Request_complete(sreq);
-        vc_ptl->num_queued_sends--;
-
-        if (vc->state == MPIDI_VC_STATE_CLOSED && vc_ptl->num_queued_sends == 0)
-            MPID_nem_ptl_vc_terminated(vc);
-    } else {
-        MPIDI_CH3U_Request_decrement_cc(sreq, &incomplete);
     }
+    MPIDI_CH3U_Request_complete(sreq);
 
  fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_HANDLER_SEND);
@@ -110,7 +100,7 @@ static int handler_send(const ptl_event_t *e)
 #define FUNCNAME send_msg
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int send_msg(ptl_hdr_data_t ssend_flag, struct MPIDI_VC *vc, const void *buf, int count, MPI_Datatype datatype, int dest,
+static int send_msg(ptl_hdr_data_t ssend_flag, struct MPIDI_VC *vc, const void *buf, MPI_Aint count, MPI_Datatype datatype, int dest,
                     int tag, MPID_Comm *comm, int context_offset, struct MPID_Request **request)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -135,7 +125,6 @@ static int send_msg(ptl_hdr_data_t ssend_flag, struct MPIDI_VC *vc, const void *
     sreq->dev.match.parts.tag = tag;
     sreq->dev.match.parts.context_id = comm->context_id + context_offset;
     sreq->ch.vc = vc;
-    vc_ptl->num_queued_sends++;
 
     if (!vc_ptl->id_initialized) {
         mpi_errno = MPID_nem_ptl_init_id(vc);
@@ -283,7 +272,6 @@ static int send_msg(ptl_hdr_data_t ssend_flag, struct MPIDI_VC *vc, const void *
                 /* increment the cc for the get operation */
                 MPIDI_CH3U_Request_increment_cc(sreq, &was_incomplete);
                 MPIU_Assert(was_incomplete);
-                REQ_PTL(sreq)->num_gets = 1;
 
                 /* Create MD for first chunk */
                 md.start = sreq->dev.iov;
@@ -345,7 +333,7 @@ static int send_msg(ptl_hdr_data_t ssend_flag, struct MPIDI_VC *vc, const void *
 #define FUNCNAME MPID_nem_ptl_isend
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPID_nem_ptl_isend(struct MPIDI_VC *vc, const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+int MPID_nem_ptl_isend(struct MPIDI_VC *vc, const void *buf, MPI_Aint count, MPI_Datatype datatype, int dest, int tag,
                        MPID_Comm *comm, int context_offset, struct MPID_Request **request)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -364,7 +352,7 @@ int MPID_nem_ptl_isend(struct MPIDI_VC *vc, const void *buf, int count, MPI_Data
 #define FUNCNAME MPID_nem_ptl_issend
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPID_nem_ptl_issend(struct MPIDI_VC *vc, const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+int MPID_nem_ptl_issend(struct MPIDI_VC *vc, const void *buf, MPI_Aint count, MPI_Datatype datatype, int dest, int tag,
                         MPID_Comm *comm, int context_offset, struct MPID_Request **request)
 {
     int mpi_errno = MPI_SUCCESS;

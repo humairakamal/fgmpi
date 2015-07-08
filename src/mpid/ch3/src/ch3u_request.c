@@ -83,8 +83,7 @@ MPID_Request * MPID_Request_create(void)
 	   request for RMA operations */
 	req->dev.target_win_handle = MPI_WIN_NULL;
 	req->dev.source_win_handle = MPI_WIN_NULL;
-        req->dev.lock_queue_entry  = NULL;
-	req->dev.dtype_info	   = NULL;
+        req->dev.target_lock_queue_entry = NULL;
 	req->dev.dataloop	   = NULL;
 	req->dev.iov_offset        = 0;
         req->dev.flags             = MPIDI_CH3_PKT_FLAG_NONE;
@@ -94,7 +93,9 @@ MPID_Request * MPID_Request_create(void)
         req->dev.OnFinal           = NULL;
         req->dev.user_buf          = NULL;
         req->dev.drop_data         = FALSE;
-        req->dev.stream_offset     = 0;
+        req->dev.tmpbuf            = NULL;
+        req->dev.ext_hdr_ptr       = NULL;
+        req->dev.ext_hdr_sz        = 0;
 #ifdef MPIDI_CH3_REQUEST_INIT
 	MPIDI_CH3_REQUEST_INIT(req);
 #endif
@@ -168,6 +169,10 @@ void MPIDI_CH3_Request_destroy(MPID_Request * req)
 
     if (MPIDI_Request_get_srbuf_flag(req)) {
 	MPIDI_CH3U_SRBuf_free(req);
+    }
+
+    if (req->dev.ext_hdr_ptr != NULL) {
+        MPIU_Free(req->dev.ext_hdr_ptr);
     }
 
     MPIU_Handle_obj_free(&MPID_Request_mem, req);
@@ -294,6 +299,8 @@ int MPIDI_CH3U_Request_load_send_iov(MPID_Request * const sreq,
     return mpi_errno;
 }
 
+#define MPIDI_LOAD_RECV_IOV_ORIG_SEGMENT_FIRST_UNSET (-1)
+
 /*
  * MPIDI_CH3U_Request_load_recv_iov()
  *
@@ -309,10 +316,16 @@ int MPIDI_CH3U_Request_load_send_iov(MPID_Request * const sreq,
 int MPIDI_CH3U_Request_load_recv_iov(MPID_Request * const rreq)
 {
     MPI_Aint last;
+    static MPIDI_msg_sz_t orig_segment_first = MPIDI_LOAD_RECV_IOV_ORIG_SEGMENT_FIRST_UNSET;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3U_REQUEST_LOAD_RECV_IOV);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_REQUEST_LOAD_RECV_IOV);
+
+    if (orig_segment_first == MPIDI_LOAD_RECV_IOV_ORIG_SEGMENT_FIRST_UNSET) {
+        orig_segment_first = rreq->dev.segment_first;
+    }
+
     if (rreq->dev.segment_first < rreq->dev.segment_size)
     {
 	/* still reading data that needs to go into the user buffer */
@@ -345,14 +358,15 @@ int MPIDI_CH3U_Request_load_recv_iov(MPID_Request * const rreq)
 	    rreq->dev.iov[0].MPID_IOV_LEN = data_sz;
             rreq->dev.iov_offset = 0;
 	    rreq->dev.iov_count = 1;
-	    MPIU_Assert(rreq->dev.segment_first + data_sz + 
+	    MPIU_Assert(rreq->dev.segment_first - orig_segment_first + data_sz +
 			rreq->dev.tmpbuf_off <= rreq->dev.recv_data_sz);
-	    if (rreq->dev.segment_first + data_sz + rreq->dev.tmpbuf_off == 
+	    if (rreq->dev.segment_first - orig_segment_first + data_sz + rreq->dev.tmpbuf_off ==
 		rreq->dev.recv_data_sz)
 	    {
 		MPIU_DBG_MSG(CH3_CHANNEL,VERBOSE,
 		  "updating rreq to read the remaining data into the SRBuf");
 		rreq->dev.OnDataAvail = MPIDI_CH3_ReqHandler_UnpackSRBufComplete;
+                orig_segment_first = MPIDI_LOAD_RECV_IOV_ORIG_SEGMENT_FIRST_UNSET;
 	    }
 	    else
 	    {
@@ -401,12 +415,13 @@ int MPIDI_CH3U_Request_load_recv_iov(MPID_Request * const rreq)
         }
 	/* --END ERROR HANDLING-- */
 
-	if (last == rreq->dev.recv_data_sz)
+	if (last == rreq->dev.recv_data_sz + orig_segment_first)
 	{
 	    MPIU_DBG_MSG(CH3_CHANNEL,VERBOSE,
      "updating rreq to read the remaining data directly into the user buffer");
 	    /* Eventually, use OnFinal for this instead */
 	    rreq->dev.OnDataAvail = rreq->dev.OnFinal;
+            orig_segment_first = MPIDI_LOAD_RECV_IOV_ORIG_SEGMENT_FIRST_UNSET;
 	}
 	else if (MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_ACCUM_RECV ||
                  MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_GET_ACCUM_RECV ||
@@ -478,6 +493,7 @@ int MPIDI_CH3U_Request_load_recv_iov(MPID_Request * const rreq)
 	    MPIU_Assert(MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_RECV);
 	    /* Eventually, use OnFinal for this instead */
 	    rreq->dev.OnDataAvail = rreq->dev.OnFinal;
+            orig_segment_first = MPIDI_LOAD_RECV_IOV_ORIG_SEGMENT_FIRST_UNSET;
 	}
 	else
 	{

@@ -7,7 +7,7 @@
 
 include $(top_srcdir)/Makefile.mtest
 
-EXTRA_DIST = testlist
+EXTRA_DIST = testlist.in
 
 ## for all programs that are just built from the single corresponding source
 ## file, we don't need per-target _SOURCES rules, automake will infer them
@@ -52,6 +52,7 @@ noinst_PROGRAMS =      \
     exscan2            \
     gather             \
     gather2            \
+    gather_big         \
     iallred            \
     ibarrier           \
     icallgather        \

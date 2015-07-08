@@ -22,14 +22,21 @@
 /* ------------------------------------------------------------------------ */
 #undef FCNAME
 #define FCNAME DECL_FUNC(ofi_tag_to_vc)
-static inline MPIDI_VC_t *ofi_tag_to_vc(uint64_t match_bits)
+static inline MPIDI_VC_t *ofi_wc_to_vc(cq_tagged_entry_t * wc)
 {
     int pgid = 0, port = 0;
     MPIDI_VC_t *vc = NULL;
     MPIDI_PG_t *pg = NULL;
-
+    uint64_t match_bits = wc->tag;
+    int wc_pgid;
     BEGIN_FUNC(FCNAME);
-    if (NO_PGID == get_pgid(match_bits)) {
+    if (gl_data.api_set == API_SET_1) {
+        wc_pgid = get_pgid(match_bits);
+    } else {
+        wc_pgid = wc->data;
+    }
+
+    if (NO_PGID == wc_pgid) {
         /* -------------------------------------------------------------------- */
         /* Dynamic path -- This uses a linear search, but number of cm vc's is  */
         /* a small number, and they should be ephemeral.  This lookup should    */
@@ -53,7 +60,7 @@ static inline MPIDI_VC_t *ofi_tag_to_vc(uint64_t match_bits)
         pg = gl_data.pg_p;
         while (pg) {
             MPIDI_PG_IdToNum(pg, &pgid);
-            if (get_pgid(match_bits) == pgid) {
+            if (wc_pgid == pgid) {
                 break;
             }
             pg = pg->next;
@@ -101,14 +108,14 @@ static inline int MPID_nem_ofi_conn_req_callback(cq_tagged_entry_t * wc, MPID_Re
     MPIU_Memcpy(bc, rreq->dev.user_buf, wc->len);
     bc[wc->len] = '\0';
     MPIU_Assert(gl_data.conn_req == rreq);
-    FI_RC(fi_trecv(gl_data.endpoint,
-                       gl_data.conn_req->dev.user_buf,
-                       OFI_KVSAPPSTRLEN,
-                       gl_data.mr,
-                       FI_ADDR_UNSPEC,
-                       MPID_CONN_REQ,
-                       ~MPID_PROTOCOL_MASK,
-                       (void *) &(REQ_OFI(gl_data.conn_req)->ofi_context)), trecv);
+    FI_RC_RETRY(fi_trecv(gl_data.endpoint,
+                   gl_data.conn_req->dev.user_buf,
+                   OFI_KVSAPPSTRLEN,
+                   gl_data.mr,
+                   FI_ADDR_UNSPEC,
+                   MPID_CONN_REQ,
+                   GET_RCD_IGNORE_MASK(),
+                   (void *) &(REQ_OFI(gl_data.conn_req)->ofi_context)), trecv);
 
     addr = MPIU_Malloc(gl_data.bound_addrlen);
     MPIU_Assertp(addr);
@@ -159,10 +166,10 @@ static inline int MPID_nem_ofi_handle_packet(cq_tagged_entry_t * wc ATTRIBUTE((u
 
     BEGIN_FUNC(FCNAME);
     if (MPID_cc_get(rreq->cc) == 1) {
-        vc = REQ_OFI(rreq)->vc;
-        MPIU_Assert(vc);
-        MPI_RC(MPID_nem_handle_pkt(vc, REQ_OFI(rreq)->pack_buffer, REQ_OFI(rreq)->pack_buffer_size))
-            MPIU_Free(REQ_OFI(rreq)->pack_buffer);
+      vc = REQ_OFI(rreq)->vc;
+      MPIU_Assert(vc);
+      MPI_RC(MPID_nem_handle_pkt(vc, REQ_OFI(rreq)->pack_buffer, REQ_OFI(rreq)->pack_buffer_size));
+      MPIU_Free(REQ_OFI(rreq)->pack_buffer);
     }
     MPIDI_CH3U_Request_complete(rreq);
     END_FUNC_RC(FCNAME);
@@ -204,14 +211,17 @@ static inline int MPID_nem_ofi_preposted_callback(cq_tagged_entry_t * wc, MPID_R
     MPID_Request *new_rreq, *sreq;
     BEGIN_FUNC(FCNAME);
 
-    vc = ofi_tag_to_vc(wc->tag);
+    vc = ofi_wc_to_vc(wc);
     MPIU_Assert(vc);
     VC_READY_CHECK(vc);
 
-    pkt_len = rreq->dev.user_count;
+    pkt_len = REQ_OFI(rreq)->msg_bytes;
     pack_buffer = (char *) MPIU_Malloc(pkt_len);
-    MPIU_ERR_CHKANDJUMP1(pack_buffer == NULL, mpi_errno, MPI_ERR_OTHER,
-                         "**nomem", "**nomem %s", "Pack Buffer alloc");
+    /* If the pack buffer is NULL, let OFI handle the truncation
+     * in the progress loop
+     */
+    if(pack_buffer == NULL)
+      pkt_len = 0;
     c = 1;
     MPID_nem_ofi_create_req(&new_rreq, 1);
     MPID_cc_incr(new_rreq->cc_ptr, &c);
@@ -221,19 +231,19 @@ static inline int MPID_nem_ofi_preposted_callback(cq_tagged_entry_t * wc, MPID_R
     REQ_OFI(new_rreq)->vc = vc;
     REQ_OFI(new_rreq)->pack_buffer = pack_buffer;
     REQ_OFI(new_rreq)->pack_buffer_size = pkt_len;
-    FI_RC(fi_trecv(gl_data.endpoint,
+    FI_RC_RETRY(fi_trecv(gl_data.endpoint,
                        REQ_OFI(new_rreq)->pack_buffer,
                        REQ_OFI(new_rreq)->pack_buffer_size,
                        gl_data.mr,
                        VC_OFI(vc)->direct_addr,
-                       wc->tag | MPID_MSG_DATA, 0, &(REQ_OFI(new_rreq)->ofi_context)), trecv);
+                       wc->tag | MPID_MSG_CTS | MPID_MSG_DATA, 0, &(REQ_OFI(new_rreq)->ofi_context)), trecv);
 
     MPID_nem_ofi_create_req(&sreq, 1);
     sreq->dev.OnDataAvail = NULL;
     sreq->dev.next = NULL;
     REQ_OFI(sreq)->event_callback = MPID_nem_ofi_cts_send_callback;
     REQ_OFI(sreq)->parent = new_rreq;
-    FI_RC(fi_tsend(gl_data.endpoint,
+    FI_RC_RETRY(fi_tsend(gl_data.endpoint,
                      NULL,
                      0,
                      gl_data.mr,
@@ -241,14 +251,17 @@ static inline int MPID_nem_ofi_preposted_callback(cq_tagged_entry_t * wc, MPID_R
                      wc->tag | MPID_MSG_CTS, &(REQ_OFI(sreq)->ofi_context)), tsend);
     MPIU_Assert(gl_data.persistent_req == rreq);
 
-    rreq->dev.user_count = 0;
-    FI_RC(fi_trecv(gl_data.endpoint,
-                       &rreq->dev.user_count,
-                       sizeof rreq->dev.user_count,
-                       gl_data.mr,
-                       FI_ADDR_UNSPEC,
-                       MPID_MSG_RTS,
-                       ~MPID_PROTOCOL_MASK, &(REQ_OFI(rreq)->ofi_context)), trecv);
+    FI_RC_RETRY(fi_trecv(gl_data.endpoint,
+                   &REQ_OFI(rreq)->msg_bytes,
+                   sizeof REQ_OFI(rreq)->msg_bytes,
+                   gl_data.mr,
+                   FI_ADDR_UNSPEC,
+                   MPID_MSG_RTS,
+                   GET_RCD_IGNORE_MASK(),
+                   &(REQ_OFI(rreq)->ofi_context)), trecv);
+    /* Return a proper error to MPI to indicate out of memory condition */
+    MPIU_ERR_CHKANDJUMP1(pack_buffer == NULL, mpi_errno, MPI_ERR_OTHER,
+                         "**nomem", "**nomem %s", "Pack Buffer alloc");
     END_FUNC_RC(FCNAME);
 }
 
@@ -289,10 +302,17 @@ int MPID_nem_ofi_cm_init(MPIDI_PG_t * pg_p, int pg_rank ATTRIBUTE((unused)))
     /* ------------------------------------- */
     /* Set up CH3 and netmod data structures */
     /* ------------------------------------- */
-    MPI_RC(MPIDI_CH3I_Register_anysource_notification(MPID_nem_ofi_anysource_posted,
-                                                      MPID_nem_ofi_anysource_matched));
-    MPIDI_Anysource_iprobe_fn = MPID_nem_ofi_anysource_iprobe;
-    MPIDI_Anysource_improbe_fn = MPID_nem_ofi_anysource_improbe;
+    if (gl_data.api_set == API_SET_1) {
+        MPI_RC(MPIDI_CH3I_Register_anysource_notification(MPID_nem_ofi_anysource_posted,
+                                                          MPID_nem_ofi_anysource_matched));
+        MPIDI_Anysource_iprobe_fn = MPID_nem_ofi_anysource_iprobe;
+        MPIDI_Anysource_improbe_fn = MPID_nem_ofi_anysource_improbe;
+    } else {
+        MPI_RC(MPIDI_CH3I_Register_anysource_notification(MPID_nem_ofi_anysource_posted_2,
+                                                          MPID_nem_ofi_anysource_matched));
+        MPIDI_Anysource_iprobe_fn = MPID_nem_ofi_anysource_iprobe_2;
+        MPIDI_Anysource_improbe_fn = MPID_nem_ofi_anysource_improbe_2;
+    }
     gl_data.pg_p = pg_p;
 
     /* ----------------------------------- */
@@ -303,14 +323,14 @@ int MPID_nem_ofi_cm_init(MPIDI_PG_t * pg_p, int pg_rank ATTRIBUTE((unused)))
     persistent_req->dev.next = NULL;
     REQ_OFI(persistent_req)->vc = NULL;
     REQ_OFI(persistent_req)->event_callback = MPID_nem_ofi_preposted_callback;
-    FI_RC(fi_trecv(gl_data.endpoint,
-                       &persistent_req->dev.user_count,
-                       sizeof persistent_req->dev.user_count,
-                       gl_data.mr,
-                       FI_ADDR_UNSPEC,
-                       MPID_MSG_RTS,
-                       ~MPID_PROTOCOL_MASK,
-                       (void *) &(REQ_OFI(persistent_req)->ofi_context)), trecv);
+    FI_RC_RETRY(fi_trecv(gl_data.endpoint,
+                   &REQ_OFI(persistent_req)->msg_bytes,
+                   sizeof REQ_OFI(persistent_req)->msg_bytes,
+                   gl_data.mr,
+                   FI_ADDR_UNSPEC,
+                   MPID_MSG_RTS,
+                   GET_RCD_IGNORE_MASK(),
+                   (void *) &(REQ_OFI(persistent_req)->ofi_context)), trecv);
     gl_data.persistent_req = persistent_req;
 
     /* --------------------------------- */
@@ -322,13 +342,14 @@ int MPID_nem_ofi_cm_init(MPIDI_PG_t * pg_p, int pg_rank ATTRIBUTE((unused)))
     conn_req->dev.next = NULL;
     REQ_OFI(conn_req)->vc = NULL;       /* We don't know the source yet */
     REQ_OFI(conn_req)->event_callback = MPID_nem_ofi_conn_req_callback;
-    FI_RC(fi_trecv(gl_data.endpoint,
-                       conn_req->dev.user_buf,
-                       OFI_KVSAPPSTRLEN,
-                       gl_data.mr,
-                       FI_ADDR_UNSPEC,
-                       MPID_CONN_REQ,
-                       ~MPID_PROTOCOL_MASK, (void *) &(REQ_OFI(conn_req)->ofi_context)), trecv);
+    FI_RC_RETRY(fi_trecv(gl_data.endpoint,
+                   conn_req->dev.user_buf,
+                   OFI_KVSAPPSTRLEN,
+                   gl_data.mr,
+                   FI_ADDR_UNSPEC,
+                   MPID_CONN_REQ,
+                   GET_RCD_IGNORE_MASK(),
+                   (void *) &(REQ_OFI(conn_req)->ofi_context)), trecv);
     gl_data.conn_req = conn_req;
 
 
@@ -536,13 +557,24 @@ int MPID_nem_ofi_connect_to_root(const char *business_card, MPIDI_VC_t * new_vc)
     sreq->dev.next = NULL;
     REQ_OFI(sreq)->event_callback = MPID_nem_ofi_connect_to_root_callback;
     REQ_OFI(sreq)->pack_buffer = my_bc;
-    conn_req_send_bits = init_sendtag(0, MPIR_Process.comm_world->rank, 0, MPID_CONN_REQ);
-    FI_RC(fi_tsend(gl_data.endpoint,
-                     REQ_OFI(sreq)->pack_buffer,
-                     my_bc_len,
-                     gl_data.mr,
-                     VC_OFI(new_vc)->direct_addr,
-                     conn_req_send_bits, &(REQ_OFI(sreq)->ofi_context)), tsend);
+    if (gl_data.api_set == API_SET_1) {
+        conn_req_send_bits = init_sendtag(0, MPIR_Process.comm_world->rank, 0, MPID_CONN_REQ);
+        FI_RC_RETRY(fi_tsend(gl_data.endpoint,
+                       REQ_OFI(sreq)->pack_buffer,
+                       my_bc_len,
+                       gl_data.mr,
+                       VC_OFI(new_vc)->direct_addr,
+                       conn_req_send_bits, &(REQ_OFI(sreq)->ofi_context)), tsend);
+    } else {
+        conn_req_send_bits = init_sendtag_2(0, 0, MPID_CONN_REQ);
+        FI_RC_RETRY(fi_tsenddata(gl_data.endpoint,
+                           REQ_OFI(sreq)->pack_buffer,
+                           my_bc_len,
+                           gl_data.mr,
+                           MPIR_Process.comm_world->rank,
+                           VC_OFI(new_vc)->direct_addr,
+                           conn_req_send_bits, &(REQ_OFI(sreq)->ofi_context)), tsend);
+    }
     MPID_nem_ofi_poll(MPID_NONBLOCKING_POLL);
     VC_OFI(new_vc)->is_cmvc = 1;
     VC_OFI(new_vc)->next = gl_data.cm_vcs;
@@ -568,7 +600,7 @@ int MPID_nem_ofi_get_business_card(int my_rank ATTRIBUTE((unused)),
     str_errno = MPIU_Str_add_binary_arg(bc_val_p,
                                         val_max_sz_p,
                                         "OFI",
-                                        (char *) &gl_data.bound_addr, sizeof(gl_data.bound_addr));
+                                        (char *) &gl_data.bound_addr, gl_data.bound_addrlen);
     if (str_errno) {
         MPIU_ERR_CHKANDJUMP(str_errno == MPIU_STR_NOMEM, mpi_errno, MPI_ERR_OTHER, "**buscard_len");
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**buscard");

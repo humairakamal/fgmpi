@@ -4234,11 +4234,7 @@ sub build_specials {
     *ierr = MPI_Address( v1, &a );\n";
     &specialInitStatement( $OUTFD );
     print $OUTFD "\
-#ifdef USE_POINTER_FOR_BOTTOM
     b = a;
-#else
-    b = a - (MPIR_Pint) MPIR_F_MPI_BOTTOM;
-#endif
     *v2 = (MPI_Fint)( b );
 #ifdef HAVE_AINT_LARGER_THAN_FINT
     /* Check for truncation */
@@ -4273,9 +4269,6 @@ sub build_specials {
     *ierr = MPI_Get_address( v1, &a );\n";
     &specialInitStatement( $OUTFD );
     print $OUTFD "\
-#ifndef USE_POINTER_FOR_BOTTOM
-    a = a - (MPIR_Pint) MPIR_F_MPI_BOTTOM;
-#endif
     *v2 =  a;
 }\n";
     close ($OUTFD);
@@ -4345,27 +4338,27 @@ sub build_specials {
     }
     $returnType = "void";
 
-    # MPIX_Aint_add/diff do not have the ierror argument.
+    # MPI_Aint_add/diff do not have the ierror argument.
     $OUTFD = "AINTADD";
     $filename = "aint_addf.c";
     open( $OUTFD, ">$filename.new" ) || die "Cannot open $filename.new\n";
     $files[$#files+1] = $filename;
     $returnType = "MPI_Aint";
-    &set_weak_decl( "MPIX_Aint_add", "MPI_Aint *, MPI_Aint *", "MPI_Aint" );
-    &set_weak_decl( "PMPIX_Aint_add", "MPI_Aint *, MPI_Aint *", "MPI_Aint" );
-    &print_header( "mpix_", "MPIX_Aint_add", "aint_add", "MPI_Aint *, MPI_Aint *");
-    &print_routine_type_decl( $OUTFD, "mpix_", "aint_add" );
+    &set_weak_decl( "MPI_Aint_add", "MPI_Aint *, MPI_Aint *", "MPI_Aint" );
+    &set_weak_decl( "PMPI_Aint_add", "MPI_Aint *, MPI_Aint *", "MPI_Aint" );
+    &print_header( "mpi_", "MPI_Aint_add", "aint_add", "MPI_Aint *, MPI_Aint *");
+    &print_routine_type_decl( $OUTFD, "mpi_", "aint_add" );
     print $OUTFD "(MPI_Aint *base, MPI_Aint *disp)\n";
     print $OUTFD "{\n";
-    print $OUTFD "    return MPIX_Aint_add(*base, *disp);\n";
+    print $OUTFD "    return MPI_Aint_add(*base, *disp);\n";
     print $OUTFD "}\n";
     close ($OUTFD);
     &ReplaceIfDifferent( $filename, $filename . ".new" );
     if ($build_prototypes) {
         print PROTOFD "extern ";
-        &print_routine_type_decl( PROTOFD, "mpix_", "aint_add" );
+        &print_routine_type_decl( PROTOFD, "mpi_", "aint_add" );
         print PROTOFD "( MPI_Aint *, MPI_Aint * )";
-        &print_attr( PROTOFD, "mpix_"."aint_add_" );
+        &print_attr( PROTOFD, "mpi_"."aint_add_" );
         print PROTOFD ";\n";
     }
     $returnType = "void";
@@ -4375,21 +4368,21 @@ sub build_specials {
     open( $OUTFD, ">$filename.new" ) || die "Cannot open $filename.new\n";
     $files[$#files+1] = $filename;
     $returnType = "MPI_Aint";
-    &set_weak_decl( "MPIX_Aint_diff", "MPI_Aint *, MPI_Aint *", "MPI_Aint" );
-    &set_weak_decl( "PMPIX_Aint_diff", "MPI_Aint *, MPI_Aint *", "MPI_Aint" );
-    &print_header( "mpix_", "MPIX_Aint_diff", "aint_diff", "MPI_Aint *, MPI_Aint *");
-    &print_routine_type_decl( $OUTFD, "mpix_", "aint_diff" );
+    &set_weak_decl( "MPI_Aint_diff", "MPI_Aint *, MPI_Aint *", "MPI_Aint" );
+    &set_weak_decl( "PMPI_Aint_diff", "MPI_Aint *, MPI_Aint *", "MPI_Aint" );
+    &print_header( "mpi_", "MPI_Aint_diff", "aint_diff", "MPI_Aint *, MPI_Aint *");
+    &print_routine_type_decl( $OUTFD, "mpi_", "aint_diff" );
     print $OUTFD "(MPI_Aint *addr1, MPI_Aint *addr2)\n";
     print $OUTFD "{\n";
-    print $OUTFD "    return MPIX_Aint_diff(*addr1, *addr2);\n";
+    print $OUTFD "    return MPI_Aint_diff(*addr1, *addr2);\n";
     print $OUTFD "}\n";
     close ($OUTFD);
     &ReplaceIfDifferent( $filename, $filename . ".new" );
     if ($build_prototypes) {
         print PROTOFD "extern ";
-        &print_routine_type_decl( PROTOFD, "mpix_", "aint_diff" );
+        &print_routine_type_decl( PROTOFD, "mpi_", "aint_diff" );
         print PROTOFD "( MPI_Aint *, MPI_Aint * )";
-        &print_attr( PROTOFD, "mpix_"."aint_diff_" );
+        &print_attr( PROTOFD, "mpi_"."aint_diff_" );
         print PROTOFD ";\n";
     }
     $returnType = "void";
@@ -4782,6 +4775,31 @@ sub print_mpif_int {
     print MPIFFD "       PARAMETER ($key=$value)\n";
 }
 
+# Change the non-zero addressed F77/90 MPI_BOTTOM to C's MPI_BOTTOM, which
+# in MPICH is (void*)0. Note that MPI_BOTTOM can only appear at choice
+# buffer positions. For simplicity, we treat all void * parameters as
+# possible choice buffers. It is a little bit overkilling, but never
+# hurts, since if in the user's Fortran source code MPI_BOTTOM is passed
+# to a non-choice buffer parameter, either the program is already wrong,
+# or the parameter is non-significant.
+#
+# To make this adjustment work, MPI_Get_Address, MPI_Address should return
+# address as if MPI_BOTTOM was at address zero.
+#
+# See discussion of the MPI_BOTTOM problem on p.652 of MPI-3.0
+
+sub adjust_mpi_bottom {
+    my $OUTFD = $_[0];
+    my @params = split(/\s*,\s*/, $_[1]);
+    my $count = 1;
+    foreach my $param (@params) {
+        if ($param =~ /void.*\*/) {
+            printf $OUTFD "    if (v$count == MPIR_F_MPI_BOTTOM) v$count = MPI_BOTTOM;\n";
+        }
+        $count++;
+    }
+}
+
 sub ReadAndProcessInterface {
     my $prototype_file = $_[0];
     my $protectMPIO = $_[1];      # Wrap MPI-IO routines in ifdefs MPI_MODE_RDONLY
@@ -4930,6 +4948,7 @@ sub ReadAndProcessInterface {
                         &printCallForFint( $routine_prefix, $routine_name, $args );
                     }
                     &print_special_decls( $routine_name );
+                    &adjust_mpi_bottom($OUTFD, $args);
                     if (defined($ChangeCall{$routine_name})) {
                         my ($newName,$extraArgs) = 
                             split(/:/,$ChangeCall{$routine_name} );

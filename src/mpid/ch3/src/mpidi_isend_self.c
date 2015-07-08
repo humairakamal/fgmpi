@@ -17,10 +17,10 @@
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 #if defined(FINEGRAIN_MPI)
-int MPIDI_Isend_self(const void ** buf_handle, int count, MPI_Datatype datatype, int rank, int tag, MPID_Comm * comm, int context_offset,
+int MPIDI_Isend_self(const void ** buf_handle, MPI_Aint count, MPI_Datatype datatype, int rank, int tag, MPID_Comm * comm, int context_offset,
 		     int type, MPID_Request ** request)
 #else
-int MPIDI_Isend_self(const void * buf, int count, MPI_Datatype datatype, int rank, int tag, MPID_Comm * comm, int context_offset,
+int MPIDI_Isend_self(const void * buf, MPI_Aint count, MPI_Datatype datatype, int rank, int tag, MPID_Comm * comm, int context_offset,
 		     int type, MPID_Request ** request)
 #endif
 {

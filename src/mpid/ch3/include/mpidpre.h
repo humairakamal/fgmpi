@@ -305,14 +305,6 @@ typedef struct MPIDI_Win_basic_info {
     MPI_Win win_handle;
 } MPIDI_Win_basic_info_t;
 
-typedef struct MPIDI_RMA_Pkt_orderings {
-    int flush_remote; /* ordered FLUSH, for remote completion */
-    /* FIXME: in future we should also add local completin
-       ordering: WAW, WAR, RAW, RAR. */
-} MPIDI_RMA_Pkt_orderings_t;
-
-extern MPIDI_RMA_Pkt_orderings_t *MPIDI_RMA_Pkt_orderings;
-
 #define MPIDI_DEV_WIN_DECL                                               \
     volatile int at_completion_counter;  /* completion counter for operations \
                                  targeting this window */                \
@@ -323,17 +315,17 @@ extern MPIDI_RMA_Pkt_orderings_t *MPIDI_RMA_Pkt_orderings;
     volatile int current_lock_type;   /* current lock type on this window (as target)   \
                               * (none, shared, exclusive) */             \
     volatile int shared_lock_ref_cnt;                                    \
-    struct MPIDI_RMA_Lock_entry volatile *lock_queue;  /* list of unsatisfied locks */  \
-    struct MPIDI_RMA_Lock_entry volatile *lock_queue_tail; /* tail of unstaisfied locks. */ \
+    struct MPIDI_RMA_Target_lock_entry volatile *target_lock_queue_head;  /* list of unsatisfied locks */  \
+    struct MPIDI_RMA_Target_lock_entry volatile *target_lock_queue_tail; /* tail of unstaisfied locks. */ \
                                                                          \
     struct MPIDI_Win_info_args info_args;                                \
     int shm_allocated; /* flag: TRUE iff this window has a shared memory \
                           region associated with it */                   \
     struct MPIDI_RMA_Op *op_pool_start; /* start pointer used for freeing */\
-    struct MPIDI_RMA_Op *op_pool;  /* pool of operations */              \
+    struct MPIDI_RMA_Op *op_pool_head;  /* pool of operations */              \
     struct MPIDI_RMA_Op *op_pool_tail; /* tail pointer to pool of operations. */ \
     struct MPIDI_RMA_Target *target_pool_start; /* start pointer used for freeing */\
-    struct MPIDI_RMA_Target *target_pool; /* pool of targets */          \
+    struct MPIDI_RMA_Target *target_pool_head; /* pool of targets */          \
     struct MPIDI_RMA_Target *target_pool_tail; /* tail pointer to pool of targets */\
     struct MPIDI_RMA_Slot *slots;                                        \
     int num_slots;                                                       \
@@ -342,9 +334,6 @@ extern MPIDI_RMA_Pkt_orderings_t *MPIDI_RMA_Pkt_orderings;
         enum MPIDI_RMA_states exposure_state;                            \
     } states;                                                            \
     int non_empty_slots;                                                 \
-    int accumulated_ops_cnt; /* keep track of number of accumulated posted RMA operations \
-                            in current epoch to control when to poke     \
-                            progress engine in RMA operation routines. */\
     int active_req_cnt; /* keep track of number of active requests in    \
                            current epoch, i.e., number of issued but     \
                            incomplete RMA operations. */                 \
@@ -357,10 +346,10 @@ extern MPIDI_RMA_Pkt_orderings_t *MPIDI_RMA_Pkt_orderings;
     int outstanding_locks; /* when issuing multiple lock requests in     \
                             MPI_WIN_LOCK_ALL, this counter keeps track   \
                             of number of locks not being granted yet. */ \
-    struct MPIDI_RMA_Lock_entry *lock_entry_pool_start;                  \
-    struct MPIDI_RMA_Lock_entry *lock_entry_pool;                        \
-    struct MPIDI_RMA_Lock_entry *lock_entry_pool_tail;                   \
-    int current_lock_data_bytes;                                         \
+    struct MPIDI_RMA_Target_lock_entry *target_lock_entry_pool_start;   \
+    struct MPIDI_RMA_Target_lock_entry *target_lock_entry_pool_head;    \
+    struct MPIDI_RMA_Target_lock_entry *target_lock_entry_pool_tail;    \
+    int current_target_lock_data_bytes;                                 \
 
 #ifdef MPIDI_CH3_WIN_DECL
 #define MPID_DEV_WIN_DECL \
@@ -382,7 +371,7 @@ typedef struct MPIDI_Request {
     void       **user_buf_handle;
 #endif
     void        *user_buf;
-    int          user_count;
+    MPI_Aint   user_count;
     MPI_Datatype datatype;
     int drop_data;
 
@@ -445,8 +434,7 @@ typedef struct MPIDI_Request {
     MPI_Op op;
     /* For accumulate, since data is first read into a tmp_buf */
     void *real_user_buf;
-    /* For derived datatypes at target */
-    struct MPIDI_RMA_dtype_info *dtype_info;
+    /* For derived datatypes at target. */
     void *dataloop;
     /* req. handle needed to implement derived datatype gets.
      * It also used for remembering user request of request-based RMA operations. */
@@ -454,11 +442,13 @@ typedef struct MPIDI_Request {
     MPI_Win     target_win_handle;
     MPI_Win     source_win_handle;
     MPIDI_CH3_Pkt_flags_t flags; /* flags that were included in the original RMA packet header */
-    struct MPIDI_RMA_Lock_entry *lock_queue_entry;
+    struct MPIDI_RMA_Target_lock_entry *target_lock_queue_entry;
     MPI_Request resp_request_handle; /* Handle for get_accumulate response */
 
-    MPI_Aint stream_offset; /* used when streaming ACC/GACC packets, specifying the start
-                               location of the current streaming unit. */
+    void *ext_hdr_ptr; /* Pointer to extended packet header.
+                        * It is allocated in RMA issuing/pkt_handler functions,
+                        * and freed when release request. */
+    MPIDI_msg_sz_t ext_hdr_sz;
 
     MPIDI_REQUEST_SEQNUM
 

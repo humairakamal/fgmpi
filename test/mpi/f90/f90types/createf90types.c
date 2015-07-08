@@ -11,6 +11,9 @@
 #include <string.h>
 #include "mpitest.h"
 
+static int cases[6][2] = {{3,10},{3,MPI_UNDEFINED},{MPI_UNDEFINED,10},
+                          {7,30},{7,MPI_UNDEFINED},{MPI_UNDEFINED,30}};
+
 /*
 static char MTEST_Descrip[] = "Test the routines to access the Fortran 90 datatypes from C";
 */
@@ -132,7 +135,7 @@ int main( int argc, char *argv[] )
     int p, r;
     int errs = 0;
     int err;
-    int i, nLoop = 1;
+    int i, j, nLoop = 1;
     MPI_Datatype newtype;
 
     MTest_Init(0,0);
@@ -146,42 +149,27 @@ int main( int argc, char *argv[] )
     MPI_Comm_set_errhandler( MPI_COMM_WORLD, MPI_ERRORS_RETURN );
 
     for (i=0; i<nLoop; i++) {
-	/* printf( "+" );fflush(stdout); */
-	/* This should be a valid type similar to MPI_REAL */
-	p = 3;
-	r = 10;
-	err = MPI_Type_create_f90_real( p, r, &newtype );
-	errs += checkType( "REAL", p, r, MPI_COMBINER_F90_REAL, err, newtype );
-	
-	r = MPI_UNDEFINED;
-	err = MPI_Type_create_f90_real( p, r, &newtype );
-	errs += checkType( "REAL", p, r, MPI_COMBINER_F90_REAL, err, newtype );
-	
-	p = MPI_UNDEFINED;
-	r = 10;
-	err = MPI_Type_create_f90_real( p, r, &newtype );
-	errs += checkType( "REAL", p, r, MPI_COMBINER_F90_REAL, err, newtype );
+        
+	/* These should be a valid type similar to MPI_REAL and MPI_REAL8 */
+        for (j=0; j<6; j++) {
+            p = cases[j][0];
+            r = cases[j][1];
+            err = MPI_Type_create_f90_real( p, r, &newtype );
+            errs += checkType( "REAL", p, r, MPI_COMBINER_F90_REAL, err, newtype );
+        }
 
-	/* This should be a valid type similar to MPI_COMPLEX */
-	p = 3;
-	r = 10;
-	err = MPI_Type_create_f90_complex( p, r, &newtype );
-	errs += checkType( "COMPLEX", p, r, MPI_COMBINER_F90_COMPLEX, 
-			   err, newtype );
-	
-	r = MPI_UNDEFINED;
-	err = MPI_Type_create_f90_complex( p, r, &newtype );
-	errs += checkType( "COMPLEX", p, r, MPI_COMBINER_F90_COMPLEX, 
-			   err, newtype );
-	
-	p = MPI_UNDEFINED;
-	r = 10;
-	err = MPI_Type_create_f90_complex( p, r, &newtype );
-	errs += checkType( "COMPLEX", p, r, MPI_COMBINER_F90_COMPLEX, 
-			   err, newtype );
+	/* These should be a valid type similar to MPI_COMPLEX and MPI_COMPLEX8 */
+        for (j=0; j<6; j++) {
+            p = cases[j][0];
+            r = cases[j][1];
+            err = MPI_Type_create_f90_complex( p, r, &newtype );
+            errs += checkType( "COMPLEX", p, r, MPI_COMBINER_F90_COMPLEX, 
+                               err, newtype );
+        }
 	
 	/* This should be a valid type similar to MPI_INTEGER */
 	p = 3;
+	r = 10;
 	err = MPI_Type_create_f90_integer( p, &newtype );
 	errs += checkType( "INTEGER", p, r, MPI_COMBINER_F90_INTEGER, 
 			   err, newtype );

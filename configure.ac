@@ -269,21 +269,33 @@ PAC_PREFIX_ALL_FLAGS(USER)
 # as include paths).
 #
 # All libraries that are detected by MPICH as needed for some of its
-# functionality (such as -lpthread) should be added to EXTERNAL_LIBS
+# functionality (such as -lpthread) should be added to WRAPPER_LIBS
 # so executables built within MPICH use them.  If inter-library
 # dependencies are not supported on the platform, these libraries are
 # added to the MPICH wrappers (mpicc and friends) as well.
 PAC_PREFIX_ALL_FLAGS(WRAPPER)
-WRAPPER_CFLAGS="$CFLAGS $MPICH_MPICC_FLAGS"
-WRAPPER_CPPFLAGS="$CPPFLAGS $MPICH_MPICPP_FLAGS"
-WRAPPER_CXXFLAGS="$CXXFLAGS $MPICH_MPICXX_FLAGS"
-WRAPPER_FFLAGS="$FFLAGS $MPICH_MPIF77_FLAGS"
-WRAPPER_FCFLAGS="$FCFLAGS $MPICH_MPIFC_FLAGS"
-WRAPPER_LDFLAGS="$MPICH_LDFLAGS"
-WRAPPER_LIBS="$MPICH_LIBS"
-EXTERNAL_LIBS=""
-export EXTERNAL_LIBS
-AC_SUBST(EXTERNAL_LIBS)
+
+# MPICH_MPIx_FLAGS are used by mpicc and friends.  They are like
+# WRAPPER flags, but these are provided by the user.
+AC_SUBST(MPICH_MPICC_CPPFLAGS)
+AC_SUBST(MPICH_MPICC_CFLAGS)
+AC_SUBST(MPICH_MPICC_LDFLAGS)
+AC_SUBST(MPICH_MPICC_LIBS)
+
+AC_SUBST(MPICH_MPICXX_CPPFLAGS)
+AC_SUBST(MPICH_MPICXX_CXXFLAGS)
+AC_SUBST(MPICH_MPICXX_LDFLAGS)
+AC_SUBST(MPICH_MPICXX_LIBS)
+
+AC_SUBST(MPICH_MPIF77_CPPFLAGS)
+AC_SUBST(MPICH_MPIF77_FFLAGS)
+AC_SUBST(MPICH_MPIF77_LDFLAGS)
+AC_SUBST(MPICH_MPIF77_LIBS)
+
+AC_SUBST(MPICH_MPIFORT_CPPFLAGS)
+AC_SUBST(MPICH_MPIFORT_FCFLAGS)
+AC_SUBST(MPICH_MPIFORT_LDFLAGS)
+AC_SUBST(MPICH_MPIFORT_LIBS)
 
 # Add MPICHLIB_* to the appropriate flags
 AC_ARG_VAR(MPICHLIB_CFLAGS,
@@ -296,17 +308,11 @@ AC_ARG_VAR(MPICHLIB_FFLAGS,
 	[extra FFLAGS used in building MPICH libraries])
 AC_ARG_VAR(MPICHLIB_FCFLAGS,
 	[extra FCFLAGS used in building MPICH libraries])
-AC_ARG_VAR(MPICHLIB_LDFLAGS,
-	[extra LDFLAGS used in building MPICH libraries])
-AC_ARG_VAR(MPICHLIB_LIBS,
-	[extra LIBS used in building MPICH libraries])
 CFLAGS="$CFLAGS $MPICHLIB_CFLAGS"
 CPPFLAGS="$CPPFLAGS $MPICHLIB_CPPFLAGS"
 CXXFLAGS="$CXXFLAGS $MPICHLIB_CXXFLAGS"
 FFLAGS="$FFLAGS $MPICHLIB_FFLAGS"
 FCFLAGS="$FCFLAGS $MPICHLIB_FCFLAGS"
-LDFLAGS="$LDFLAGS $MPICHLIB_LDFLAGS"
-LIBS="$LIBS $MPICHLIB_LIBS"
 
 dnl include all subsystem m4 fragments now that the core autoconf functionality
 dnl has been setup.  No fragment should do anything except define
@@ -1179,7 +1185,7 @@ else
     AS_IF([test -s "${with_mpl_prefix}/include/mplconfig.h"],
           [:],[AC_MSG_ERROR([the MPL installation in "${with_mpl_prefix}" appears broken])])
     PAC_APPEND_FLAG([-I${with_mpl_prefix}/include],[CPPFLAGS])
-    PAC_PREPEND_FLAG([-l${MPLLIBNAME}],[EXTERNAL_LIBS])
+    PAC_PREPEND_FLAG([-l${MPLLIBNAME}],[WRAPPER_LIBS])
     PAC_APPEND_FLAG([-L${with_mpl_prefix}/lib],[WRAPPER_LDFLAGS])
     mpllibdir="-L${with_mpl_prefix}/lib"
 fi
@@ -1243,7 +1249,7 @@ if test "$with_openpa_prefix" = "embedded" ; then
         AC_MSG_WARN([Attempted to use the embedded OpenPA source tree in "src/openpa", but it is missing.  Configuration or compilation may fail later.])
     fi
 elif test "$with_openpa_prefix" = "system" ; then
-    PAC_PREPEND_FLAG([-l${OPALIBNAME}],[EXTERNAL_LIBS])
+    PAC_PREPEND_FLAG([-l${OPALIBNAME}],[WRAPPER_LIBS])
 elif test "$with_openpa_prefix" = "no" ; then
     # The user doesn't want to use OPA.  This may or may not cause MPICH to
     # fail to configure/build, depending on many other factors.
@@ -1254,7 +1260,7 @@ else
     AS_IF([test -s "${with_openpa_prefix}/include/opa_primitives.h" -a -s "${with_openpa_prefix}/include/opa_config.h"],
           [:],[AC_MSG_ERROR([the OpenPA installation in "${with_openpa_prefix}" appears broken])])
     PAC_APPEND_FLAG([-I${with_openpa_prefix}/include],[CPPFLAGS])
-    PAC_PREPEND_FLAG([-l${OPALIBNAME}],[EXTERNAL_LIBS])
+    PAC_PREPEND_FLAG([-l${OPALIBNAME}],[WRAPPER_LIBS])
     if test -d ${with_openpa_prefix}/lib64 ; then
         PAC_APPEND_FLAG([-L${with_openpa_prefix}/lib64],[WRAPPER_LDFLAGS])
         opalibdir="-L${with_openpa_prefix}/lib64"
@@ -2796,6 +2802,7 @@ fi
 if test -n "$nameserv_name" ; then
    AC_DEFINE(HAVE_NAMEPUB_SERVICE,1,[Define if a name publishing service is available])
 fi
+export nameserv_name
 AM_CONDITIONAL([BUILD_NAMEPUB_FILE],[test "X$nameserv_name" = "Xfile"])
 AM_CONDITIONAL([BUILD_NAMEPUB_PMI],[test "X$nameserv_name" = "Xpmi"])
 
@@ -4475,6 +4482,29 @@ AC_SUBST([MPI_F77_CXX_FLOAT_COMPLEX])
 AC_SUBST([MPI_F77_CXX_DOUBLE_COMPLEX])
 AC_SUBST([MPI_F77_CXX_LONG_DOUBLE_COMPLEX])
 
+# ------------------------------------------------------------------------
+# Test if  type_tag_for_datatype is agnostic to modifiers such as const, volatile, and restrict
+# if not, the type tags are disabled to avoid compiler warings. A new type_tag for const etc. does
+# does not help, since only the latest type_tag definition is used. Type tags are defined in mpi.h,
+# therefore, they must be also be activated/deavtivated there
+PAC_PUSH_FLAG([CFLAGS])
+PAC_APPEND_FLAG([-Werror],[CFLAGS])
+AC_TRY_COMPILE([
+typedef int TEST_Datatype;
+#define TEST_INT ((TEST_Datatype)0x44)
+static const TEST_Datatype test_int  __attribute__((type_tag_for_datatype(TEST,int)))  = TEST_INT;
+void test(const void* buffer, TEST_Datatype datatype)__attribute__((pointer_with_type_tag(TEST,1,2)));],[
+const int buf[10];
+test(buf, TEST_INT);],ac_attr_support=yes, ac_attr_support=no)
+if test "$ac_attr_support" = yes
+then
+    DISABLE_TAG_SUPPORT="#undef NO_TAGS_WITH_MODIFIERS"
+else
+    DISABLE_TAG_SUPPORT="#define NO_TAGS_WITH_MODIFIERS 1"
+fi
+PAC_POP_FLAG([CFLAGS])
+AC_SUBST(DISABLE_TAG_SUPPORT)
+
 # ----------------------------------------------------------------------------
 # Check for the alignment rules moves with types int64_t etc.  These
 # are used in the datatype code to perform pack and unpack operations.  
@@ -4559,102 +4589,7 @@ int main(int argc, char **argv )
          AC_DEFINE(HAVE_ANY_INT32_T_ALIGNMENT,1,[Define if int32_t works with any alignment])
     fi
 fi
-# Check for special compile characteristics
-# If we are either gcc or icc, see if we can use __asm__
-# We test on prog_gcc to allow gcc by any name; if we are using
-# icc, the value of CC must be icc for this test to pass
-if test "$ac_cv_prog_gcc" = "yes" -o "$ac_cv_prog_CC" = "icc" ; then
-AC_MSG_CHECKING([for gcc __asm__ and pentium cmpxchgl instruction])
-AC_TRY_RUN([
-int main(int argc, char *argv[])
-{
-long int compval = 10;
-volatile long int *p = &compval;
-long int oldval = 10;
-long int newval = 20;
-char ret;
-long int readval;
-__asm__ __volatile__ ("lock; cmpxchgl %3, %1; sete %0"
-	: "=q" (ret), "=m" (*p), "=a" (readval)
-	: "r" (newval), "m" (*p), "a" (oldval) : "memory");
-return (compval == 20) ? 0 : -1;
-}
-], AC_MSG_RESULT(yes)
-   AC_DEFINE(HAVE_GCC_AND_PENTIUM_ASM, 1,[Define if using gcc on a system with an Intel Pentium class chip])
-   lac_cv_use_atomic_updates="yes", 
-AC_MSG_RESULT(no), AC_MSG_RESULT(not checking when cross compiling))
-fi
-if test "$lac_cv_use_atomic_updates" = "yes" ; then
-    AC_DEFINE(USE_ATOMIC_UPDATES,, [Define if assembly language atomic update macros should be used (if available)])
-fi
 
-# check for x86_64
-if test "$ac_cv_prog_gcc" = "yes" ; then
-AC_MSG_CHECKING([for gcc __asm__ and AMD x86_64 cmpxchgq instruction])
-AC_TRY_RUN([
-int main(int argc, char *argv[])
-{
-long int compval = 10;
-volatile long int *p = &compval;
-long int oldval = 10;
-long int newval = 20;
-char ret;
-long int readval;
-__asm__ __volatile__ ("lock; cmpxchgq %3, %1; sete %0"
-	: "=q" (ret), "=m" (*p), "=a" (readval)
-	: "r" (newval), "m" (*p), "a" (oldval) : "memory");
-return (compval == 20) ? 0 : -1;
-}
-], AC_MSG_RESULT(yes)
-   AC_DEFINE(HAVE_GCC_AND_X86_64_ASM, 1,[Define if using gcc on a system with an AMD x86_64 class chip]), 
-AC_MSG_RESULT(no), AC_MSG_RESULT(not checking when cross compiling))
-fi
-dnl
-dnl check for asm() format
-dnl 
-dnl AC_MSG_CHECKING([for asm() and pentium cmpxchgl instruction])
-dnl AC_TRY_RUN([
-dnl int main(int argc, char *argv[])
-dnl {
-dnl long int compval = 10;
-dnl volatile long int *p = &compval;
-dnl long int oldval = 10;
-dnl long int newval = 20;
-dnl char ret;
-dnl long int readval;
-dnl asm("lock; cmpxchgl %3, %1; sete %0"
-dnl 	: "=q" (ret), "=m" (*p), "=a" (readval)
-dnl 	: "r" (newval), "m" (*p), "a" (oldval) : "memory");
-dnl return (compval == 20) ? 0 : -1;
-dnl }
-dnl ], AC_MSG_RESULT(yes)
-dnl    AC_DEFINE(HAVE_PENTIUM_ASM, 1,[Define if using asm() on a system with an Intel Pentium class chip]),
-dnl AC_MSG_RESULT(no), AC_MSG_RESULT(not checking when cross compiling))
-dnl
-dnl
-dnl check for IA64
-dnl 
-if test "$ac_cv_prog_gcc" = "yes" ; then
-AC_MSG_CHECKING([for gcc __asm__ and IA64 xchg4 instruction])
-AC_TRY_RUN([
-unsigned long _InterlockedExchange(volatile void *ptr, unsigned long x)
-{
-   unsigned long result;
-   __asm__ __volatile ("xchg4 %0=[%1],%2" : "=r" (result)
-       : "r" (ptr), "r" (x) : "memory");
-   return result;
-}
-int main(int argc, char *argv[])
-{
-long val = 1;
-volatile long *p = &val;
-long oldval = _InterlockedExchange(p, (unsigned long)2);
-return (oldval == 1 && val == 2) ? 0 : -1;
-}
-], AC_MSG_RESULT(yes)
-   AC_DEFINE(HAVE_GCC_AND_IA64_ASM, 1,[Define if using gcc on a system with an IA64 class chip]), 
-AC_MSG_RESULT(no), AC_MSG_RESULT(not checking when cross compiling))
-fi
 # -----------------------------------------------------------------------------
 # Check for support of enable-coverage.  Put this near the end of the tests
 # because the coverage options may affect the other tests.
@@ -5385,7 +5320,6 @@ case $with_thread_package in
         AC_CHECK_LIB([pthread],[pthread_key_create],have_pthreads=yes)
 	if test "$have_pthreads" = "yes" ; then
 	   PAC_PREPEND_FLAG([-lpthread],[LIBS])
-	   PAC_PREPEND_FLAG([-lpthread],[EXTERNAL_LIBS])
 	fi
 
         AC_CHECK_FUNCS(pthread_yield)
@@ -5609,7 +5543,7 @@ AC_ARG_ENABLE(checkpointing,
         PAC_SET_HEADER_LIB_PATH(blcr)
 	PAC_PUSH_FLAG([LIBS])
 	PAC_CHECK_HEADER_LIB_FATAL(blcr, libcr.h, cr, cr_init)
-	PAC_APPEND_FLAG([-lblcr],[EXTERNAL_LIBS])
+	PAC_APPEND_FLAG([-lblcr],[WRAPPER_LIBS])
 	PAC_POP_FLAG([LIBS])
         AC_DEFINE(ENABLE_CHECKPOINTING,1,[Application checkpointing enabled])
       fi ],
@@ -6074,13 +6008,6 @@ AC_OUTPUT_COMMANDS([chmod a+x test/commands/cmdtests])
 
 
 AC_DEFINE(HAVE_MPICHCONF,1,[Define so that we can test whether the mpichconf.h file has been included])
-
-# If the platform does not support inter-library dependencies,
-# add the LDFLAGS/LIBS we got so far to WRAPPERs
-if test "$INTERLIB_DEPS" = "no" ; then
-   WRAPPER_LDFLAGS="$WRAPPER_LDFLAGS $LDFLAGS"
-   WRAPPER_LIBS="$WRAPPER_LIBS $EXTERNAL_LIBS"
-fi
 
 if test "$USE_PMI2_API" = "yes" ; then
    AC_DEFINE(USE_PMI2_API, 1, [Define if PMI2 API must be used])

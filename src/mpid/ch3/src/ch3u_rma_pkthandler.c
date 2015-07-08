@@ -21,7 +21,7 @@ MPIR_T_PVAR_DOUBLE_TIMER_DECL(RMA, rma_rmapkt_lock);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(RMA, rma_rmapkt_lock_ack);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(RMA, rma_rmapkt_unlock);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(RMA, rma_rmapkt_flush);
-MPIR_T_PVAR_DOUBLE_TIMER_DECL(RMA, rma_rmapkt_flush_ack);
+MPIR_T_PVAR_DOUBLE_TIMER_DECL(RMA, rma_rmapkt_ack);
 MPIR_T_PVAR_DOUBLE_TIMER_DECL(RMA, rma_rmapkt_decr_at_cnt);
 
 void MPIDI_CH3_RMA_Init_pkthandler_pvars(void)
@@ -155,14 +155,14 @@ void MPIDI_CH3_RMA_Init_pkthandler_pvars(void)
                                       MPIR_T_PVAR_FLAG_READONLY,
                                       "RMA", "RMA:PKTHANDLER for Flush (in seconds)");
 
-    /* rma_rmapkt_flush_ack */
+    /* rma_rmapkt_ack */
     MPIR_T_PVAR_TIMER_REGISTER_STATIC(RMA,
                                       MPI_DOUBLE,
-                                      rma_rmapkt_flush_ack,
+                                      rma_rmapkt_ack,
                                       MPI_T_VERBOSITY_MPIDEV_DETAIL,
                                       MPI_T_BIND_NO_OBJECT,
                                       MPIR_T_PVAR_FLAG_READONLY,
-                                      "RMA", "RMA:PKTHANDLER for Flush-Ack (in seconds)");
+                                      "RMA", "RMA:PKTHANDLER for Ack (in seconds)");
 
     /* rma_rmapkt_decr_at_cnt */
     MPIR_T_PVAR_TIMER_REGISTER_STATIC(RMA,
@@ -172,6 +172,78 @@ void MPIDI_CH3_RMA_Init_pkthandler_pvars(void)
                                       MPI_T_BIND_NO_OBJECT,
                                       MPIR_T_PVAR_FLAG_READONLY,
                                       "RMA", "RMA:PKTHANDLER for Decr-At-Cnt (in seconds)");
+}
+
+/* =========================================================== */
+/*                  extended packet functions                  */
+/* =========================================================== */
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_ExtPktHandler_Accumulate
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static int MPIDI_CH3_ExtPktHandler_Accumulate(MPIDI_CH3_Pkt_flags_t flags,
+                                              int is_derived_dt, void **ext_hdr_ptr,
+                                              MPI_Aint * ext_hdr_sz)
+{
+    int mpi_errno = MPI_SUCCESS;
+
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_EXTPKTHANDLER_ACCUMULATE);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_EXTPKTHANDLER_ACCUMULATE);
+
+    if ((flags & MPIDI_CH3_PKT_FLAG_RMA_STREAM) && is_derived_dt) {
+        (*ext_hdr_sz) = sizeof(MPIDI_CH3_Ext_pkt_accum_stream_derived_t);
+        (*ext_hdr_ptr) = MPIU_Malloc(sizeof(MPIDI_CH3_Ext_pkt_accum_stream_derived_t));
+        if ((*ext_hdr_ptr) == NULL) {
+            MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+                                 "**nomem %s", "MPIDI_CH3_Ext_pkt_accum_stream_derived_t");
+        }
+    }
+    else if (flags & MPIDI_CH3_PKT_FLAG_RMA_STREAM) {
+        (*ext_hdr_sz) = sizeof(MPIDI_CH3_Ext_pkt_accum_stream_t);
+        (*ext_hdr_ptr) = MPIU_Malloc(sizeof(MPIDI_CH3_Ext_pkt_accum_stream_t));
+        if ((*ext_hdr_ptr) == NULL) {
+            MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+                                 "**nomem %s", "MPIDI_CH3_Ext_pkt_accum_stream_t");
+        }
+    }
+    else if (is_derived_dt) {
+        (*ext_hdr_sz) = sizeof(MPIDI_CH3_Ext_pkt_accum_derived_t);
+        (*ext_hdr_ptr) = MPIU_Malloc(sizeof(MPIDI_CH3_Ext_pkt_accum_derived_t));
+        if ((*ext_hdr_ptr) == NULL) {
+            MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+                                 "**nomem %s", "MPIDI_CH3_Ext_pkt_accum_derived_t");
+        }
+    }
+
+  fn_exit:
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_EXTPKTHANDLER_ACCUMULATE);
+    return mpi_errno;
+  fn_fail:
+    if ((*ext_hdr_ptr) != NULL)
+        MPIU_Free((*ext_hdr_ptr));
+    (*ext_hdr_ptr) = NULL;
+    (*ext_hdr_sz) = 0;
+    goto fn_exit;
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_ExtPktHandler_GetAccumulate
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static int MPIDI_CH3_ExtPktHandler_GetAccumulate(MPIDI_CH3_Pkt_flags_t flags,
+                                                 int is_derived_dt, void **ext_hdr_ptr,
+                                                 MPI_Aint * ext_hdr_sz)
+{
+    /* Check if get_accum still reuses accum' extended packet header. */
+    MPIU_Assert(sizeof(MPIDI_CH3_Ext_pkt_accum_stream_derived_t) ==
+                sizeof(MPIDI_CH3_Ext_pkt_get_accum_stream_derived_t));
+    MPIU_Assert(sizeof(MPIDI_CH3_Ext_pkt_accum_derived_t) ==
+                sizeof(MPIDI_CH3_Ext_pkt_get_accum_derived_t));
+    MPIU_Assert(sizeof(MPIDI_CH3_Ext_pkt_accum_stream_t) ==
+                sizeof(MPIDI_CH3_Ext_pkt_get_accum_stream_t));
+
+    return MPIDI_CH3_ExtPktHandler_Accumulate(flags, is_derived_dt, ext_hdr_ptr, ext_hdr_sz);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -286,13 +358,17 @@ int MPIDI_CH3_PktHandler_Put(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
             MPIDI_Request_set_type(req, MPIDI_REQUEST_TYPE_PUT_RECV_DERIVED_DT);
             req->dev.datatype = MPI_DATATYPE_NULL;
 
-            req->dev.dtype_info = (MPIDI_RMA_dtype_info *)
-                MPIU_Malloc(sizeof(MPIDI_RMA_dtype_info));
-            if (!req->dev.dtype_info) {
+            /* allocate extended header in the request,
+             * only including fixed-length variables defined in packet type. */
+            req->dev.ext_hdr_sz = sizeof(MPIDI_CH3_Ext_pkt_put_derived_t);
+            req->dev.ext_hdr_ptr = MPIU_Malloc(req->dev.ext_hdr_sz);
+            if (!req->dev.ext_hdr_ptr) {
                 MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s",
-                                     "MPIDI_RMA_dtype_info");
+                                     "MPIDI_CH3_Ext_pkt_put_derived_t");
             }
 
+            /* put dataloop in a separate buffer to be reused in datatype.
+             * It will be freed when free datatype. */
             req->dev.dataloop = MPIU_Malloc(put_pkt->info.dataloop_size);
             if (!req->dev.dataloop) {
                 MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %d",
@@ -302,14 +378,13 @@ int MPIDI_CH3_PktHandler_Put(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
             /* if we received all of the dtype_info and dataloop, copy it
              * now and call the handler, otherwise set the iov and let the
              * channel copy it */
-            if (data_len >= sizeof(MPIDI_RMA_dtype_info) + put_pkt->info.dataloop_size) {
-                /* copy all of dtype_info and dataloop */
-                MPIU_Memcpy(req->dev.dtype_info, data_buf, sizeof(MPIDI_RMA_dtype_info));
-                MPIU_Memcpy(req->dev.dataloop, data_buf + sizeof(MPIDI_RMA_dtype_info),
+            if (data_len >= req->dev.ext_hdr_sz + put_pkt->info.dataloop_size) {
+                /* Copy extended header */
+                MPIU_Memcpy(req->dev.ext_hdr_ptr, data_buf, req->dev.ext_hdr_sz);
+                MPIU_Memcpy(req->dev.dataloop, data_buf + req->dev.ext_hdr_sz,
                             put_pkt->info.dataloop_size);
 
-                *buflen =
-                    sizeof(MPIDI_CH3_Pkt_t) + sizeof(MPIDI_RMA_dtype_info) +
+                *buflen = sizeof(MPIDI_CH3_Pkt_t) + req->dev.ext_hdr_sz +
                     put_pkt->info.dataloop_size;
 
                 /* All dtype data has been received, call req handler */
@@ -322,8 +397,8 @@ int MPIDI_CH3_PktHandler_Put(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
                 }
             }
             else {
-                req->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) ((char *) req->dev.dtype_info);
-                req->dev.iov[0].MPID_IOV_LEN = sizeof(MPIDI_RMA_dtype_info);
+                req->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) ((char *) req->dev.ext_hdr_ptr);
+                req->dev.iov[0].MPID_IOV_LEN = req->dev.ext_hdr_sz;
                 req->dev.iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) req->dev.dataloop;
                 req->dev.iov[1].MPID_IOV_LEN = put_pkt->info.dataloop_size;
                 req->dev.iov_count = 2;
@@ -431,7 +506,7 @@ int MPIDI_CH3_PktHandler_Get(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
             get_resp_pkt->flags |= MPIDI_CH3_PKT_FLAG_RMA_LOCK_GRANTED;
         if ((get_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_FLUSH) ||
             (get_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_UNLOCK))
-            get_resp_pkt->flags |= MPIDI_CH3_PKT_FLAG_RMA_FLUSH_ACK;
+            get_resp_pkt->flags |= MPIDI_CH3_PKT_FLAG_RMA_ACK;
         get_resp_pkt->target_rank = win_ptr->comm_ptr->rank;
 
         /* length of target data */
@@ -512,13 +587,17 @@ int MPIDI_CH3_PktHandler_Get(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
         req->dev.datatype = MPI_DATATYPE_NULL;
         req->dev.request_handle = get_pkt->request_handle;
 
-        req->dev.dtype_info = (MPIDI_RMA_dtype_info *)
-            MPIU_Malloc(sizeof(MPIDI_RMA_dtype_info));
-        if (!req->dev.dtype_info) {
+        /* allocate extended header in the request,
+         * only including fixed-length variables defined in packet type. */
+        req->dev.ext_hdr_sz = sizeof(MPIDI_CH3_Ext_pkt_get_derived_t);
+        req->dev.ext_hdr_ptr = MPIU_Malloc(req->dev.ext_hdr_sz);
+        if (!req->dev.ext_hdr_ptr) {
             MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s",
-                                 "MPIDI_RMA_dtype_info");
+                                 "MPIDI_CH3_Ext_pkt_get_derived_t");
         }
 
+        /* put dataloop in a separate buffer to be reused in datatype.
+         * It will be freed when free datatype. */
         req->dev.dataloop = MPIU_Malloc(get_pkt->info.dataloop_size);
         if (!req->dev.dataloop) {
             MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %d",
@@ -528,15 +607,13 @@ int MPIDI_CH3_PktHandler_Get(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
         /* if we received all of the dtype_info and dataloop, copy it
          * now and call the handler, otherwise set the iov and let the
          * channel copy it */
-        if (data_len >= sizeof(MPIDI_RMA_dtype_info) + get_pkt->info.dataloop_size) {
-            /* copy all of dtype_info and dataloop */
-            MPIU_Memcpy(req->dev.dtype_info, data_buf, sizeof(MPIDI_RMA_dtype_info));
-            MPIU_Memcpy(req->dev.dataloop, data_buf + sizeof(MPIDI_RMA_dtype_info),
+        if (data_len >= req->dev.ext_hdr_sz + get_pkt->info.dataloop_size) {
+            /* Copy extended header */
+            MPIU_Memcpy(req->dev.ext_hdr_ptr, data_buf, req->dev.ext_hdr_sz);
+            MPIU_Memcpy(req->dev.dataloop, data_buf + req->dev.ext_hdr_sz,
                         get_pkt->info.dataloop_size);
 
-            *buflen =
-                sizeof(MPIDI_CH3_Pkt_t) + sizeof(MPIDI_RMA_dtype_info) +
-                get_pkt->info.dataloop_size;
+            *buflen = sizeof(MPIDI_CH3_Pkt_t) + req->dev.ext_hdr_sz + get_pkt->info.dataloop_size;
 
             /* All dtype data has been received, call req handler */
             mpi_errno = MPIDI_CH3_ReqHandler_GetDerivedDTRecvComplete(vc, req, &complete);
@@ -546,8 +623,8 @@ int MPIDI_CH3_PktHandler_Get(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
                 *rreqp = NULL;
         }
         else {
-            req->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) req->dev.dtype_info;
-            req->dev.iov[0].MPID_IOV_LEN = sizeof(MPIDI_RMA_dtype_info);
+            req->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) ((char *) req->dev.ext_hdr_ptr);
+            req->dev.iov[0].MPID_IOV_LEN = req->dev.ext_hdr_sz;
             req->dev.iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) req->dev.dataloop;
             req->dev.iov[1].MPID_IOV_LEN = get_pkt->info.dataloop_size;
             req->dev.iov_count = 2;
@@ -574,6 +651,7 @@ int MPIDI_CH3_PktHandler_Accumulate(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
 {
     MPIDI_CH3_Pkt_accum_t *accum_pkt = &pkt->accum;
     MPID_Request *req = NULL;
+    MPI_Aint extent;
     int complete = 0;
     char *data_buf = NULL;
     MPIDI_msg_sz_t data_len;
@@ -581,6 +659,7 @@ int MPIDI_CH3_PktHandler_Accumulate(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
     int acquire_lock_fail = 0;
     int mpi_errno = MPI_SUCCESS;
     MPI_Aint type_size;
+    MPI_Aint stream_elem_count, total_len;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_PKTHANDLER_ACCUMULATE);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PKTHANDLER_ACCUMULATE);
@@ -640,88 +719,105 @@ int MPIDI_CH3_PktHandler_Accumulate(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
         req->dev.flags = accum_pkt->flags;
 
         req->dev.resp_request_handle = MPI_REQUEST_NULL;
-        req->dev.OnFinal = MPIDI_CH3_ReqHandler_AccumRecvComplete;
 
         /* get start location of data and length of data */
         data_len = *buflen - sizeof(MPIDI_CH3_Pkt_t);
         data_buf = (char *) pkt + sizeof(MPIDI_CH3_Pkt_t);
 
+        /* allocate extended header in the request,
+         * only including fixed-length variables defined in packet type. */
+        mpi_errno = MPIDI_CH3_ExtPktHandler_Accumulate(req->dev.flags,
+                                                       (!MPIR_DATATYPE_IS_PREDEFINED
+                                                        (accum_pkt->datatype)),
+                                                       &req->dev.ext_hdr_ptr, &req->dev.ext_hdr_sz);
+        if (mpi_errno != MPI_SUCCESS)
+            MPIU_ERR_POP(mpi_errno);
+
         if (MPIR_DATATYPE_IS_PREDEFINED(accum_pkt->datatype)) {
             MPIDI_Request_set_type(req, MPIDI_REQUEST_TYPE_ACCUM_RECV);
             req->dev.datatype = accum_pkt->datatype;
 
-            MPIU_Assert(!MPIDI_Request_get_srbuf_flag(req));
-            /* allocate a SRBuf for receiving stream unit */
-            MPIDI_CH3U_SRBuf_alloc(req, MPIDI_CH3U_SRBuf_size);
-            /* --BEGIN ERROR HANDLING-- */
-            if (req->dev.tmpbuf_sz == 0) {
-                MPIU_DBG_MSG(CH3_CHANNEL, TYPICAL, "SRBuf allocation failure");
-                mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL,
-                                                 FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem",
-                                                 "**nomem %d", MPIDI_CH3U_SRBuf_size);
-                req->status.MPI_ERROR = mpi_errno;
-                goto fn_fail;
+            if (req->dev.flags & MPIDI_CH3_PKT_FLAG_RMA_STREAM) {
+                req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_AccumMetadataRecvComplete;
+
+                /* if this is a streamed op pkt, set iov to receive extended pkt header. */
+                req->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) req->dev.ext_hdr_ptr;
+                req->dev.iov[0].MPID_IOV_LEN = req->dev.ext_hdr_sz;
+                req->dev.iov_count = 1;
+
+                *buflen = sizeof(MPIDI_CH3_Pkt_t);
             }
-            /* --END ERROR HANDLING-- */
+            else {
+                req->dev.OnFinal = MPIDI_CH3_ReqHandler_AccumRecvComplete;
 
-            req->dev.user_buf = req->dev.tmpbuf;
+                MPID_Datatype_get_extent_macro(accum_pkt->datatype, extent);
 
-            MPID_Datatype_get_size_macro(accum_pkt->datatype, type_size);
+                MPIU_Assert(!MPIDI_Request_get_srbuf_flag(req));
+                /* allocate a SRBuf for receiving stream unit */
+                MPIDI_CH3U_SRBuf_alloc(req, MPIDI_CH3U_SRBuf_size);
+                /* --BEGIN ERROR HANDLING-- */
+                if (req->dev.tmpbuf_sz == 0) {
+                    MPIU_DBG_MSG(CH3_CHANNEL, TYPICAL, "SRBuf allocation failure");
+                    mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL,
+                                                     FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem",
+                                                     "**nomem %d", MPIDI_CH3U_SRBuf_size);
+                    req->status.MPI_ERROR = mpi_errno;
+                    goto fn_fail;
+                }
+                /* --END ERROR HANDLING-- */
 
-            req->dev.recv_data_sz = type_size * accum_pkt->count;
-            MPIU_Assert(req->dev.recv_data_sz > 0);
+                req->dev.user_buf = req->dev.tmpbuf;
 
-            mpi_errno = MPIDI_CH3U_Receive_data_found(req, data_buf, &data_len, &complete);
-            MPIU_ERR_CHKANDJUMP1(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|postrecv",
-                                 "**ch3|postrecv %s", "MPIDI_CH3_PKT_ACCUMULATE");
+                MPID_Datatype_get_size_macro(accum_pkt->datatype, type_size);
 
-            /* return the number of bytes processed in this function */
-            *buflen = data_len + sizeof(MPIDI_CH3_Pkt_t);
+                total_len = type_size * accum_pkt->count;
+                stream_elem_count = MPIDI_CH3U_SRBuf_size / extent;
 
-            if (complete) {
-                mpi_errno = MPIDI_CH3_ReqHandler_AccumRecvComplete(vc, req, &complete);
-                if (mpi_errno)
-                    MPIU_ERR_POP(mpi_errno);
+                req->dev.recv_data_sz = MPIR_MIN(total_len, stream_elem_count * type_size);
+                MPIU_Assert(req->dev.recv_data_sz > 0);
+
+                mpi_errno = MPIDI_CH3U_Receive_data_found(req, data_buf, &data_len, &complete);
+                MPIU_ERR_CHKANDJUMP1(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|postrecv",
+                                     "**ch3|postrecv %s", "MPIDI_CH3_PKT_ACCUMULATE");
+
+                /* return the number of bytes processed in this function */
+                *buflen = data_len + sizeof(MPIDI_CH3_Pkt_t);
+
                 if (complete) {
-                    *rreqp = NULL;
-                    goto fn_exit;
+                    mpi_errno = MPIDI_CH3_ReqHandler_AccumRecvComplete(vc, req, &complete);
+                    if (mpi_errno)
+                        MPIU_ERR_POP(mpi_errno);
+                    if (complete) {
+                        *rreqp = NULL;
+                        goto fn_exit;
+                    }
                 }
             }
         }
         else {
             MPIDI_Request_set_type(req, MPIDI_REQUEST_TYPE_ACCUM_RECV_DERIVED_DT);
-            req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_AccumDerivedDTRecvComplete;
+            req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_AccumMetadataRecvComplete;
             req->dev.datatype = MPI_DATATYPE_NULL;
 
-            req->dev.dtype_info = (MPIDI_RMA_dtype_info *)
-                MPIU_Malloc(sizeof(MPIDI_RMA_dtype_info));
-            if (!req->dev.dtype_info) {
-                MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s",
-                                     "MPIDI_RMA_dtype_info");
-            }
-
+            /* Put dataloop in a separate buffer to be reused in datatype.
+             * It will be freed when free datatype. */
             req->dev.dataloop = MPIU_Malloc(accum_pkt->info.dataloop_size);
             if (!req->dev.dataloop) {
                 MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %d",
                                      accum_pkt->info.dataloop_size);
             }
 
-            if (data_len >= sizeof(MPIDI_RMA_dtype_info) + accum_pkt->info.dataloop_size +
-                sizeof(req->dev.stream_offset)) {
-                /* copy all of dtype_info and dataloop */
-                MPIU_Memcpy(req->dev.dtype_info, data_buf, sizeof(MPIDI_RMA_dtype_info));
-                MPIU_Memcpy(req->dev.dataloop, data_buf + sizeof(MPIDI_RMA_dtype_info),
+            if (data_len >= req->dev.ext_hdr_sz + accum_pkt->info.dataloop_size) {
+                /* Copy extended header */
+                MPIU_Memcpy(req->dev.ext_hdr_ptr, data_buf, req->dev.ext_hdr_sz);
+                MPIU_Memcpy(req->dev.dataloop, data_buf + req->dev.ext_hdr_sz,
                             accum_pkt->info.dataloop_size);
-                MPIU_Memcpy(&(req->dev.stream_offset),
-                            data_buf + sizeof(MPIDI_RMA_dtype_info) + accum_pkt->info.dataloop_size,
-                            sizeof(req->dev.stream_offset));
 
-                *buflen =
-                    sizeof(MPIDI_CH3_Pkt_t) + sizeof(MPIDI_RMA_dtype_info) +
-                    accum_pkt->info.dataloop_size + sizeof(req->dev.stream_offset);
+                *buflen = sizeof(MPIDI_CH3_Pkt_t) + req->dev.ext_hdr_sz +
+                    accum_pkt->info.dataloop_size;
 
-                /* All dtype data has been received, call req handler */
-                mpi_errno = MPIDI_CH3_ReqHandler_AccumDerivedDTRecvComplete(vc, req, &complete);
+                /* All extended data has been received, call req handler */
+                mpi_errno = MPIDI_CH3_ReqHandler_AccumMetadataRecvComplete(vc, req, &complete);
                 MPIU_ERR_CHKANDJUMP1(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|postrecv",
                                      "**ch3|postrecv %s", "MPIDI_CH3_ACCUMULATE");
                 if (complete) {
@@ -730,13 +826,14 @@ int MPIDI_CH3_PktHandler_Accumulate(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
                 }
             }
             else {
-                req->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) req->dev.dtype_info;
-                req->dev.iov[0].MPID_IOV_LEN = sizeof(MPIDI_RMA_dtype_info);
+                /* Prepare to receive extended header.
+                 * All variable-length data can be received in separate iovs. */
+                req->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) req->dev.ext_hdr_ptr;
+                req->dev.iov[0].MPID_IOV_LEN = req->dev.ext_hdr_sz;
                 req->dev.iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) req->dev.dataloop;
                 req->dev.iov[1].MPID_IOV_LEN = accum_pkt->info.dataloop_size;
-                req->dev.iov[2].MPID_IOV_BUF = &(req->dev.stream_offset);
-                req->dev.iov[2].MPID_IOV_LEN = sizeof(req->dev.stream_offset);
-                req->dev.iov_count = 3;
+                req->dev.iov_count = 2;
+
                 *buflen = sizeof(MPIDI_CH3_Pkt_t);
             }
 
@@ -766,12 +863,14 @@ int MPIDI_CH3_PktHandler_GetAccumulate(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
 {
     MPIDI_CH3_Pkt_get_accum_t *get_accum_pkt = &pkt->get_accum;
     MPID_Request *req = NULL;
+    MPI_Aint extent;
     int complete = 0;
     char *data_buf = NULL;
     MPIDI_msg_sz_t data_len;
     MPID_Win *win_ptr;
     int acquire_lock_fail = 0;
     int mpi_errno = MPI_SUCCESS;
+    MPI_Aint stream_elem_count, total_len;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_PKTHANDLER_GETACCUMULATE);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PKTHANDLER_GETACCUMULATE);
@@ -834,7 +933,7 @@ int MPIDI_CH3_PktHandler_GetAccumulate(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
             get_accum_resp_pkt->flags |= MPIDI_CH3_PKT_FLAG_RMA_LOCK_GRANTED;
         if ((get_accum_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_FLUSH) ||
             (get_accum_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_UNLOCK))
-            get_accum_resp_pkt->flags |= MPIDI_CH3_PKT_FLAG_RMA_FLUSH_ACK;
+            get_accum_resp_pkt->flags |= MPIDI_CH3_PKT_FLAG_RMA_ACK;
 
         /* NOTE: 'copy data + ACC' needs to be atomic */
 
@@ -850,18 +949,6 @@ int MPIDI_CH3_PktHandler_GetAccumulate(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
             MPIU_ERR_POP(mpi_errno);
         }
 
-        /* perform accumulate operation. */
-        mpi_errno =
-            do_accumulate_op(get_accum_pkt->info.data, get_accum_pkt->count,
-                             get_accum_pkt->datatype, get_accum_pkt->addr, get_accum_pkt->count,
-                             get_accum_pkt->datatype, 0, get_accum_pkt->op);
-
-        if (win_ptr->shm_allocated == TRUE)
-            MPIDI_CH3I_SHM_MUTEX_UNLOCK(win_ptr);
-
-        if (mpi_errno)
-            MPIU_ERR_POP(mpi_errno);
-
         iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) get_accum_resp_pkt;
         iov[0].MPID_IOV_LEN = sizeof(*get_accum_resp_pkt);
         iovcnt = 1;
@@ -876,8 +963,22 @@ int MPIDI_CH3_PktHandler_GetAccumulate(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
             MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
         }
         /* --END ERROR HANDLING-- */
+
+        /* perform accumulate operation. */
+        mpi_errno =
+            do_accumulate_op(get_accum_pkt->info.data, get_accum_pkt->count,
+                             get_accum_pkt->datatype, get_accum_pkt->addr, get_accum_pkt->count,
+                             get_accum_pkt->datatype, 0, get_accum_pkt->op);
+
+        if (win_ptr->shm_allocated == TRUE)
+            MPIDI_CH3I_SHM_MUTEX_UNLOCK(win_ptr);
+
+        if (mpi_errno)
+            MPIU_ERR_POP(mpi_errno);
     }
     else {
+        int is_derived_dt = 0;
+
         MPIU_Assert(pkt->type == MPIDI_CH3_PKT_GET_ACCUM);
 
         req = MPID_Request_create();
@@ -891,11 +992,19 @@ int MPIDI_CH3_PktHandler_GetAccumulate(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
         req->dev.flags = get_accum_pkt->flags;
 
         req->dev.resp_request_handle = get_accum_pkt->request_handle;
-        req->dev.OnFinal = MPIDI_CH3_ReqHandler_GaccumRecvComplete;
 
         /* get start location of data and length of data */
         data_len = *buflen - sizeof(MPIDI_CH3_Pkt_t);
         data_buf = (char *) pkt + sizeof(MPIDI_CH3_Pkt_t);
+
+        /* allocate extended header in the request,
+         * only including fixed-length variables defined in packet type. */
+        is_derived_dt = !MPIR_DATATYPE_IS_PREDEFINED(get_accum_pkt->datatype);
+        mpi_errno = MPIDI_CH3_ExtPktHandler_GetAccumulate(req->dev.flags, is_derived_dt,
+                                                          &req->dev.ext_hdr_ptr,
+                                                          &req->dev.ext_hdr_sz);
+        if (mpi_errno != MPI_SUCCESS)
+            MPIU_ERR_POP(mpi_errno);
 
         if (MPIR_DATATYPE_IS_PREDEFINED(get_accum_pkt->datatype)) {
             MPI_Aint type_size;
@@ -903,78 +1012,100 @@ int MPIDI_CH3_PktHandler_GetAccumulate(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
             MPIDI_Request_set_type(req, MPIDI_REQUEST_TYPE_GET_ACCUM_RECV);
             req->dev.datatype = get_accum_pkt->datatype;
 
-            MPIU_Assert(!MPIDI_Request_get_srbuf_flag(req));
-            /* allocate a SRBuf for receiving stream unit */
-            MPIDI_CH3U_SRBuf_alloc(req, MPIDI_CH3U_SRBuf_size);
-            /* --BEGIN ERROR HANDLING-- */
-            if (req->dev.tmpbuf_sz == 0) {
-                MPIU_DBG_MSG(CH3_CHANNEL, TYPICAL, "SRBuf allocation failure");
-                mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL,
-                                                 FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem",
-                                                 "**nomem %d", MPIDI_CH3U_SRBuf_size);
-                req->status.MPI_ERROR = mpi_errno;
-                goto fn_fail;
+            if (req->dev.flags & MPIDI_CH3_PKT_FLAG_RMA_STREAM) {
+                req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_GaccumMetadataRecvComplete;
+
+                /* if this is a streamed op pkt, set iov to receive extended pkt header. */
+                req->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) req->dev.ext_hdr_ptr;
+                req->dev.iov[0].MPID_IOV_LEN = req->dev.ext_hdr_sz;
+                req->dev.iov_count = 1;
+
+                *buflen = sizeof(MPIDI_CH3_Pkt_t);
             }
-            /* --END ERROR HANDLING-- */
+            else {
+                int is_empty_origin = FALSE;
 
-            req->dev.user_buf = req->dev.tmpbuf;
+                /* Judge if origin data is zero. */
+                if (get_accum_pkt->op == MPI_NO_OP)
+                    is_empty_origin = TRUE;
 
-            MPID_Datatype_get_size_macro(get_accum_pkt->datatype, type_size);
-            req->dev.recv_data_sz = type_size * get_accum_pkt->count;
-            MPIU_Assert(req->dev.recv_data_sz > 0);
+                req->dev.OnFinal = MPIDI_CH3_ReqHandler_GaccumRecvComplete;
 
-            mpi_errno = MPIDI_CH3U_Receive_data_found(req, data_buf, &data_len, &complete);
-            MPIU_ERR_CHKANDJUMP1(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|postrecv",
-                                 "**ch3|postrecv %s", "MPIDI_CH3_PKT_ACCUMULATE");
+                if (is_empty_origin == TRUE) {
+                    req->dev.recv_data_sz = 0;
 
-            /* return the number of bytes processed in this function */
-            *buflen = data_len + sizeof(MPIDI_CH3_Pkt_t);
+                    *buflen = sizeof(MPIDI_CH3_Pkt_t);
+                    complete = 1;
+                }
+                else {
+                    MPID_Datatype_get_extent_macro(get_accum_pkt->datatype, extent);
 
-            if (complete) {
-                mpi_errno = MPIDI_CH3_ReqHandler_GaccumRecvComplete(vc, req, &complete);
-                if (mpi_errno)
-                    MPIU_ERR_POP(mpi_errno);
+                    MPIU_Assert(!MPIDI_Request_get_srbuf_flag(req));
+                    /* allocate a SRBuf for receiving stream unit */
+                    MPIDI_CH3U_SRBuf_alloc(req, MPIDI_CH3U_SRBuf_size);
+                    /* --BEGIN ERROR HANDLING-- */
+                    if (req->dev.tmpbuf_sz == 0) {
+                        MPIU_DBG_MSG(CH3_CHANNEL, TYPICAL, "SRBuf allocation failure");
+                        mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL,
+                                                         FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem",
+                                                         "**nomem %d", MPIDI_CH3U_SRBuf_size);
+                        req->status.MPI_ERROR = mpi_errno;
+                        goto fn_fail;
+                    }
+                    /* --END ERROR HANDLING-- */
+
+                    req->dev.user_buf = req->dev.tmpbuf;
+
+                    MPID_Datatype_get_size_macro(get_accum_pkt->datatype, type_size);
+                    total_len = type_size * get_accum_pkt->count;
+                    stream_elem_count = MPIDI_CH3U_SRBuf_size / extent;
+
+                    req->dev.recv_data_sz = MPIR_MIN(total_len, stream_elem_count * type_size);
+                    MPIU_Assert(req->dev.recv_data_sz > 0);
+
+                    mpi_errno = MPIDI_CH3U_Receive_data_found(req, data_buf, &data_len, &complete);
+                    MPIU_ERR_CHKANDJUMP1(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|postrecv",
+                                         "**ch3|postrecv %s", "MPIDI_CH3_PKT_ACCUMULATE");
+
+                    /* return the number of bytes processed in this function */
+                    *buflen = data_len + sizeof(MPIDI_CH3_Pkt_t);
+                }
+
                 if (complete) {
-                    *rreqp = NULL;
-                    goto fn_exit;
+                    mpi_errno = MPIDI_CH3_ReqHandler_GaccumRecvComplete(vc, req, &complete);
+                    if (mpi_errno)
+                        MPIU_ERR_POP(mpi_errno);
+                    if (complete) {
+                        *rreqp = NULL;
+                        goto fn_exit;
+                    }
                 }
             }
         }
         else {
             MPIDI_Request_set_type(req, MPIDI_REQUEST_TYPE_GET_ACCUM_RECV_DERIVED_DT);
-            req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_GaccumDerivedDTRecvComplete;
+            req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_GaccumMetadataRecvComplete;
             req->dev.datatype = MPI_DATATYPE_NULL;
 
-            req->dev.dtype_info = (MPIDI_RMA_dtype_info *)
-                MPIU_Malloc(sizeof(MPIDI_RMA_dtype_info));
-            if (!req->dev.dtype_info) {
-                MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s",
-                                     "MPIDI_RMA_dtype_info");
-            }
-
+            /* Put dataloop in a separate buffer to be reused in datatype.
+             * It will be freed when free datatype. */
             req->dev.dataloop = MPIU_Malloc(get_accum_pkt->info.dataloop_size);
             if (!req->dev.dataloop) {
                 MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %d",
                                      get_accum_pkt->info.dataloop_size);
             }
 
-            if (data_len >=
-                sizeof(MPIDI_RMA_dtype_info) + get_accum_pkt->info.dataloop_size +
-                sizeof(req->dev.stream_offset)) {
-                /* copy all of dtype_info and dataloop */
-                MPIU_Memcpy(req->dev.dtype_info, data_buf, sizeof(MPIDI_RMA_dtype_info));
-                MPIU_Memcpy(req->dev.dataloop, data_buf + sizeof(MPIDI_RMA_dtype_info),
+            if (data_len >= req->dev.ext_hdr_sz + get_accum_pkt->info.dataloop_size) {
+                /* Copy extended header */
+                MPIU_Memcpy(req->dev.ext_hdr_ptr, data_buf, req->dev.ext_hdr_sz);
+                MPIU_Memcpy(req->dev.dataloop, data_buf + req->dev.ext_hdr_sz,
                             get_accum_pkt->info.dataloop_size);
-                MPIU_Memcpy(&(req->dev.stream_offset),
-                            data_buf + sizeof(MPIDI_RMA_dtype_info) +
-                            get_accum_pkt->info.dataloop_size, sizeof(req->dev.stream_offset));
 
-                *buflen =
-                    sizeof(MPIDI_CH3_Pkt_t) + sizeof(MPIDI_RMA_dtype_info) +
-                    get_accum_pkt->info.dataloop_size + sizeof(req->dev.stream_offset);
+                *buflen = sizeof(MPIDI_CH3_Pkt_t) + req->dev.ext_hdr_sz +
+                    get_accum_pkt->info.dataloop_size;
 
                 /* All dtype data has been received, call req handler */
-                mpi_errno = MPIDI_CH3_ReqHandler_GaccumDerivedDTRecvComplete(vc, req, &complete);
+                mpi_errno = MPIDI_CH3_ReqHandler_GaccumMetadataRecvComplete(vc, req, &complete);
                 MPIU_ERR_CHKANDJUMP1(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|postrecv",
                                      "**ch3|postrecv %s", "MPIDI_CH3_ACCUMULATE");
                 if (complete) {
@@ -983,13 +1114,14 @@ int MPIDI_CH3_PktHandler_GetAccumulate(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
                 }
             }
             else {
-                req->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) req->dev.dtype_info;
-                req->dev.iov[0].MPID_IOV_LEN = sizeof(MPIDI_RMA_dtype_info);
+                /* Prepare to receive extended header.
+                 * All variable-length data can be received in separate iovs. */
+                req->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) req->dev.ext_hdr_ptr;
+                req->dev.iov[0].MPID_IOV_LEN = req->dev.ext_hdr_sz;
                 req->dev.iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) req->dev.dataloop;
                 req->dev.iov[1].MPID_IOV_LEN = get_accum_pkt->info.dataloop_size;
-                req->dev.iov[2].MPID_IOV_BUF = &(req->dev.stream_offset);
-                req->dev.iov[2].MPID_IOV_LEN = sizeof(req->dev.stream_offset);
-                req->dev.iov_count = 3;
+                req->dev.iov_count = 2;
+
                 *buflen = sizeof(MPIDI_CH3_Pkt_t);
             }
 
@@ -1063,7 +1195,7 @@ int MPIDI_CH3_PktHandler_CAS(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
         cas_resp_pkt->flags |= MPIDI_CH3_PKT_FLAG_RMA_LOCK_GRANTED;
     if ((cas_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_FLUSH) ||
         (cas_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_UNLOCK))
-        cas_resp_pkt->flags |= MPIDI_CH3_PKT_FLAG_RMA_FLUSH_ACK;
+        cas_resp_pkt->flags |= MPIDI_CH3_PKT_FLAG_RMA_ACK;
 
     /* Copy old value into the response packet */
     MPID_Datatype_get_size_macro(cas_pkt->datatype, len);
@@ -1074,6 +1206,13 @@ int MPIDI_CH3_PktHandler_CAS(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
 
     MPIU_Memcpy((void *) &cas_resp_pkt->info.data, cas_pkt->addr, len);
 
+    /* Send the response packet */
+    MPIU_THREAD_CS_ENTER(CH3COMM, vc);
+    mpi_errno = MPIDI_CH3_iStartMsg(vc, cas_resp_pkt, sizeof(*cas_resp_pkt), &req);
+    MPIU_THREAD_CS_EXIT(CH3COMM, vc);
+
+    MPIU_ERR_CHKANDJUMP(mpi_errno != MPI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
+
     /* Compare and replace if equal */
     if (MPIR_Compare_equal(&cas_pkt->compare_data, cas_pkt->addr, cas_pkt->datatype)) {
         MPIU_Memcpy(cas_pkt->addr, &cas_pkt->origin_data, len);
@@ -1081,13 +1220,6 @@ int MPIDI_CH3_PktHandler_CAS(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
 
     if (win_ptr->shm_allocated == TRUE)
         MPIDI_CH3I_SHM_MUTEX_UNLOCK(win_ptr);
-
-    /* Send the response packet */
-    MPIU_THREAD_CS_ENTER(CH3COMM, vc);
-    mpi_errno = MPIDI_CH3_iStartMsg(vc, cas_resp_pkt, sizeof(*cas_resp_pkt), &req);
-    MPIU_THREAD_CS_EXIT(CH3COMM, vc);
-
-    MPIU_ERR_CHKANDJUMP(mpi_errno != MPI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
 
     if (req != NULL) {
         if (!MPID_Request_is_complete(req)) {
@@ -1158,8 +1290,8 @@ int MPIDI_CH3_PktHandler_CASResp(MPIDI_VC_t * vc ATTRIBUTE((unused)),
         if (mpi_errno)
             MPIU_ERR_POP(mpi_errno);
     }
-    if (cas_resp_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_FLUSH_ACK) {
-        mpi_errno = MPIDI_CH3I_RMA_Handle_flush_ack(win_ptr, target_rank);
+    if (cas_resp_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_ACK) {
+        mpi_errno = MPIDI_CH3I_RMA_Handle_ack(win_ptr, target_rank);
         if (mpi_errno != MPI_SUCCESS)
             MPIU_ERR_POP(mpi_errno);
     }
@@ -1232,7 +1364,7 @@ int MPIDI_CH3_PktHandler_FOP(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
             fop_resp_pkt->flags |= MPIDI_CH3_PKT_FLAG_RMA_LOCK_GRANTED;
         if ((fop_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_FLUSH) ||
             (fop_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_UNLOCK))
-            fop_resp_pkt->flags |= MPIDI_CH3_PKT_FLAG_RMA_FLUSH_ACK;
+            fop_resp_pkt->flags |= MPIDI_CH3_PKT_FLAG_RMA_ACK;
 
         /* NOTE: 'copy data + ACC' needs to be atomic */
 
@@ -1248,23 +1380,21 @@ int MPIDI_CH3_PktHandler_FOP(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
             MPIU_ERR_POP(mpi_errno);
         }
 
+        /* send back the original data */
+        MPIU_THREAD_CS_ENTER(CH3COMM, vc);
+        mpi_errno = MPIDI_CH3_iStartMsg(vc, fop_resp_pkt, sizeof(*fop_resp_pkt), &resp_req);
+        MPIU_THREAD_CS_EXIT(CH3COMM, vc);
+        MPIU_ERR_CHKANDJUMP(mpi_errno != MPI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
+
         /* Apply the op */
-        if (fop_pkt->op != MPI_NO_OP) {
-            mpi_errno = do_accumulate_op(fop_pkt->info.data, 1, fop_pkt->datatype,
-                                         fop_pkt->addr, 1, fop_pkt->datatype, 0, fop_pkt->op);
-        }
+        mpi_errno = do_accumulate_op(fop_pkt->info.data, 1, fop_pkt->datatype,
+                                     fop_pkt->addr, 1, fop_pkt->datatype, 0, fop_pkt->op);
 
         if (win_ptr->shm_allocated == TRUE)
             MPIDI_CH3I_SHM_MUTEX_UNLOCK(win_ptr);
 
         if (mpi_errno != MPI_SUCCESS)
             MPIU_ERR_POP(mpi_errno);
-
-        /* send back the original data */
-        MPIU_THREAD_CS_ENTER(CH3COMM, vc);
-        mpi_errno = MPIDI_CH3_iStartMsg(vc, fop_resp_pkt, sizeof(*fop_resp_pkt), &resp_req);
-        MPIU_THREAD_CS_EXIT(CH3COMM, vc);
-        MPIU_ERR_CHKANDJUMP(mpi_errno != MPI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
 
         if (resp_req != NULL) {
             if (!MPID_Request_is_complete(resp_req)) {
@@ -1299,6 +1429,11 @@ int MPIDI_CH3_PktHandler_FOP(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
         MPIDI_msg_sz_t data_len;
         MPI_Aint extent;
         int complete = 0;
+        int is_empty_origin = FALSE;
+
+        /* Judge if origin data is zero. */
+        if (fop_pkt->op == MPI_NO_OP)
+            is_empty_origin = TRUE;
 
         req = MPID_Request_create();
         MPIU_Object_set_ref(req, 1);
@@ -1315,26 +1450,34 @@ int MPIDI_CH3_PktHandler_FOP(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
         req->dev.datatype = fop_pkt->datatype;
         req->dev.user_count = 1;
 
-        /* get start location of data and length of data */
-        data_len = *buflen - sizeof(MPIDI_CH3_Pkt_t);
-        data_buf = (char *) pkt + sizeof(MPIDI_CH3_Pkt_t);
+        if (is_empty_origin == TRUE) {
+            req->dev.recv_data_sz = 0;
 
-        MPID_Datatype_get_extent_macro(fop_pkt->datatype, extent);
-
-        req->dev.user_buf = MPIU_Malloc(extent);
-        if (!req->dev.user_buf) {
-            MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %d", extent);
+            *buflen = sizeof(MPIDI_CH3_Pkt_t);
+            complete = 1;
         }
+        else {
+            /* get start location of data and length of data */
+            data_len = *buflen - sizeof(MPIDI_CH3_Pkt_t);
+            data_buf = (char *) pkt + sizeof(MPIDI_CH3_Pkt_t);
 
-        req->dev.recv_data_sz = type_size;
-        MPIU_Assert(req->dev.recv_data_sz > 0);
+            MPID_Datatype_get_extent_macro(fop_pkt->datatype, extent);
 
-        mpi_errno = MPIDI_CH3U_Receive_data_found(req, data_buf, &data_len, &complete);
-        MPIU_ERR_CHKANDJUMP1(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|postrecv",
-                             "**ch3|postrecv %s", "MPIDI_CH3_PKT_ACCUMULATE");
+            req->dev.user_buf = MPIU_Malloc(extent);
+            if (!req->dev.user_buf) {
+                MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %d", extent);
+            }
 
-        /* return the number of bytes processed in this function */
-        *buflen = data_len + sizeof(MPIDI_CH3_Pkt_t);
+            req->dev.recv_data_sz = type_size;
+            MPIU_Assert(req->dev.recv_data_sz > 0);
+
+            mpi_errno = MPIDI_CH3U_Receive_data_found(req, data_buf, &data_len, &complete);
+            MPIU_ERR_CHKANDJUMP1(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|postrecv",
+                                 "**ch3|postrecv %s", "MPIDI_CH3_PKT_ACCUMULATE");
+
+            /* return the number of bytes processed in this function */
+            *buflen = data_len + sizeof(MPIDI_CH3_Pkt_t);
+        }
 
         if (complete) {
             mpi_errno = MPIDI_CH3_ReqHandler_FOPRecvComplete(vc, req, &complete);
@@ -1396,8 +1539,8 @@ int MPIDI_CH3_PktHandler_FOPResp(MPIDI_VC_t * vc ATTRIBUTE((unused)),
         if (mpi_errno)
             MPIU_ERR_POP(mpi_errno);
     }
-    if (fop_resp_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_FLUSH_ACK) {
-        mpi_errno = MPIDI_CH3I_RMA_Handle_flush_ack(win_ptr, target_rank);
+    if (fop_resp_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_ACK) {
+        mpi_errno = MPIDI_CH3I_RMA_Handle_ack(win_ptr, target_rank);
         if (mpi_errno)
             MPIU_ERR_POP(mpi_errno);
     }
@@ -1483,8 +1626,8 @@ int MPIDI_CH3_PktHandler_Get_AccumResp(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
         if (mpi_errno)
             MPIU_ERR_POP(mpi_errno);
     }
-    if (get_accum_resp_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_FLUSH_ACK) {
-        mpi_errno = MPIDI_CH3I_RMA_Handle_flush_ack(win_ptr, target_rank);
+    if (get_accum_resp_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_ACK) {
+        mpi_errno = MPIDI_CH3I_RMA_Handle_ack(win_ptr, target_rank);
         if (mpi_errno)
             MPIU_ERR_POP(mpi_errno);
     }
@@ -1512,6 +1655,7 @@ int MPIDI_CH3_PktHandler_Get_AccumResp(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
         MPI_Aint stream_elem_count;
         MPI_Aint total_len, rest_len;
         MPI_Aint real_stream_offset;
+        MPI_Aint contig_stream_offset = 0;
 
         if (MPIR_DATATYPE_IS_PREDEFINED(req->dev.datatype)) {
             basic_type = req->dev.datatype;
@@ -1524,12 +1668,20 @@ int MPIDI_CH3_PktHandler_Get_AccumResp(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
         MPID_Datatype_get_extent_macro(basic_type, basic_type_extent);
         MPID_Datatype_get_size_macro(basic_type, basic_type_size);
 
+        /* Note: here we get the stream_offset from the extended packet header
+         * in the response request, which is set in issue_get_acc_op() funcion.
+         * Note that this extended packet header only contains stream_offset and
+         * does not contain datatype info, so here we pass 0 to is_derived_dt
+         * flag. */
+        MPIDI_CH3_ExtPkt_Gaccum_get_stream(req->dev.flags, 0 /* is_derived_dt */ ,
+                                           req->dev.ext_hdr_ptr, &contig_stream_offset);
+
         total_len = type_size * req->dev.user_count;
-        rest_len = total_len - req->dev.stream_offset;
+        rest_len = total_len - contig_stream_offset;
         stream_elem_count = MPIDI_CH3U_SRBuf_size / basic_type_extent;
 
         req->dev.recv_data_sz = MPIR_MIN(rest_len, stream_elem_count * basic_type_size);
-        real_stream_offset = (req->dev.stream_offset / basic_type_size) * basic_type_extent;
+        real_stream_offset = (contig_stream_offset / basic_type_size) * basic_type_extent;
 
         if (MPIR_DATATYPE_IS_PREDEFINED(req->dev.datatype)) {
             req->dev.user_buf = (void *) ((char *) req->dev.user_buf + real_stream_offset);
@@ -1546,8 +1698,8 @@ int MPIDI_CH3_PktHandler_Get_AccumResp(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
             req->dev.segment_ptr = MPID_Segment_alloc();
             MPID_Segment_init(req->dev.user_buf, req->dev.user_count, req->dev.datatype,
                               req->dev.segment_ptr, 0);
-            req->dev.segment_first = req->dev.stream_offset;
-            req->dev.segment_size = req->dev.stream_offset + req->dev.recv_data_sz;
+            req->dev.segment_first = contig_stream_offset;
+            req->dev.segment_size = contig_stream_offset + req->dev.recv_data_sz;
 
             mpi_errno = MPIDI_CH3U_Request_load_recv_iov(req);
             if (mpi_errno != MPI_SUCCESS) {
@@ -1674,8 +1826,8 @@ int MPIDI_CH3_PktHandler_GetResp(MPIDI_VC_t * vc ATTRIBUTE((unused)),
         if (mpi_errno)
             MPIU_ERR_POP(mpi_errno);
     }
-    if (get_resp_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_FLUSH_ACK) {
-        mpi_errno = MPIDI_CH3I_RMA_Handle_flush_ack(win_ptr, target_rank);
+    if (get_resp_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_ACK) {
+        mpi_errno = MPIDI_CH3I_RMA_Handle_ack(win_ptr, target_rank);
         if (mpi_errno)
             MPIU_ERR_POP(mpi_errno);
     }
@@ -1815,9 +1967,9 @@ int MPIDI_CH3_PktHandler_LockOpAck(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
     if (mpi_errno != MPI_SUCCESS)
         MPIU_ERR_POP(mpi_errno);
 
-    if (flags & MPIDI_CH3_PKT_FLAG_RMA_FLUSH_ACK) {
+    if (flags & MPIDI_CH3_PKT_FLAG_RMA_ACK) {
         MPIU_Assert(flags & MPIDI_CH3_PKT_FLAG_RMA_LOCK_GRANTED);
-        mpi_errno = MPIDI_CH3I_RMA_Handle_flush_ack(win_ptr, target_rank);
+        mpi_errno = MPIDI_CH3I_RMA_Handle_ack(win_ptr, target_rank);
         if (mpi_errno != MPI_SUCCESS)
             MPIU_ERR_POP(mpi_errno);
     }
@@ -1833,38 +1985,38 @@ int MPIDI_CH3_PktHandler_LockOpAck(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
 }
 
 #undef FUNCNAME
-#define FUNCNAME MPIDI_CH3_PktHandler_FlushAck
+#define FUNCNAME MPIDI_CH3_PktHandler_Ack
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3_PktHandler_FlushAck(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
-                                  MPIDI_msg_sz_t * buflen, MPID_Request ** rreqp)
+int MPIDI_CH3_PktHandler_Ack(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
+                             MPIDI_msg_sz_t * buflen, MPID_Request ** rreqp)
 {
-    MPIDI_CH3_Pkt_flush_ack_t *flush_ack_pkt = &pkt->flush_ack;
+    MPIDI_CH3_Pkt_ack_t *ack_pkt = &pkt->ack;
     MPID_Win *win_ptr = NULL;
     int mpi_errno = MPI_SUCCESS;
-    int target_rank = flush_ack_pkt->target_rank;
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_PKTHANDLER_FLUSHACK);
+    int target_rank = ack_pkt->target_rank;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_PKTHANDLER_ACK);
 
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PKTHANDLER_FLUSHACK);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PKTHANDLER_ACK);
 
     MPIU_DBG_MSG(CH3_OTHER, VERBOSE, "received shared lock ops done pkt");
 
-    MPIR_T_PVAR_TIMER_START(RMA, rma_rmapkt_flush_ack);
+    MPIR_T_PVAR_TIMER_START(RMA, rma_rmapkt_ack);
 
     *buflen = sizeof(MPIDI_CH3_Pkt_t);
 
-    MPID_Win_get_ptr(flush_ack_pkt->source_win_handle, win_ptr);
+    MPID_Win_get_ptr(ack_pkt->source_win_handle, win_ptr);
 
     /* decrement ack_counter on target */
-    mpi_errno = MPIDI_CH3I_RMA_Handle_flush_ack(win_ptr, target_rank);
+    mpi_errno = MPIDI_CH3I_RMA_Handle_ack(win_ptr, target_rank);
     if (mpi_errno)
         MPIU_ERR_POP(mpi_errno);
 
     *rreqp = NULL;
     MPIDI_CH3_Progress_signal_completion();
 
-    MPIR_T_PVAR_TIMER_END(RMA, rma_rmapkt_flush_ack);
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_PKTHANDLER_FLUSHACK);
+    MPIR_T_PVAR_TIMER_END(RMA, rma_rmapkt_ack);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_PKTHANDLER_ACK);
   fn_exit:
     return MPI_SUCCESS;
   fn_fail:
@@ -1896,6 +2048,13 @@ int MPIDI_CH3_PktHandler_DecrAtCnt(MPIDI_VC_t * vc ATTRIBUTE((unused)),
 
     *buflen = sizeof(MPIDI_CH3_Pkt_t);
     *rreqp = NULL;
+
+    if (decr_at_cnt_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_FLUSH) {
+        mpi_errno = MPIDI_CH3I_Send_ack_pkt(vc, win_ptr, decr_at_cnt_pkt->source_win_handle);
+        if (mpi_errno)
+            MPIU_ERR_POP(mpi_errno);
+    }
+
     MPIDI_CH3_Progress_signal_completion();
 
   fn_exit:
@@ -1933,7 +2092,7 @@ int MPIDI_CH3_PktHandler_Unlock(MPIDI_VC_t * vc ATTRIBUTE((unused)),
     MPIU_ERR_CHKANDJUMP(mpi_errno != MPI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**ch3|rma_msg");
 
     if (!(unlock_pkt->flags & MPIDI_CH3_PKT_FLAG_RMA_UNLOCK_NO_ACK)) {
-        mpi_errno = MPIDI_CH3I_Send_flush_ack_pkt(vc, win_ptr, unlock_pkt->source_win_handle);
+        mpi_errno = MPIDI_CH3I_Send_ack_pkt(vc, win_ptr, unlock_pkt->source_win_handle);
         if (mpi_errno)
             MPIU_ERR_POP(mpi_errno);
     }
@@ -1973,7 +2132,7 @@ int MPIDI_CH3_PktHandler_Flush(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
 
     MPID_Win_get_ptr(flush_pkt->target_win_handle, win_ptr);
 
-    mpi_errno = MPIDI_CH3I_Send_flush_ack_pkt(vc, win_ptr, flush_pkt->source_win_handle);
+    mpi_errno = MPIDI_CH3I_Send_ack_pkt(vc, win_ptr, flush_pkt->source_win_handle);
     if (mpi_errno != MPI_SUCCESS)
         MPIU_ERR_POP(mpi_errno);
 
@@ -2056,10 +2215,10 @@ int MPIDI_CH3_PktPrint_Lock(FILE * fp, MPIDI_CH3_Pkt_t * pkt)
     return MPI_SUCCESS;
 }
 
-int MPIDI_CH3_PktPrint_FlushAck(FILE * fp, MPIDI_CH3_Pkt_t * pkt)
+int MPIDI_CH3_PktPrint_Ack(FILE * fp, MPIDI_CH3_Pkt_t * pkt)
 {
-    MPIU_DBG_PRINTF((" type ......... MPIDI_CH3_PKT_FLUSH_ACK\n"));
-    MPIU_DBG_PRINTF((" source ....... 0x%08X\n", pkt->lock_accum_unlock.source_win_handle));
+    MPIU_DBG_PRINTF((" type ......... MPIDI_CH3_PKT_ACK\n"));
+    MPIU_DBG_PRINTF((" source ....... 0x%08X\n", pkt->ack.source_win_handle));
     return MPI_SUCCESS;
 }
 

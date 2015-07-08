@@ -117,13 +117,15 @@ int MPI_Fetch_and_op(const void *origin_addr, void *result_addr,
             if (mpi_errno) goto fn_fail;
 
             if (op != MPI_NO_OP) {
+                /* NOTE: when op is MPI_NO_OP, origin_addr is allowed to be NULL.
+                 * In such case, MPI_Fetch_and_op equals to an atomic GET. */
                 MPIR_ERRTEST_ARGNULL(origin_addr, "origin_addr", mpi_errno);
             }
 
             MPIR_ERRTEST_ARGNULL(result_addr, "result_addr", mpi_errno);
             MPIR_ERRTEST_DATATYPE(datatype, "datatype", mpi_errno);
 
-            if (HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN)
+            if (!MPIR_DATATYPE_IS_PREDEFINED(datatype))
             {
                 MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_TYPE, "**typenotpredefined");
             }

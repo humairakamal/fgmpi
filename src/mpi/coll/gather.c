@@ -92,10 +92,12 @@ int MPIR_Gather_intra(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     int        comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int curr_cnt=0, relative_rank, nbytes, is_homogeneous;
-    int mask, sendtype_size, recvtype_size, src, dst, relative_src;
+    int relative_rank, is_homogeneous;
+    int mask, src, dst, relative_src;
+    MPI_Aint curr_cnt=0, nbytes, sendtype_size, recvtype_size;
     int recvblks;
-    int tmp_buf_size, missing;
+    int missing;
+    MPI_Aint tmp_buf_size;
     void *tmp_buf=NULL;
     MPI_Status status;
     MPI_Aint   extent=0;            /* Datatype extent */
@@ -230,8 +232,11 @@ int MPIR_Gather_intra(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                             }
 			}
 			else if (nbytes < MPIR_CVAR_GATHER_VSMALL_MSG_SIZE) {
-			    mpi_errno = MPIC_Recv(tmp_buf, recvblks * nbytes, MPI_BYTE,
-                                                     src, MPIR_GATHER_TAG, comm_ptr, &status, errflag);
+			    /* small transfer size case. cast ok */
+			    MPIU_Assert(recvblks*nbytes == (int)(recvblks*nbytes));
+			    mpi_errno = MPIC_Recv(tmp_buf, (int)(recvblks * nbytes),
+					    MPI_BYTE, src, MPIR_GATHER_TAG,
+					    comm_ptr, &status, errflag);
                             if (mpi_errno) {
                                 /* for communication errors, just record the error but continue */
                                 *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
@@ -267,7 +272,7 @@ int MPIR_Gather_intra(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
 		    }
                     else /* Intermediate nodes store in temporary buffer */
 		    {
-			int offset;
+			MPI_Aint offset;
 
 			/* Estimate the amount of data that is going to come in */
 			recvblks = mask;
@@ -324,10 +329,16 @@ int MPIR_Gather_intra(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
 		    blocks[0] = sendcount;
 		    struct_displs[0] = MPI_VOID_PTR_CAST_TO_MPI_AINT sendbuf;
 		    types[0] = sendtype;
-		    blocks[1] = curr_cnt - nbytes;
+		    /* check for overflow.  work around int limits if needed*/
+		    if (curr_cnt - nbytes != (int)(curr_cnt - nbytes)) {
+			    blocks[1] = 1;
+			    MPIR_Type_contiguous_x_impl(curr_cnt - nbytes,
+					    MPI_BYTE, &(types[1]));
+		    } else {
+			    MPIU_Assign_trunc(blocks[1],  curr_cnt - nbytes, int);
+			    types[1] = MPI_BYTE;
+		    }
 		    struct_displs[1] = MPI_VOID_PTR_CAST_TO_MPI_AINT tmp_buf;
-		    types[1] = MPI_BYTE;
-
 		    mpi_errno = MPIR_Type_create_struct_impl(2, blocks, struct_displs, types, &tmp_type);
                     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
                     
@@ -343,6 +354,8 @@ int MPIR_Gather_intra(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                         MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
                     }
 		    MPIR_Type_free_impl(&tmp_type);
+		    if (types[1] != MPI_BYTE)
+			    MPIR_Type_free_impl(&types[1]);
 		}
 
                 break;
@@ -505,7 +518,8 @@ int MPIR_Gather_inter(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
 
     int rank, local_size, remote_size, mpi_errno=MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int i, nbytes, sendtype_size, recvtype_size;
+    int i;
+    MPI_Aint nbytes, sendtype_size, recvtype_size;
     MPI_Status status;
     MPI_Aint extent, true_extent, true_lb = 0;
     void *tmp_buf=NULL;
@@ -825,7 +839,7 @@ int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
 
                     /* catch common aliasing cases */
                     if (recvbuf != MPI_IN_PLACE && sendtype == recvtype && sendcount == recvcount && sendcount != 0) {
-                        int recvtype_size;
+                        MPI_Aint recvtype_size;
                         MPID_Datatype_get_size_macro(recvtype, recvtype_size);
                         MPIR_ERRTEST_ALIAS_COLL(sendbuf, ((char *)recvbuf) + comm_ptr->rank*recvcount*recvtype_size,mpi_errno);
                     }
