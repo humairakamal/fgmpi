@@ -1035,7 +1035,6 @@ typedef struct MPID_Attribute {
 /* This structure is used to implement the group operations such as 
    MPI_Group_translate_ranks */
 typedef struct MPID_Group_pmap_t {
-    int          lrank;     /* Local rank in group (between 0 and size-1) */
     int          lpid;      /* local process id, from VCONN */
     int          next_lpid; /* Index of next lpid (in lpid order) */
     int          flag;      /* marker, used to implement group operations */
@@ -1119,7 +1118,7 @@ extern MPID_Group * const MPID_Group_empty;
      do { MPIU_Object_release_ref( _group, _inuse ); } while (0)
 
 void MPIR_Group_setup_lpid_list( MPID_Group * );
-int MPIR_GroupCheckVCRSubset( MPID_Group *group_ptr, int vsize, MPID_VCR *vcr, int *idx );
+int MPIR_GroupCheckVCRSubset( MPID_Group *group_ptr, int vsize, MPID_VCR *vcr );
 
 /* ------------------------------------------------------------------------- */
 

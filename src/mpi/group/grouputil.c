@@ -375,8 +375,7 @@ int MPIR_Group_check_valid_ranges( MPID_Group *group_ptr,
    We sort the lpids for the group and the vcr.  If the group has an
    lpid that is not in the vcr, then report an error.
 */
-int MPIR_GroupCheckVCRSubset( MPID_Group *group_ptr, int vsize, MPID_VCR *vcr,
-			      int *idx )
+int MPIR_GroupCheckVCRSubset( MPID_Group *group_ptr, int vsize, MPID_VCR *vcr )
 {
     int mpi_errno = MPI_SUCCESS;
     int g1_idx, g2_idx, l1_pid, l2_pid, i;
@@ -391,7 +390,6 @@ int MPIR_GroupCheckVCRSubset( MPID_Group *group_ptr, int vsize, MPID_VCR *vcr,
     /* Initialize the vmap */
     for (i=0; i<vsize; i++) {
 	MPID_VCR_Get_lpid( vcr[i], &vmap[i].lpid );
-	vmap[i].lrank     = i;
 	vmap[i].next_lpid = 0;
 	vmap[i].flag      = 0;
     }
