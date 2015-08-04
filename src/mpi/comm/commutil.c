@@ -445,38 +445,6 @@ fn_fail:
 }
 
 
-#if defined(FINEGRAIN_MPI)
-#define FREE_HASH(hash,hashtype)                        \
-    do {                                                \
-        if (NULL != hash) {                             \
-            hashtype *current_entry, *tmp;              \
-            HASH_ITER(hh, hash, current_entry, tmp) {   \
-                HASH_DEL(hash,current_entry);           \
-                MPIU_Free(current_entry);               \
-            }                                           \
-        }                                               \
-        MPIU_Assert(NULL == hash);                      \
-    } while(0)
-
-#define EXTRACT_ARRAY_FREE_HASH(hash,hashtype,fillarray,arraysize)      \
-    do {                                                                \
-        if (NULL != hash) {                                             \
-            hashtype *current_entry, *tmp;                              \
-            int count = 0;                                              \
-            HASH_ITER(hh, hash, current_entry, tmp) {                   \
-                MPIU_Assert((current_entry->rank < arraysize) && (current_entry->rank >= 0)) ; \
-                fillarray[current_entry->rank] = current_entry->worldrank; \
-                count++;                                                \
-                HASH_DEL(hash,current_entry);                           \
-                MPIU_Free(current_entry);                               \
-            }                                                           \
-            MPIU_Assert(count == arraysize);                            \
-            MPIU_Assert(NULL == hash);                                  \
-        }                                                               \
-    } while(0)
-
-#endif
-
 /* Provides a hook for the top level functions to perform some manipulation on a
    communicator just before it is given to the application level.
   
@@ -524,7 +492,7 @@ int MPIR_Comm_commit(MPID_Comm *comm)
                    any node awareness.  Node-aware collectives are an optimization. */
                 MPIU_DBG_MSG_P(COMM,VERBOSE,"MPIU_Nested_maps_for_communicators failed for comm_ptr=%p", comm);
 
-                FREE_HASH(comm->co_shared_vars->ptn_hash, Parent_to_Nested_comm_tables_coshared_hash_t);
+                FREE_HASH(comm->co_shared_vars->ptn_hash, ptn_comm_tables_hash_t);
                 FREE_HASH(comm->co_shared_vars->nested_uniform_vars.internode_rtw_hash, Nested_comm_rtwmap_hash_t);
                 FREE_HASH(comm->co_shared_vars->nested_uniform_vars.intranode_rtw_hash, Nested_comm_rtwmap_hash_t);
                 FREE_HASH(comm->co_shared_vars->nested_uniform_vars.intra_osproc_rtw_hash, Nested_comm_rtwmap_hash_t);
@@ -570,7 +538,7 @@ int MPIR_Comm_commit(MPID_Comm *comm)
         num_fg_local = comm->co_shared_vars->nested_uniform_vars.fg_local_size;
 
         Parent_to_Nested_comm_tables_coshared_hash_t *ptn_tables_hash_entry_stored = NULL;
-        HASH_FIND_INT( comm->co_shared_vars->ptn_hash, &(comm->rank), ptn_tables_hash_entry_stored );
+        PTN_HASH_LOOKUP( comm->co_shared_vars->ptn_hash, comm->rank, ptn_tables_hash_entry_stored );
         MPIU_Assert( ptn_tables_hash_entry_stored != NULL);
         fg_local_rank = ptn_tables_hash_entry_stored->parent_to_nested.intra_osproc_fg_rank;
         local_rank = ptn_tables_hash_entry_stored->parent_to_nested.intranode_comm_local_rank;
@@ -2367,7 +2335,7 @@ int MPIR_Comm_release_always(MPID_Comm *comm_ptr, int isDisconnect)
 #define FUNCNAME MPIR_Comm_apply_hints
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Comm_apply_hints(MPID_Comm *comm_ptr, MPID_Info *info_ptr)
+int MPIR_Comm_apply_hints(MPID_Comm *comm_ptr, MPID_Info *info_ptr) /* FG: TODO? */
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Info *hint = NULL;
@@ -2403,7 +2371,7 @@ int MPIR_Comm_apply_hints(MPID_Comm *comm_ptr, MPID_Info *info_ptr)
 #define FUNCNAME MPIR_Comm_free_hint_handles
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Comm_free_hint_handles(void *ignore)
+static int MPIR_Comm_free_hint_handles(void *ignore) /* FG: TODO? */
 {
     int mpi_errno = MPI_SUCCESS;
     struct MPIR_Comm_hint_fn_elt *curr_hint = NULL, *tmp = NULL;
@@ -2431,7 +2399,7 @@ static int MPIR_Comm_free_hint_handles(void *ignore)
 #define FUNCNAME MPIR_Comm_register_hint
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Comm_register_hint(const char *hint_key, MPIR_Comm_hint_fn_t fn, void *state)
+int MPIR_Comm_register_hint(const char *hint_key, MPIR_Comm_hint_fn_t fn, void *state) /* FG: TODO? */
 {
     int mpi_errno = MPI_SUCCESS;
     struct MPIR_Comm_hint_fn_elt *hint_elt = NULL;

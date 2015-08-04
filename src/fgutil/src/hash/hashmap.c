@@ -459,7 +459,7 @@ inline int CL_LookupHashFind(hshtbl *CL_hshtbl, int context_id, int LeaderWorldR
     return (0);
 }
 
-inline int CL_LookupHashInsert(hshtbl *CL_hshtbl, int context_id, int LeaderWorldRank, void* co_shared_vars, cLitemptr *stored) /* IN, IN, IN, IN, IN, OUT */
+inline int CL_LookupHashInsert(hshtbl *CL_hshtbl, int context_id, int LeaderWorldRank, void* co_shared_vars, cLitemptr *stored) /* IN, IN, IN, IN, OUT */
 {
     cLitem CL_item;
     *stored = NULL;
@@ -549,7 +549,7 @@ inline int CidLookupHashFind(hshtbl *cid_lookuphshtbl, int cid, cidLookupHashIte
      return(0);
 }
 
-inline int CidLookupHashInsert(hshtbl *cid_lookuphshtbl, int cid, void* co_shared_vars, cidLookupHashItemptr *stored) /* IN, IN, IN, IN, OUT */
+inline int CidLookupHashInsert(hshtbl *cid_lookuphshtbl, int cid, void* co_shared_vars, cidLookupHashItemptr *stored) /* IN, IN, IN, OUT */
 {
     cidLookupHashItem c_item;
     *stored = NULL;
@@ -557,4 +557,106 @@ inline int CidLookupHashInsert(hshtbl *cid_lookuphshtbl, int cid, void* co_share
     c_item.coproclet_shared_vars = co_shared_vars;
     *stored = (cidLookupHashItemptr)hshinsert(cid_lookuphshtbl, &c_item);
     return (0);
+}
+
+
+/*****************ptn Lookup Hashtable*************************/
+
+
+static unsigned long ptnLookupHash(void *item)
+{
+    ptnLookupHashItemptr p_ptr = (ptnLookupHashItemptr) item;
+
+    return (p_ptr->parent_comm_rank);
+} /* hash */
+
+
+static unsigned long ptnLookupRehash(void *item)
+{
+    ptnLookupHashItemptr p_ptr = (ptnLookupHashItemptr) item;
+
+    return (p_ptr->parent_comm_rank)>>3;
+} /* rehash */
+
+
+static int ptnLookupCmp(void *litem, void *ritem)
+{
+    ptnLookupHashItemptr p_lptr = (ptnLookupHashItemptr) litem,
+        p_rptr = (ptnLookupHashItemptr)ritem;
+
+   if     ((p_lptr->parent_comm_rank == p_rptr->parent_comm_rank)) return  0;
+   else if (p_lptr->parent_comm_rank > p_rptr->parent_comm_rank)   return  1;
+   else                                                            return -1;
+} /* cmp */
+
+
+static void *ptnLookupDupe(void *item)
+{
+    ptnLookupHashItemptr p_ptr = (ptnLookupHashItemptr) item,
+                         p_dupe;
+
+    if ((p_dupe = (ptnLookupHashItemptr) malloc(sizeof *p_dupe))){
+       *p_dupe = *p_ptr;
+   }else{
+       printf("Cannot allocate memory in %s\n", __FUNCTION__);
+       exit(-1);
+   }
+   return p_dupe;
+} /* dupe */
+
+
+static void ptnLookupUndupe(void *item)
+{
+    ptnLookupHashItemptr p_ptr = (ptnLookupHashItemptr) item;
+    free(p_ptr);
+} /* undupe */
+
+
+inline hshtbl * ptnLookupHashCreate(void)
+{
+    hshtbl   *h;
+    h = hshinit(ptnLookupHash,             /* hash function */
+                ptnLookupRehash,           /* rehash function */
+                ptnLookupCmp,              /* compare function */
+                ptnLookupDupe,             /* dupe function */
+                ptnLookupUndupe,           /* hshfree function */
+                0);                        /* use debug output */
+    return h;
+
+}
+
+static void print_ptnLookupHashItem(ptnLookupHashItemptr p)
+{
+    printf("parent_comm_rank=%d\n", p->parent_comm_rank);
+}
+
+
+inline int ptnLookupHashFind(hshtbl *ptn_lookuphshtbl, int parent_rank, ptnLookupHashItemptr *stored) /*(IN, IN, OUT)*/
+{
+    ptnLookupHashItem p_item;
+    *stored = NULL;
+    p_item.parent_comm_rank = parent_rank;
+    *stored = (ptnLookupHashItemptr)hshfind(ptn_lookuphshtbl, &p_item);
+    return(0);
+}
+
+inline int ptnLookupHashInsert(hshtbl *ptn_lookuphshtbl, int parent_rank, Parent_to_Nested_comm_tables_t parent_to_nested, ptnLookupHashItemptr *stored) /* IN, IN, IN, OUT */
+{
+    ptnLookupHashItem p_item;
+    *stored = NULL;
+    p_item.parent_comm_rank = parent_rank;
+    p_item.parent_to_nested.internode_comm_root = parent_to_nested.internode_comm_root;
+    p_item.parent_to_nested.internode_comm_external_rank = parent_to_nested.internode_comm_external_rank;
+    p_item.parent_to_nested.intranode_comm_root = parent_to_nested.intranode_comm_root;
+    p_item.parent_to_nested.intranode_comm_local_rank = parent_to_nested.intranode_comm_local_rank;
+    p_item.parent_to_nested.intra_osproc_fg_rank = parent_to_nested.intra_osproc_fg_rank;
+    *stored = (ptnLookupHashItemptr)hshinsert(ptn_lookuphshtbl, &p_item);
+    return (0);
+}
+
+
+inline int hshtblFree(hshtbl **hash_dptr) /*(IN)*/
+{
+    hshkill(*hash_dptr);
+    *hash_dptr = NULL;
 }

@@ -222,12 +222,20 @@ int MPIU_Nested_maps_for_communicators(MPID_Comm *comm)
     MPID_Node_id_t node_id;
     MPID_Node_id_t my_node_id;
     int pid, worldrank, mypid;
+    int parentcomm_rank = -1;
     MPIU_CHKLMEM_DECL(2);
 
-    Parent_to_Nested_comm_tables_coshared_hash_t *parent_to_nested_hash_p = NULL;
+#if defined(COMM_COMMIT_USES_UTHASH)
+    ptn_comm_tables_hash_t *parent_to_nested_hash_p = NULL;
     Nested_comm_rtwmap_hash_t *internode_rtw_hash_p = NULL;
     Nested_comm_rtwmap_hash_t *intranode_rtw_hash_p = NULL;
     Nested_comm_rtwmap_hash_t *intra_osproc_rtw_hash_p = NULL;
+#else /* hashlib.h */
+    ptn_comm_tables_hash_t *parent_to_nested_hash_p = ptnLookupHashCreate();
+    Nested_comm_rtwmap_hash_t *internode_rtw_hash_p = RTWhashCreate(0);
+    Nested_comm_rtwmap_hash_t *intranode_rtw_hash_p = RTWhashCreate(0);
+    Nested_comm_rtwmap_hash_t *intra_osproc_rtw_hash_p = RTWhashCreate(0);
+#endif
 
     /* Scan through the list of processes in comm and add one
        process from each node to the list of "external" processes.  We
@@ -263,22 +271,17 @@ int MPIU_Nested_maps_for_communicators(MPID_Comm *comm)
 
     for (i = 0; i < comm->totprocs; ++i)
     {
-        Parent_to_Nested_comm_tables_coshared_hash_t *ptn_tables_hash_entry = MPIU_Malloc(sizeof(struct Parent_to_Nested_comm_tables_coshared_hash));
-        MPIU_Assert(ptn_tables_hash_entry);
-        ptn_tables_hash_entry->parent_comm_rank = i; /* key */
+        Parent_to_Nested_comm_tables_t parent_to_nested_entry;
+        parentcomm_rank = i;
         pid = -1;
         MPIDI_Comm_get_pid_worldrank(comm, i, &pid, &worldrank);
 
         if (mypid == pid) {
-            ptn_tables_hash_entry->parent_to_nested.intra_osproc_fg_rank = fg_local_size;
-            Nested_comm_rtwmap_hash_t *intra_osproc_rtw_hash_entry = MPIU_Malloc(sizeof(struct Nested_comm_rtwmap_hash));
-            MPIU_Assert(intra_osproc_rtw_hash_entry);
-            intra_osproc_rtw_hash_entry->rank = fg_local_size;
-            intra_osproc_rtw_hash_entry->worldrank = worldrank;
-            HASH_ADD_INT( intra_osproc_rtw_hash_p, rank, intra_osproc_rtw_hash_entry);
+            parent_to_nested_entry.intra_osproc_fg_rank = fg_local_size;
+            RTW_HASH_INSERT(intra_osproc_rtw_hash_p, fg_local_size, worldrank);
             ++fg_local_size;
         } else {
-            ptn_tables_hash_entry->parent_to_nested.intra_osproc_fg_rank = -1;
+            parent_to_nested_entry.intra_osproc_fg_rank = -1;
         }
 
         mpi_errno = MPID_Get_node_id(comm, pid, &node_id);
@@ -293,46 +296,32 @@ int MPIU_Nested_maps_for_communicators(MPID_Comm *comm)
         /* build list of external processes */
         if (nodes[node_id] == -1)
         {
-            ptn_tables_hash_entry->parent_to_nested.internode_comm_external_rank = external_size;
-
-            Nested_comm_rtwmap_hash_t *internode_rtw_hash_entry = MPIU_Malloc(sizeof(struct Nested_comm_rtwmap_hash));
-            MPIU_Assert(NULL != internode_rtw_hash_entry);
-            internode_rtw_hash_entry->rank = external_size;
-            internode_rtw_hash_entry->worldrank = worldrank;
-            HASH_ADD_INT( internode_rtw_hash_p, rank, internode_rtw_hash_entry);
-
+            parent_to_nested_entry.internode_comm_external_rank = external_size;
+            RTW_HASH_INSERT(internode_rtw_hash_p, external_size, worldrank);
             nodes[node_id] = external_size;
             ++external_size;
         } else {
-            ptn_tables_hash_entry->parent_to_nested.internode_comm_external_rank = -1;
+            parent_to_nested_entry.internode_comm_external_rank = -1;
         }
-        ptn_tables_hash_entry->parent_to_nested.internode_comm_root = nodes[node_id];
+        parent_to_nested_entry.internode_comm_root = nodes[node_id];
 
         /* build list of local processes */
         if (node_id == my_node_id)
         {
             if ( -1 == osprocs[pid] ) {
-
-                ptn_tables_hash_entry->parent_to_nested.intranode_comm_local_rank = local_size;
-
-                Nested_comm_rtwmap_hash_t *intranode_rtw_hash_entry = MPIU_Malloc(sizeof(struct Nested_comm_rtwmap_hash));
-                MPIU_Assert(intranode_rtw_hash_entry);
-                intranode_rtw_hash_entry->rank = local_size;
-                intranode_rtw_hash_entry->worldrank = worldrank;
-                HASH_ADD_INT( intranode_rtw_hash_p, rank, intranode_rtw_hash_entry);
-
+                parent_to_nested_entry.intranode_comm_local_rank = local_size;
+                RTW_HASH_INSERT( intranode_rtw_hash_p, local_size, worldrank);
                 osprocs[pid] = local_size;
                 ++local_size;
             } else {
-                ptn_tables_hash_entry->parent_to_nested.intranode_comm_local_rank = -1; /* this rank is not part of intranode comm */
+                parent_to_nested_entry.intranode_comm_local_rank = -1; /* this rank is not part of intranode comm */
             }
         } else {
-            ptn_tables_hash_entry->parent_to_nested.intranode_comm_local_rank = -1; /* this rank is not part of intranode comm */
+            parent_to_nested_entry.intranode_comm_local_rank = -1; /* this rank is not part of intranode comm */
         }
 
-        ptn_tables_hash_entry->parent_to_nested.intranode_comm_root = osprocs[pid]; /* leader of colocated processes inside my OS-process and -1 (as per initialization of osprocs[]) if this process is not colocated to me */
-
-        HASH_ADD_INT( parent_to_nested_hash_p, parent_comm_rank, ptn_tables_hash_entry);
+        parent_to_nested_entry.intranode_comm_root = osprocs[pid]; /* leader of colocated processes inside my OS-process and -1 (as per initialization of osprocs[]) if this process is not colocated to me */
+        PTN_HASH_INSERT( parent_to_nested_hash_p, parentcomm_rank, parent_to_nested_entry);
     }
 
     comm->co_shared_vars->nested_uniform_vars.fg_local_size = fg_local_size;
@@ -349,7 +338,7 @@ int MPIU_Nested_maps_for_communicators(MPID_Comm *comm)
       for (i = 0; i < comm->totprocs; ++i)
       {
           Parent_to_Nested_comm_tables_coshared_hash_t *ptn_tables_hash_entry_stored = NULL;
-          HASH_FIND_INT( parent_to_nested_hash_p, &i, ptn_tables_hash_entry_stored );
+          PTN_HASH_LOOKUP( parent_to_nested_hash_p, &i, ptn_tables_hash_entry_stored );
           MPIU_Assert( ptn_tables_hash_entry_stored != NULL);
 
           printf("my_fgrank=%d:parent_comm_rank=%d:\n\tfg_local_size=%d\n\tintra_osproc_fg_rank=%d\n", comm->rank, i, fg_local_size, ptn_tables_hash_entry_stored->parent_to_nested.intra_osproc_fg_rank);
@@ -427,7 +416,7 @@ int MPIU_Get_internode_rank(MPID_Comm *comm_ptr, int r)
     MPIU_Assert(comm_ptr->co_shared_vars != NULL);
     MPIU_Assert(comm_ptr->co_shared_vars->ptn_hash != NULL);
 
-    HASH_FIND_INT(comm_ptr->co_shared_vars->ptn_hash, &r, ptn_tables_hash_entry_stored );
+    PTN_HASH_LOOKUP(comm_ptr->co_shared_vars->ptn_hash, r, ptn_tables_hash_entry_stored );
     MPIU_Assert(ptn_tables_hash_entry_stored != NULL);
     return (ptn_tables_hash_entry_stored->parent_to_nested.internode_comm_root);
 
@@ -464,7 +453,7 @@ int MPIU_Get_intranode_rank(MPID_Comm *comm_ptr, int r)
     MPIU_Assert(comm_ptr->co_shared_vars != NULL);
     MPIU_Assert(comm_ptr->co_shared_vars->ptn_hash != NULL);
 
-    HASH_FIND_INT(comm_ptr->co_shared_vars->ptn_hash, &r, ptn_tables_hash_entry_stored );
+    PTN_HASH_LOOKUP(comm_ptr->co_shared_vars->ptn_hash, r, ptn_tables_hash_entry_stored );
     MPIU_Assert(ptn_tables_hash_entry_stored != NULL);
     return (ptn_tables_hash_entry_stored->parent_to_nested.intranode_comm_local_rank);
 

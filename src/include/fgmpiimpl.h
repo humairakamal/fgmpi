@@ -11,7 +11,6 @@
 #include "threadlib_internal.h"
 #include "hashlib.h"
 #include "hashmap.h"
-#include "mpiu_uthash.h"
 
 typedef void* OPAQUE;
 
@@ -112,47 +111,6 @@ typedef struct coproclet_barrier_vars {
     volatile int coproclet_counter;
 } coproclet_barrier_vars_t;
 
-typedef struct Parent_to_Nested_comm_tables {
-    /*** internode ***/
-    int internode_comm_root; /* root of node (rank in roots_comm) */
-    int internode_comm_external_rank; /* -1 if this process is not in node_roots_comm */
-
-    /*** intranode ***/
-    int intranode_comm_root; /* root of os-process (rank in node_comm) */
-    int intranode_comm_local_rank; /* -1 if this process is not in node_comm */
-
-    /*** intra os-process ***/
-    int intra_osproc_fg_rank; /* intra os-process fg rank. -1 if this process is not colocated */
-} Parent_to_Nested_comm_tables_t;
-
-typedef struct Nested_comm_rtwmap_hash {
-    int rank;  /* key */
-    int worldrank;
-    UT_hash_handle hh;
-} Nested_comm_rtwmap_hash_t;
-
-typedef struct Nestedcomm_uniform_vars {
-    /*** internode ***/
-    int external_size;
-    Nested_comm_rtwmap_hash_t *internode_rtw_hash;
-
-    /*** intranode ***/
-    int local_size;
-    Nested_comm_rtwmap_hash_t *intranode_rtw_hash;
-
-    /*** intra os-process ***/
-    int fg_local_size;
-    Nested_comm_rtwmap_hash_t *intra_osproc_rtw_hash;
-} Nestedcomm_uniform_vars_t;
-
-/* Shared hash for inter and intra node comm hierarchy */
-typedef struct Parent_to_Nested_comm_tables_coshared_hash {
-    int parent_comm_rank;  /* key */
-    Parent_to_Nested_comm_tables_t parent_to_nested;
-    UT_hash_handle hh;
-} Parent_to_Nested_comm_tables_coshared_hash_t;
-
-
 
 typedef struct Coproclet_shared_vars {
     int *ref_withinComm_countptr; /* HK: This is for variables shared amongst collocated
@@ -162,7 +120,8 @@ typedef struct Coproclet_shared_vars {
                           Making this a pointer so that it can be shared in MPIR_Comm_copy() */
     RTWmap *rtw_map;      /* HK: This rtw_map provides mapping from local fgrank in this
                              communicator to the MPI_COMM_WORLD rank (referred to as worldrank). */
-    Parent_to_Nested_comm_tables_coshared_hash_t *ptn_hash;
+    ptn_comm_tables_hash_t *ptn_hash;
+
     Nestedcomm_uniform_vars_t nested_uniform_vars;
 
     coproclet_barrier_vars_t *co_barrier_vars; /* Shared SM barrier variable among co-proclets of same group.
@@ -249,4 +208,4 @@ extern Coproclet_shared_vars_t * world_co_shared_vars;
 
 #endif /* #if defined(FINEGRAIN_MPI) */
 
-#endif /* FGMPIIMPL_INCLUDED */
+#endif /* FGMPIIMPL_H_INCLUDED */
