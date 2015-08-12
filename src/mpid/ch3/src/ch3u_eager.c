@@ -16,7 +16,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_SendNoncontig_iov
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 /* MPIDI_CH3_SendNoncontig_iov - Sends a message by loading an
    IOV and calling iSendv.  The caller must initialize
    sreq->dev.segment as well as segment_first and segment_size. */
@@ -83,7 +83,7 @@ int MPIDI_CH3_SendNoncontig_iov( MPIDI_VC_t *vc, MPID_Request *sreq,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_EagerNoncontigSend
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 /* MPIDI_CH3_EagerNoncontigSend - Eagerly send noncontiguous data */
 int MPIDI_CH3_EagerNoncontigSend( MPID_Request **sreq_p, 
 				  MPIDI_CH3_Pkt_type_t reqtype, 
@@ -160,7 +160,7 @@ int MPIDI_CH3_EagerNoncontigSend( MPID_Request **sreq_p,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_EagerContigSend
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3_EagerContigSend( MPID_Request **sreq_p, 
 			       MPIDI_CH3_Pkt_type_t reqtype, 
 			       const void * buf, MPIDI_msg_sz_t data_sz, int rank, 
@@ -237,7 +237,7 @@ int MPIDI_CH3_EagerContigSend( MPID_Request **sreq_p,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_EagerContigShortSend
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3_EagerContigShortSend( MPID_Request **sreq_p, 
 				    MPIDI_CH3_Pkt_type_t reqtype, 
 				    const void * buf, MPIDI_msg_sz_t data_sz, int rank, 
@@ -319,7 +319,7 @@ int MPIDI_CH3_EagerContigShortSend( MPID_Request **sreq_p,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_PktHandler_EagerShortSend
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3_PktHandler_EagerShortSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, 
 					 MPIDI_msg_sz_t *buflen, MPID_Request **rreqp )
 {
@@ -531,7 +531,10 @@ int MPIDI_CH3_PktHandler_EagerShortSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
      * all rreq field modifications must be complete at this point.  This macro
      * also kicks the progress engine, which was previously done here via
      * MPIDI_CH3_Progress_signal_completion(). */
-    MPIDI_CH3U_Request_complete(rreq);
+    mpi_errno = MPID_Request_complete(rreq);
+    if (mpi_errno != MPI_SUCCESS) {
+        MPIU_ERR_POP(mpi_errno);
+    }
 
  fn_fail:
     /* MT note: it may be possible to narrow this CS after careful
@@ -553,7 +556,7 @@ int MPIDI_CH3_PktHandler_EagerShortSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_EagerContigIsend
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3_EagerContigIsend( MPID_Request **sreq_p, 
 				MPIDI_CH3_Pkt_type_t reqtype, 
 				const void * buf, MPIDI_msg_sz_t data_sz, int rank, 
@@ -643,7 +646,7 @@ int MPIDI_CH3_EagerContigIsend( MPID_Request **sreq_p,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_PktHandler_EagerSend
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, 
 				    MPIDI_msg_sz_t *buflen, MPID_Request **rreqp )
 {
@@ -686,7 +689,10 @@ int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     if (rreq->dev.recv_data_sz == 0) {
         /* return the number of bytes processed in this function */
         *buflen = sizeof(MPIDI_CH3_Pkt_t);
-	MPIDI_CH3U_Request_complete(rreq);
+        mpi_errno = MPID_Request_complete(rreq);
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIU_ERR_POP(mpi_errno);
+        }
 	*rreqp = NULL;
     }
     else {
@@ -709,7 +715,10 @@ int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 
         if (complete) 
         {
-            MPIDI_CH3U_Request_complete(rreq);
+            mpi_errno = MPID_Request_complete(rreq);
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIU_ERR_POP(mpi_errno);
+            }
             *rreqp = NULL;
         }
         else
@@ -727,7 +736,7 @@ int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_PktHandler_ReadySend
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3_PktHandler_ReadySend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 				    MPIDI_msg_sz_t *buflen, MPID_Request **rreqp )
 {
@@ -771,7 +780,10 @@ int MPIDI_CH3_PktHandler_ReadySend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	if (rreq->dev.recv_data_sz == 0) {
             /* return the number of bytes processed in this function */
             *buflen = sizeof(MPIDI_CH3_Pkt_t) + data_len;;
-	    MPIDI_CH3U_Request_complete(rreq);
+            mpi_errno = MPID_Request_complete(rreq);
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIU_ERR_POP(mpi_errno);
+            }
 	    *rreqp = NULL;
 	}
 	else {
@@ -789,7 +801,10 @@ int MPIDI_CH3_PktHandler_ReadySend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 
             if (complete) 
             {
-                MPIDI_CH3U_Request_complete(rreq);
+                mpi_errno = MPID_Request_complete(rreq);
+                if (mpi_errno != MPI_SUCCESS) {
+                    MPIU_ERR_POP(mpi_errno);
+                }
                 *rreqp = NULL;
             }
             else
@@ -831,7 +846,10 @@ int MPIDI_CH3_PktHandler_ReadySend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	else
 	{
 	    /* mark data transfer as complete and decrement CC */
-	    MPIDI_CH3U_Request_complete(rreq);
+            mpi_errno = MPID_Request_complete(rreq);
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIU_ERR_POP(mpi_errno);
+            }
 	    *rreqp = NULL;
 	}
         /* we didn't process anything but the header in this case */

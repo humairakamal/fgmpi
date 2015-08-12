@@ -62,7 +62,7 @@ baseattrwin 1
 fkeyvalwin 1
 selfrma 1
 mixedsync 4
-epochtest 4
+epochtest 4 timeLimit=300
 locknull 2
 rmanull 2
 rmazero 2
@@ -164,4 +164,4 @@ cas_flush_get 3 mpiversion=3.0
 ## specified by the standard and might not be true.  Commenting this
 ## out till be find a better way to test the original problem with
 ## MPI_Test.
-# nb_test 2 mpiversion=3.0 xfail=ticket1910
+# nb_test 2 mpiversion=3.0

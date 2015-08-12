@@ -218,7 +218,7 @@ int MPIC_Wait(MPID_Request * request_ptr, mpir_errflag_t *errflag)
     if (!MPID_Request_is_complete(request_ptr))
     {
 #if defined(FINEGRAIN_MPI) /* FG:TODO IMPORTANT Doublecheck */
-        MPIR_Rank_t dest = request_ptr->dev.match.parts.rank;
+        MPIDI_Rank_t dest = request_ptr->dev.match.parts.rank;
         MPID_Comm *comm_ptr = request_ptr->comm;
         if ( Is_within_same_HWP(dest, comm_ptr, NULL) )
         {

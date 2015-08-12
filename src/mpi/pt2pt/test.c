@@ -47,7 +47,7 @@ int MPIR_Test_impl(MPI_Request *request, int *flag, MPI_Status *status)
     MPID_Request_get_ptr( *request, request_ptr );
 
 #if defined(FINEGRAIN_MPI)
-    MPIR_Rank_t dest = request_ptr->dev.match.parts.rank;
+    MPIDI_Rank_t dest = request_ptr->dev.match.parts.rank;
     MPID_Comm *comm_ptr = request_ptr->comm;
     if ( !MPID_Request_is_complete(request_ptr) ) {
         if ( Is_within_same_HWP(dest, comm_ptr, NULL) )

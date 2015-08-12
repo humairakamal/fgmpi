@@ -53,7 +53,7 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
     int optimize = ignoring_statuses; /* see NOTE-O1 */
     MPIU_CHKLMEM_DECL(1);
 #if defined(FINEGRAIN_MPI)
-    MPIR_Rank_t dest  = -1;
+    MPIDI_Rank_t dest  = -1;
     MPID_Comm *comm_ptr = NULL;
     int is_colocated = 0;
     int num_of_colocated_yields = 0;

@@ -41,11 +41,10 @@ static inline int MPID_nem_ofi_sync_recv_callback(cq_tagged_entry_t * wc ATTRIBU
     BEGIN_FUNC(FCNAME);
 
     MPIDI_CH3U_Recvq_DP(REQ_OFI(rreq)->parent);
-    MPIDI_CH3U_Request_complete(REQ_OFI(rreq)->parent);
-    MPIDI_CH3U_Request_complete(rreq);
+    MPIDI_CH3I_NM_OFI_RC(MPID_Request_complete(REQ_OFI(rreq)->parent));
+    MPIDI_CH3I_NM_OFI_RC(MPID_Request_complete(rreq));
 
-    END_FUNC(FCNAME);
-    return mpi_errno;
+    END_FUNC_RC(FCNAME);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -61,9 +60,8 @@ static inline int MPID_nem_ofi_send_callback(cq_tagged_entry_t * wc ATTRIBUTE((u
     BEGIN_FUNC(FCNAME);
     if (REQ_OFI(sreq)->pack_buffer)
         MPIU_Free(REQ_OFI(sreq)->pack_buffer);
-    MPIDI_CH3U_Request_complete(sreq);
-    END_FUNC(FCNAME);
-    return mpi_errno;
+    MPIDI_CH3I_NM_OFI_RC(MPID_Request_complete(sreq));
+    END_FUNC_RC(FCNAME);
 }
 
 #define DO_CANCEL(req)                                  \

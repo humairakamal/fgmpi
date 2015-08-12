@@ -124,6 +124,11 @@ int MPIR_Comm_init(MPID_Comm *comm_p)
     comm_p->osproc_colocated_comm = NULL;
 #endif
 
+    /* initialize local and remote sizes to -1 to allow other parts of
+     * the stack to detect errors more easily */
+    comm_p->local_size = -1;
+    comm_p->remote_size = -1;
+
     /* Clear many items (empty means to use the default; some of these
        may be overridden within the upper-level communicator initialization) */
     comm_p->errhandler   = NULL;
@@ -146,6 +151,13 @@ int MPIR_Comm_init(MPID_Comm *comm_p)
 
     /* Initialize the revoked flag as false */
     comm_p->revoked = 0;
+
+    comm_p->idup_count = 0;
+    comm_p->idup_curr_seqnum = 0;
+    comm_p->idup_next_seqnum = 0;
+
+    comm_p->mapper_head = NULL;
+    comm_p->mapper_tail = NULL;
 
     /* Fields not set include context_id, remote and local size, and
        kind, since different communicator construction routines need
@@ -218,11 +230,6 @@ int MPIR_Setup_intercomm_localcomm( MPID_Comm *intercomm_ptr )
 
     MPIU_DBG_MSG_FMT(COMM,TYPICAL,(MPIU_DBG_FDEST, "setup_intercomm_localcomm ic=%p ic->context_id=%d ic->recvcontext_id=%d lc->recvcontext_id=%d", intercomm_ptr, intercomm_ptr->context_id, intercomm_ptr->recvcontext_id, localcomm_ptr->recvcontext_id));
 
-    /* Duplicate the VCRT references */
-    MPID_VCRT_Add_ref( intercomm_ptr->local_vcrt );
-    localcomm_ptr->vcrt = intercomm_ptr->local_vcrt;
-    localcomm_ptr->vcr  = intercomm_ptr->local_vcr;
-
     /* Save the kind of the communicator */
     localcomm_ptr->comm_kind   = MPID_INTRACOMM;
 
@@ -230,6 +237,8 @@ int MPIR_Setup_intercomm_localcomm( MPID_Comm *intercomm_ptr )
     localcomm_ptr->remote_size = intercomm_ptr->local_size;
     localcomm_ptr->local_size  = intercomm_ptr->local_size;
     localcomm_ptr->rank        = intercomm_ptr->rank;
+
+    MPIR_Comm_map_dup(localcomm_ptr, intercomm_ptr, MPIR_COMM_MAP_DIR_L2L);
 
     /* TODO More advanced version: if the group is available, dup it by 
        increasing the reference count instead of recreating it later */
@@ -444,6 +453,131 @@ fn_fail:
     goto fn_exit;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPIR_Comm_map_irregular
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Comm_map_irregular(MPID_Comm *newcomm, MPID_Comm *src_comm,
+                                int *src_mapping, int src_mapping_size,
+                                MPIR_Comm_map_dir_t dir,
+                                MPIR_Comm_map_t **map)
+{
+#if defined(FINEGRAIN_MPI) /* FG: Temporary bypass */
+    return (MPI_SUCCESS);
+#endif
+    int mpi_errno = MPI_SUCCESS;
+    MPIR_Comm_map_t *mapper;
+    MPIU_CHKPMEM_DECL(3);
+    MPID_MPI_STATE_DECL(MPID_STATE_MPIR_COMM_MAP_IRREGULAR);
+
+    MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_COMM_MAP_IRREGULAR);
+
+    MPIU_CHKPMEM_MALLOC(mapper, MPIR_Comm_map_t *,
+                        sizeof(MPIR_Comm_map_t), mpi_errno,
+                        "mapper");
+
+    mapper->type = MPIR_COMM_MAP_IRREGULAR;
+    mapper->src_comm = src_comm;
+    mapper->dir = dir;
+    mapper->src_mapping_size = src_mapping_size;
+
+    if (src_mapping) {
+        mapper->src_mapping = src_mapping;
+        mapper->free_mapping = 0;
+    }
+    else {
+        MPIU_CHKPMEM_MALLOC(mapper->src_mapping, int *,
+                            src_mapping_size * sizeof(int), mpi_errno,
+                            "mapper mapping");
+        mapper->free_mapping = 1;
+    }
+
+    mapper->next = NULL;
+
+    MPL_LL_APPEND(newcomm->mapper_head, newcomm->mapper_tail, mapper);
+
+    if (map)
+        *map = mapper;
+
+fn_exit:
+    MPIU_CHKPMEM_COMMIT();
+    MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_COMM_MAP_IRREGULAR);
+    return mpi_errno;
+fn_fail:
+    MPIU_CHKPMEM_REAP();
+    goto fn_exit;
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Comm_map_dup
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Comm_map_dup(MPID_Comm *newcomm, MPID_Comm *src_comm,
+                          MPIR_Comm_map_dir_t dir)
+{
+#if defined(FINEGRAIN_MPI) /* FG: Temporary bypass */
+    return (MPI_SUCCESS);
+#endif
+    int mpi_errno = MPI_SUCCESS;
+    MPIR_Comm_map_t *mapper;
+    MPIU_CHKPMEM_DECL(1);
+    MPID_MPI_STATE_DECL(MPID_STATE_MPIR_COMM_MAP_DUP);
+
+    MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_COMM_MAP_DUP);
+
+    MPIU_CHKPMEM_MALLOC(mapper, MPIR_Comm_map_t *,
+                        sizeof(MPIR_Comm_map_t), mpi_errno,
+                        "mapper");
+
+    mapper->type = MPIR_COMM_MAP_DUP;
+    mapper->src_comm = src_comm;
+    mapper->dir = dir;
+
+    mapper->next = NULL;
+
+    MPL_LL_APPEND(newcomm->mapper_head, newcomm->mapper_tail, mapper);
+
+fn_exit:
+    MPIU_CHKPMEM_COMMIT();
+    MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_COMM_MAP_DUP);
+    return mpi_errno;
+fn_fail:
+    MPIU_CHKPMEM_REAP();
+    goto fn_exit;
+}
+
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Comm_map_free
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Comm_map_free(MPID_Comm *comm)
+{
+#if defined(FINEGRAIN_MPI) /* FG: Temporary bypass */
+    return (MPI_SUCCESS);
+#endif
+    int mpi_errno = MPI_SUCCESS;
+    MPIR_Comm_map_t *mapper, *tmp;
+    MPID_MPI_STATE_DECL(MPID_STATE_MPIR_COMM_MAP_FREE);
+
+    MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_COMM_MAP_FREE);
+
+    for (mapper = comm->mapper_head; mapper;) {
+        tmp = mapper->next;
+        if (mapper->type == MPIR_COMM_MAP_IRREGULAR &&
+            mapper->free_mapping)
+            MPIU_Free(mapper->src_mapping);
+        MPIU_Free(mapper);
+        mapper = tmp;
+    }
+    comm->mapper_head = NULL;
+
+fn_exit:
+    MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_COMM_MAP_FREE);
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
+}
 
 /* Provides a hook for the top level functions to perform some manipulation on a
    communicator just before it is given to the application level.
@@ -457,7 +591,6 @@ fn_fail:
 int MPIR_Comm_commit(MPID_Comm *comm)
 {
     int mpi_errno = MPI_SUCCESS;
-    int i;
     int num_local = -1, num_external = -1;
     int local_rank = -1, external_rank = -1;
 #if defined(FINEGRAIN_MPI)
@@ -477,6 +610,15 @@ int MPIR_Comm_commit(MPID_Comm *comm)
        our hierarchy of communicators */
     MPIU_Assert(comm->node_comm == NULL);
     MPIU_Assert(comm->node_roots_comm == NULL);
+
+    mpi_errno = set_collops(comm);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    /* Notify device of communicator creation */
+    mpi_errno = MPID_Dev_comm_create_hook(comm);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    MPIR_Comm_map_free(comm); /* FG: bypass inside */
 
     if (comm->comm_kind == MPID_INTRACOMM) {
 #if defined(FINEGRAIN_MPI)
@@ -595,8 +737,7 @@ int MPIR_Comm_commit(MPID_Comm *comm)
             comm->node_comm->totprocs	= num_local;
             comm->node_comm->local_size  = comm->local_size;
             comm->node_comm->remote_size = comm->local_size;
-            comm->node_comm->vcrt           = vcrt_world;
-            comm->node_comm->vcr            = vcr_world;
+            comm->node_comm->dev.vcrt    = vcrt_world;
             comm->node_comm->co_shared_vars = (Coproclet_shared_vars_t *)MPIU_Calloc(1, sizeof(Coproclet_shared_vars_t));
             MPIU_ERR_CHKANDJUMP(!(comm->node_comm->co_shared_vars), mpi_errno, MPI_ERR_OTHER, "**nomem");
 
@@ -616,16 +757,10 @@ int MPIR_Comm_commit(MPID_Comm *comm)
             comm->node_comm->local_size  = num_local;
             comm->node_comm->remote_size = num_local;
 
-            MPID_VCRT_Create( num_local, &comm->node_comm->vcrt );
-            MPID_VCRT_Get_ptr( comm->node_comm->vcrt, &comm->node_comm->vcr );
-            for (i = 0; i < num_local; ++i) {
-                /* For rank i in the new communicator, find the corresponding
-                   rank in the input communicator */
-                MPID_VCR_Dup( comm->vcr[local_procs[i]], 
-                              &comm->node_comm->vcr[i] );
-            }
+            MPIR_Comm_map_irregular(comm->node_comm, comm, local_procs,
+                                    num_local, MPIR_COMM_MAP_DIR_L2L,
+                                    NULL);
 #endif
-
             mpi_errno = set_collops(comm->node_comm);
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
@@ -634,6 +769,8 @@ int MPIR_Comm_commit(MPID_Comm *comm)
 TODO Temporary bypass inside. */
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
             /* don't call MPIR_Comm_commit here */
+
+            MPIR_Comm_map_free(comm->node_comm); /* FG: bypass inside */
 #if defined(FINEGRAIN_MPI)
          }
 #endif
@@ -665,8 +802,7 @@ TODO Temporary bypass inside. */
             comm->node_roots_comm->totprocs	= num_external;
             comm->node_roots_comm->local_size  = comm->local_size;
             comm->node_roots_comm->remote_size = comm->local_size;
-            comm->node_roots_comm->vcrt           = vcrt_world;
-            comm->node_roots_comm->vcr            = vcr_world;
+            comm->node_roots_comm->dev.vcrt    = vcrt_world;
             comm->node_roots_comm->co_shared_vars = (Coproclet_shared_vars_t *)MPIU_Calloc(1, sizeof(Coproclet_shared_vars_t));
             MPIU_ERR_CHKANDJUMP(!(comm->node_roots_comm->co_shared_vars), mpi_errno, MPI_ERR_OTHER, "**nomem");
 
@@ -687,15 +823,11 @@ TODO Temporary bypass inside. */
             comm->node_roots_comm->local_size  = num_external;
             comm->node_roots_comm->remote_size = num_external;
 
-            MPID_VCRT_Create( num_external, &comm->node_roots_comm->vcrt );
-            MPID_VCRT_Get_ptr( comm->node_roots_comm->vcrt, &comm->node_roots_comm->vcr );
-            for (i = 0; i < num_external; ++i) {
-                /* For rank i in the new communicator, find the corresponding
-                   rank in the input communicator */
-                MPID_VCR_Dup( comm->vcr[external_procs[i]], 
-                              &comm->node_roots_comm->vcr[i] );
-            }
+            MPIR_Comm_map_irregular(comm->node_roots_comm, comm,
+                                    external_procs, num_external,
+                                    MPIR_COMM_MAP_DIR_L2L, NULL);
 #endif
+
             mpi_errno = set_collops(comm->node_roots_comm);
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
@@ -703,6 +835,8 @@ TODO Temporary bypass inside. */
             mpi_errno = MPID_Dev_comm_create_hook( comm->node_roots_comm );
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
             /* don't call MPIR_Comm_commit here */
+
+            MPIR_Comm_map_free(comm->node_roots_comm); /* FG: bypass inside */
         }
 #if defined(FINEGRAIN_MPI)
       }
@@ -725,8 +859,7 @@ TODO Temporary bypass inside. */
           comm->osproc_colocated_comm->totprocs	= num_fg_local;
           comm->osproc_colocated_comm->local_size  = comm->local_size;
           comm->osproc_colocated_comm->remote_size = comm->local_size;
-          comm->osproc_colocated_comm->vcrt = vcrt_world;
-          comm->osproc_colocated_comm->vcr  = vcr_world;
+          comm->osproc_colocated_comm->dev.vcrt = vcrt_world;
 
           stored = NULL;
           CL_LookupHashFind(contextLeader_hshtbl, comm->osproc_colocated_comm->context_id, comm_leader_worldrank, &stored);
@@ -777,17 +910,6 @@ TODO Temporary bypass inside. */
     }
 
 fn_exit:
-    if (!mpi_errno) {
-        /* catch all of the early-bail, non-error cases */
-
-        mpi_errno = set_collops(comm);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-
-        /* Notify device of communicator creation */
-        mpi_errno = MPID_Dev_comm_create_hook(comm);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-    }
-
 #if !defined(FINEGRAIN_MPI)
     if (external_procs != NULL)
         MPIU_Free(external_procs);
@@ -1098,61 +1220,63 @@ int MPIR_Get_contextid_sparse_group(MPID_Comm *comm_ptr, MPID_Group *group_ptr, 
     int mpi_errno = MPI_SUCCESS;
     uint32_t     local_mask[MPIR_MAX_CONTEXT_MASK];
     mpir_errflag_t errflag = MPIR_ERR_NONE;
+    int seqnum = 0;
+    if (comm_ptr->idup_count)
+        seqnum = comm_ptr->idup_curr_seqnum++;
     MPID_MPI_STATE_DECL(MPID_STATE_MPIR_GET_CONTEXTID);
 
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_GET_CONTEXTID);
 
     *context_id = 0;
 
-    if (initialize_context_mask) {
-	MPIR_Init_contextid();
-    }
+    while (*context_id == 0) {
+        if (initialize_context_mask) {
+            MPIR_Init_contextid();
+        }
 
-    if (ignore_id) {
-        /* We are not participating in the resulting communicator, so our
-         * context ID space doesn't matter.  Set the mask to "all available". */
-        memset(local_mask, 0xff, MPIR_MAX_CONTEXT_MASK * sizeof(int));
-    }
-    else {
-        MPIU_Memcpy( local_mask, context_mask, MPIR_MAX_CONTEXT_MASK * sizeof(int) );
-    }
+        if (ignore_id) {
+            /* We are not participating in the resulting communicator, so our
+             * context ID space doesn't matter.  Set the mask to "all available". */
+            memset(local_mask, 0xff, MPIR_MAX_CONTEXT_MASK * sizeof(int));
+        }
+        else {
+            MPIU_Memcpy(local_mask, context_mask, MPIR_MAX_CONTEXT_MASK * sizeof(int));
+        }
+        if (comm_ptr->idup_count && seqnum != comm_ptr->idup_next_seqnum) {
+            memset(local_mask, 0, MPIR_MAX_CONTEXT_MASK * sizeof(int));
+        }
 
-    /* Note that this is the unthreaded version */
-    /* Comm must be an intracommunicator */
-    if (group_ptr != NULL) {
-        int coll_tag = tag | MPIR_Process.tagged_coll_mask; /* Shift tag into the tagged coll space */
-        mpi_errno = MPIR_Allreduce_group( MPI_IN_PLACE, local_mask, MPIR_MAX_CONTEXT_MASK,
-                                            MPI_INT, MPI_BAND, comm_ptr, group_ptr, coll_tag, &errflag );
-    } else {
-        mpi_errno = MPIR_Allreduce_impl( MPI_IN_PLACE, local_mask, MPIR_MAX_CONTEXT_MASK,
-                                            MPI_INT, MPI_BAND, comm_ptr, &errflag );
-    }
+        /* Note that this is the unthreaded version */
+        /* Comm must be an intracommunicator */
+        if (group_ptr != NULL) {
+            int coll_tag = tag | MPIR_Process.tagged_coll_mask; /* Shift tag into the tagged coll space */
+            mpi_errno = MPIR_Allreduce_group(MPI_IN_PLACE, local_mask, MPIR_MAX_CONTEXT_MASK,
+                                             MPI_INT, MPI_BAND, comm_ptr, group_ptr, coll_tag, &errflag);
+        } else {
+            mpi_errno = MPIR_Allreduce_impl(MPI_IN_PLACE, local_mask, MPIR_MAX_CONTEXT_MASK,
+                                            MPI_INT, MPI_BAND, comm_ptr, &errflag);
+        }
 
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-    MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
 
-    if (ignore_id) {
-        *context_id = MPIR_Locate_context_bit(local_mask);
-        if (*context_id == 0) {
-            int nfree = -1;
-            int ntotal = -1;
-            MPIR_ContextMaskStats(&nfree, &ntotal);
-            MPIU_ERR_SETANDJUMP3(mpi_errno, MPI_ERR_OTHER,
-                                 "**toomanycomm", "**toomanycomm %d %d %d",
-                                 nfree, ntotal, ignore_id);
+        if (ignore_id) {
+            *context_id = MPIR_Locate_context_bit(local_mask);
+            if (*context_id == 0) {
+                int nfree = -1;
+                int ntotal = -1;
+                MPIR_ContextMaskStats(&nfree, &ntotal);
+                MPIU_ERR_SETANDJUMP3(mpi_errno, MPI_ERR_OTHER,
+                                     "**toomanycomm", "**toomanycomm %d %d %d",
+                                     nfree, ntotal, ignore_id);
+            }
+        }
+        else {
+            *context_id = MPIR_Find_and_allocate_context_id(local_mask);
         }
     }
-    else {
-        *context_id = MPIR_Find_and_allocate_context_id(local_mask);
-        if (*context_id == 0) {
-            int nfree = -1;
-            int ntotal = -1;
-            MPIR_ContextMaskStats(&nfree, &ntotal);
-            MPIU_ERR_SETANDJUMP3(mpi_errno, MPI_ERR_OTHER,
-                                 "**toomanycomm", "**toomanycomm %d %d %d",
-                                 nfree, ntotal, ignore_id);
-        }
-    }
+    if (seqnum > 0)
+        comm_ptr->idup_next_seqnum++;
 
 fn_exit:
     if (ignore_id)
@@ -1206,6 +1330,7 @@ int MPIR_Get_contextid_sparse_group(MPID_Comm *comm_ptr, MPID_Group *group_ptr, 
     int own_eager_mask = 0;
     mpir_errflag_t errflag = MPIR_ERR_NONE;
     int first_iter = 1;
+    int seqnum = 0;
     MPID_MPI_STATE_DECL(MPID_STATE_MPIR_GET_CONTEXTID);
 
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_GET_CONTEXTID);
@@ -1251,6 +1376,9 @@ int MPIR_Get_contextid_sparse_group(MPID_Comm *comm_ptr, MPID_Group *group_ptr, 
         else if (first_iter) {
             memset(local_mask, 0, MPIR_MAX_CONTEXT_MASK * sizeof(int));
             own_eager_mask = 0;
+            if(comm_ptr->idup_count)
+                 seqnum = comm_ptr->idup_curr_seqnum++;
+
 
             /* Attempt to reserve the eager mask segment */
             if (!eager_in_use && eager_nelem > 0) {
@@ -1272,7 +1400,8 @@ int MPIR_Get_contextid_sparse_group(MPID_Comm *comm_ptr, MPID_Group *group_ptr, 
                 lowestTag       = tag;
             }
 
-            if (mask_in_use || ! (comm_ptr->context_id == lowestContextId && tag == lowestTag)) {
+            if (mask_in_use || ! (comm_ptr->context_id == lowestContextId && tag == lowestTag) ||
+               (comm_ptr->idup_count && seqnum != comm_ptr->idup_next_seqnum))  {
                 memset(local_mask, 0, MPIR_MAX_CONTEXT_MASK * sizeof(int));
                 own_mask = 0;
                 MPIU_DBG_MSG_D(COMM, VERBOSE, "In in-use, set lowestContextId to %d", lowestContextId);
@@ -1361,6 +1490,7 @@ int MPIR_Get_contextid_sparse_group(MPID_Comm *comm_ptr, MPID_Group *group_ptr, 
                     lowestTag       = -1;
                     /* Else leave it alone; there is another thread waiting */
                 }
+                comm_ptr->idup_curr_seqnum++;
             }
             else {
                 /* else we did not find a context id. Give up the mask in case
@@ -1426,6 +1556,8 @@ int MPIR_Get_contextid_sparse_group(MPID_Comm *comm_ptr, MPID_Group *group_ptr, 
 
         first_iter = 0;
     }
+    if (seqnum > 0)
+        comm_ptr->idup_next_seqnum++;
 
 
 fn_exit:
@@ -1454,9 +1586,11 @@ struct gcn_state {
     int own_mask;
     int own_eager_mask;
     int first_iter;
+    int seqnum;
     MPID_Comm *comm_ptr;
     MPID_Comm *comm_ptr_inter;
     MPID_Sched_t s;
+    MPID_Comm *new_comm;
     MPID_Comm_kind_t gcn_cid_kind;
     uint32_t local_mask[MPIR_MAX_CONTEXT_MASK];
 };
@@ -1464,6 +1598,22 @@ struct gcn_state {
 static int sched_cb_gcn_copy_mask(MPID_Comm *comm, int tag, void *state);
 static int sched_cb_gcn_allocate_cid(MPID_Comm *comm, int tag, void *state);
 static int sched_cb_gcn_bcast(MPID_Comm *comm, int tag, void *state);
+#undef FUNCNAME
+#define FUNCNAME sched_cb_commit_comm
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+static int sched_cb_commit_comm(MPID_Comm *comm, int tag, void *state)
+{
+    int mpi_errno = MPI_SUCCESS;
+    struct gcn_state *st = state;
+
+    mpi_errno = MPIR_Comm_commit(st->new_comm);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+fn_fail:
+    return mpi_errno;
+
+}
 
 #undef FUNCNAME
 #define FUNCNAME sched_cb_gcn_bcast
@@ -1489,6 +1639,8 @@ static int sched_cb_gcn_bcast(MPID_Comm *comm, int tag, void *state)
         MPID_SCHED_BARRIER(st->s);
     }
 
+    mpi_errno = MPID_Sched_cb(&sched_cb_commit_comm, st, st->s);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     mpi_errno = MPID_Sched_cb(&MPIR_Sched_cb_free_buf, st, st->s);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
@@ -1552,6 +1704,10 @@ static int sched_cb_gcn_allocate_cid(MPID_Comm *comm, int tag, void *state)
         MPID_SCHED_BARRIER(st->s);
     } else {
         /* Successfully allocated a context id */
+
+        st->comm_ptr->idup_next_seqnum++;
+        st->comm_ptr->idup_count--;
+
         mpi_errno = MPID_Sched_cb(&sched_cb_gcn_bcast, st, st->s);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
         MPID_SCHED_BARRIER(st->s);
@@ -1586,11 +1742,22 @@ static int sched_cb_gcn_copy_mask(MPID_Comm *comm, int tag, void *state)
             st->own_eager_mask = 1;
         }
         st->first_iter = 0;
+
     } else {
         if (st->comm_ptr->context_id < lowestContextId) {
             lowestContextId = st->comm_ptr->context_id;
         }
-        if (mask_in_use || (st->comm_ptr->context_id != lowestContextId)) {
+
+        /* If one of the following conditions happens, set local_mask to zero
+         * so sched_cb_gcn_allocate_cid can not find a valid id and will retry:
+         * 1. mask is used by other threads;
+         * 2. the current MPI_COMM_IDUP operation does not has the lowestContextId;
+         * 3. for the case that multiple communicators duplicating from the
+         *    same communicator at the same time, the sequence number of the
+         *    current MPI_COMM_IDUP operation is not the smallest. */
+        if (mask_in_use || (st->comm_ptr->context_id != lowestContextId)
+                || (st->comm_ptr->idup_count > 1
+                    && st->seqnum != st->comm_ptr->idup_next_seqnum)) {
             memset(st->local_mask, 0, MPIR_MAX_CONTEXT_MASK * sizeof(int));
             st->own_mask = 0;
         } else {
@@ -1604,6 +1771,7 @@ static int sched_cb_gcn_copy_mask(MPID_Comm *comm, int tag, void *state)
             mask_in_use = 1;
             st->own_mask = 1;
         }
+
     }
 
     mpi_errno = st->comm_ptr->coll_fns->Iallreduce_sched(MPI_IN_PLACE, st->local_mask, MPIR_MAX_CONTEXT_MASK,
@@ -1660,7 +1828,7 @@ fn_fail:
 #define FUNCNAME sched_get_cid_nonblock
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int sched_get_cid_nonblock(MPID_Comm *comm_ptr, MPIR_Context_id_t *ctx0,
+static int sched_get_cid_nonblock(MPID_Comm *comm_ptr, MPID_Comm *newcomm,  MPIR_Context_id_t *ctx0,
         MPIR_Context_id_t *ctx1, MPID_Sched_t s, MPID_Comm_kind_t gcn_cid_kind)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -1686,6 +1854,13 @@ static int sched_get_cid_nonblock(MPID_Comm *comm_ptr, MPIR_Context_id_t *ctx0,
     *(st->ctx0) = 0;
     st->own_eager_mask = 0;
     st->first_iter = 1;
+    st->new_comm = newcomm;
+    /* idup_count > 1 means there are multiple communicators duplicating
+     * from the current communicator at the same time. And
+     * idup_curr_seqnum gives each duplication operation a priority */
+     st->comm_ptr->idup_count++;
+     st->seqnum = st->comm_ptr->idup_curr_seqnum++;
+     st->own_mask = 0;
     if (eager_nelem < 0) {
         /* Ensure that at least one word of deadlock-free context IDs is
            always set aside for the base protocol */
@@ -1728,7 +1903,7 @@ int MPIR_Get_contextid_nonblock(MPID_Comm *comm_ptr, MPID_Comm *newcommp, MPID_R
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     /* add some entries to it */
-    mpi_errno = sched_get_cid_nonblock(comm_ptr, &newcommp->context_id, &newcommp->recvcontext_id, s, MPID_INTRACOMM);
+    mpi_errno = sched_get_cid_nonblock(comm_ptr, newcommp,  &newcommp->context_id, &newcommp->recvcontext_id, s, MPID_INTRACOMM);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     /* finally, kick off the schedule and give the caller a request */
@@ -1772,7 +1947,7 @@ int MPIR_Get_intercomm_contextid_nonblock(MPID_Comm *comm_ptr, MPID_Comm *newcom
     /* add some entries to it */
 
     /* first get a context ID over the local comm */
-    mpi_errno = sched_get_cid_nonblock(comm_ptr, &newcommp->recvcontext_id, &newcommp->context_id, s, MPID_INTERCOMM);
+    mpi_errno = sched_get_cid_nonblock(comm_ptr, newcommp, &newcommp->recvcontext_id, &newcommp->context_id, s, MPID_INTERCOMM);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     /* finally, kick off the schedule and give the caller a request */
@@ -1960,6 +2135,7 @@ int MPIR_Comm_copy( MPID_Comm *comm_ptr, int size, MPID_Comm **outcomm_ptr )
     int mpi_errno = MPI_SUCCESS;
     MPIR_Context_id_t new_context_id, new_recvcontext_id;
     MPID_Comm *newcomm_ptr = NULL;
+    MPIR_Comm_map_t *map;
     MPID_MPI_STATE_DECL(MPID_STATE_MPIR_COMM_COPY);
 
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_COMM_COPY);
@@ -2016,32 +2192,34 @@ int MPIR_Comm_copy( MPID_Comm *comm_ptr, int size, MPID_Comm **outcomm_ptr )
 
     /* There are two cases here - size is the same as the old communicator,
        or it is smaller.  If the size is the same, we can just add a reference.
-       Otherwise, we need to create a new VCRT.  Note that this is the
+       Otherwise, we need to create a new network address mapping.  Note that this is the
        test that matches the test on rank above. */
     if (size == comm_ptr->local_size) {
-	/* Duplicate the VCRT references */
-	MPID_VCRT_Add_ref( comm_ptr->vcrt );
-	newcomm_ptr->vcrt = comm_ptr->vcrt;
-	newcomm_ptr->vcr  = comm_ptr->vcr;
+       /* Duplicate the network address mapping */
+       if (comm_ptr->comm_kind == MPID_INTRACOMM)
+           MPIR_Comm_map_dup(newcomm_ptr, comm_ptr, MPIR_COMM_MAP_DIR_L2L);
+       else
+           MPIR_Comm_map_dup(newcomm_ptr, comm_ptr, MPIR_COMM_MAP_DIR_R2R);
     }
     else {
-	int i;
-	/* The "remote" vcr gets the shortened vcrt */
-	MPID_VCRT_Create( size, &newcomm_ptr->vcrt );
-	MPID_VCRT_Get_ptr( newcomm_ptr->vcrt, 
-			   &newcomm_ptr->vcr );
-	for (i=0; i<size; i++) {
-	    /* For rank i in the new communicator, find the corresponding
-	       rank in the input communicator */
-	    MPID_VCR_Dup( comm_ptr->vcr[i], &newcomm_ptr->vcr[i] );
-	}
+       int i;
+
+       if (comm_ptr->comm_kind == MPID_INTRACOMM)
+           MPIR_Comm_map_irregular(newcomm_ptr, comm_ptr, NULL, size,
+                                   MPIR_COMM_MAP_DIR_L2L, &map);
+       else
+           MPIR_Comm_map_irregular(newcomm_ptr, comm_ptr, NULL, size,
+                                   MPIR_COMM_MAP_DIR_R2R, &map);
+       for (i = 0; i < size; i++) {
+           /* For rank i in the new communicator, find the corresponding
+              rank in the input communicator */
+           map->src_mapping[i] = i;
+       }
     }
 
-    /* If it is an intercomm, duplicate the local vcrt references */
+    /* If it is an intercomm, duplicate the local network address references */
     if (comm_ptr->comm_kind == MPID_INTERCOMM) {
-	MPID_VCRT_Add_ref( comm_ptr->local_vcrt );
-	newcomm_ptr->local_vcrt = comm_ptr->local_vcrt;
-	newcomm_ptr->local_vcr  = comm_ptr->local_vcr;
+       MPIR_Comm_map_dup(newcomm_ptr, comm_ptr, MPIR_COMM_MAP_DIR_L2L);
     }
 
     /* Set the sizes and ranks */
@@ -2117,16 +2295,14 @@ int MPIR_Comm_copy_data(MPID_Comm *comm_ptr, MPID_Comm **outcomm_ptr)
     newcomm_ptr->comm_kind  = comm_ptr->comm_kind;
     newcomm_ptr->local_comm = 0;
 
-    /* Duplicate the VCRT references */
-    MPID_VCRT_Add_ref(comm_ptr->vcrt);
-    newcomm_ptr->vcrt = comm_ptr->vcrt;
-    newcomm_ptr->vcr  = comm_ptr->vcr;
+    if (comm_ptr->comm_kind == MPID_INTRACOMM)
+        MPIR_Comm_map_dup(newcomm_ptr, comm_ptr, MPIR_COMM_MAP_DIR_L2L);
+    else
+        MPIR_Comm_map_dup(newcomm_ptr, comm_ptr, MPIR_COMM_MAP_DIR_R2R);
 
-    /* If it is an intercomm, duplicate the local vcrt references */
+    /* If it is an intercomm, duplicate the network address mapping */
     if (comm_ptr->comm_kind == MPID_INTERCOMM) {
-        MPID_VCRT_Add_ref(comm_ptr->local_vcrt);
-        newcomm_ptr->local_vcrt = comm_ptr->local_vcrt;
-        newcomm_ptr->local_vcr  = comm_ptr->local_vcr;
+        MPIR_Comm_map_dup(newcomm_ptr, comm_ptr, MPIR_COMM_MAP_DIR_L2L);
     }
 
     /* Set the sizes and ranks */
@@ -2145,9 +2321,6 @@ int MPIR_Comm_copy_data(MPID_Comm *comm_ptr, MPID_Comm **outcomm_ptr)
 
     /* FIXME do we want to copy coll_fns here? */
 
-    mpi_errno = MPIR_Comm_commit(newcomm_ptr);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-
     /* Start with no attributes on this communicator */
     newcomm_ptr->attributes = 0;
     *outcomm_ptr = newcomm_ptr;
@@ -2159,7 +2332,7 @@ fn_exit:
 }
 /* Common body between MPIR_Comm_release and MPIR_comm_release_always.  This
  * helper function frees the actual MPID_Comm structure and any associated
- * storage.  It also releases any refernces to other objects, such as the VCRT.
+ * storage.  It also releases any references to other objects.
  * This function should only be called when the communicator's reference count
  * has dropped to 0.
  *
@@ -2169,7 +2342,7 @@ fn_exit:
 #define FUNCNAME MPIR_Comm_delete_internal
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Comm_delete_internal(MPID_Comm * comm_ptr, int isDisconnect)
+int MPIR_Comm_delete_internal(MPID_Comm * comm_ptr)
 {
     int in_use;
     int mpi_errno = MPI_SUCCESS;
@@ -2221,20 +2394,8 @@ int MPIR_Comm_delete_internal(MPID_Comm * comm_ptr, int isDisconnect)
             comm_ptr->coll_fns = NULL;
         }
 
-        /* Free the VCRT */
-        mpi_errno = MPID_VCRT_Release(comm_ptr->vcrt, isDisconnect);
-        if (mpi_errno != MPI_SUCCESS) {
-            MPIU_ERR_POP(mpi_errno);
-        }
-        if (comm_ptr->comm_kind == MPID_INTERCOMM) {
-            mpi_errno = MPID_VCRT_Release(
-                                          comm_ptr->local_vcrt, isDisconnect);
-            if (mpi_errno != MPI_SUCCESS) {
-                MPIU_ERR_POP(mpi_errno);
-            }
-            if (comm_ptr->local_comm)
-                MPIR_Comm_release(comm_ptr->local_comm, isDisconnect );
-        }
+        if (comm_ptr->comm_kind == MPID_INTERCOMM && comm_ptr->local_comm)
+            MPIR_Comm_release(comm_ptr->local_comm);
 
         /* Free the local and remote groups, if they exist */
         if (comm_ptr->local_group)
@@ -2244,9 +2405,9 @@ int MPIR_Comm_delete_internal(MPID_Comm * comm_ptr, int isDisconnect)
 
         /* free the intra/inter-node communicators, if they exist */
         if (comm_ptr->node_comm)
-            MPIR_Comm_release(comm_ptr->node_comm, isDisconnect);
+            MPIR_Comm_release(comm_ptr->node_comm);
         if (comm_ptr->node_roots_comm)
-            MPIR_Comm_release(comm_ptr->node_roots_comm, isDisconnect);
+            MPIR_Comm_release(comm_ptr->node_roots_comm);
         if (comm_ptr->intranode_table != NULL)
             MPIU_Free(comm_ptr->intranode_table);
         if (comm_ptr->internode_table != NULL)
@@ -2306,7 +2467,7 @@ int MPIR_Comm_delete_internal(MPID_Comm * comm_ptr, int isDisconnect)
 #define FUNCNAME MPIR_Comm_release_always
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Comm_release_always(MPID_Comm *comm_ptr, int isDisconnect)
+int MPIR_Comm_release_always(MPID_Comm *comm_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
     int in_use;
@@ -2318,7 +2479,7 @@ int MPIR_Comm_release_always(MPID_Comm *comm_ptr, int isDisconnect)
      * predefined communicators, such as MPI_COMM_WORLD or MPI_COMM_SELF. */
     MPIU_Object_release_ref_always(comm_ptr, &in_use);
     if (!in_use) {
-        mpi_errno = MPIR_Comm_delete_internal(comm_ptr, isDisconnect);
+        mpi_errno = MPIR_Comm_delete_internal(comm_ptr);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
 

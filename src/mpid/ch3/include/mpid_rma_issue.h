@@ -19,7 +19,7 @@
 #undef FUNCNAME
 #define FUNCNAME immed_copy
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static inline int immed_copy(void *src, void *dest, size_t len)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -62,7 +62,7 @@ static inline int immed_copy(void *src, void *dest, size_t len)
 #undef FUNCNAME
 #define FUNCNAME fill_in_derived_dtp_info
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static inline void fill_in_derived_dtp_info(MPIDI_RMA_dtype_info * dtype_info, void *dataloop,
                                             MPID_Datatype * dtp)
 {
@@ -98,7 +98,7 @@ static inline void fill_in_derived_dtp_info(MPIDI_RMA_dtype_info * dtype_info, v
 #undef FUNCNAME
 #define FUNCNAME init_accum_ext_pkt
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int init_accum_ext_pkt(MPIDI_CH3_Pkt_flags_t flags,
                               MPID_Datatype * target_dtp, MPIDI_msg_sz_t stream_offset,
                               void **ext_hdr_ptr, MPI_Aint * ext_hdr_sz)
@@ -107,8 +107,8 @@ static int init_accum_ext_pkt(MPIDI_CH3_Pkt_flags_t flags,
     void *dataloop_ptr = NULL;
     int mpi_errno = MPI_SUCCESS;
 
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_INIT_ACCUM_EXT_PKT);
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_INIT_ACCUM_EXT_PKT);
+    MPIDI_STATE_DECL(MPID_STATE_INIT_ACCUM_EXT_PKT);
+    MPIDI_FUNC_ENTER(MPID_STATE_INIT_ACCUM_EXT_PKT);
 
     if ((flags & MPIDI_CH3_PKT_FLAG_RMA_STREAM) && target_dtp != NULL) {
         MPIDI_CH3_Ext_pkt_accum_stream_derived_t *_ext_hdr_ptr = NULL;
@@ -168,7 +168,7 @@ static int init_accum_ext_pkt(MPIDI_CH3_Pkt_flags_t flags,
     (*ext_hdr_sz) = _total_sz;
 
   fn_exit:
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_INIT_ACCUM_EXT_PKT);
+    MPIDI_FUNC_EXIT(MPID_STATE_INIT_ACCUM_EXT_PKT);
     return mpi_errno;
   fn_fail:
     if ((*ext_hdr_ptr))
@@ -181,15 +181,15 @@ static int init_accum_ext_pkt(MPIDI_CH3_Pkt_flags_t flags,
 #undef FUNCNAME
 #define FUNCNAME init_get_accum_ext_pkt
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int init_get_accum_ext_pkt(MPIDI_CH3_Pkt_flags_t flags,
                                   MPID_Datatype * target_dtp, MPIDI_msg_sz_t stream_offset,
                                   void **ext_hdr_ptr, MPI_Aint * ext_hdr_sz)
 {
     int mpi_errno = MPI_SUCCESS;
 
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_INIT_GET_ACCUM_EXT_PKT);
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_INIT_GET_ACCUM_EXT_PKT);
+    MPIDI_STATE_DECL(MPID_STATE_INIT_GET_ACCUM_EXT_PKT);
+    MPIDI_FUNC_ENTER(MPID_STATE_INIT_GET_ACCUM_EXT_PKT);
 
     /* Check if get_accum still reuses accum' extended packet header. */
     MPIU_Assert(sizeof(MPIDI_CH3_Ext_pkt_accum_stream_derived_t) ==
@@ -201,7 +201,7 @@ static int init_get_accum_ext_pkt(MPIDI_CH3_Pkt_flags_t flags,
 
     mpi_errno = init_accum_ext_pkt(flags, target_dtp, stream_offset, ext_hdr_ptr, ext_hdr_sz);
 
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_INIT_GET_ACCUM_EXT_PKT);
+    MPIDI_FUNC_EXIT(MPID_STATE_INIT_GET_ACCUM_EXT_PKT);
     return mpi_errno;
 }
 
@@ -214,7 +214,7 @@ static int init_get_accum_ext_pkt(MPIDI_CH3_Pkt_flags_t flags,
 #undef FUNCNAME
 #define FUNCNAME issue_from_origin_buffer
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int issue_from_origin_buffer(MPIDI_RMA_Op_t * rma_op, MPIDI_VC_t * vc,
                                     void *ext_hdr_ptr, MPI_Aint ext_hdr_sz,
                                     MPIDI_msg_sz_t stream_offset, MPIDI_msg_sz_t stream_size,
@@ -390,7 +390,7 @@ static int issue_from_origin_buffer(MPIDI_RMA_Op_t * rma_op, MPIDI_VC_t * vc,
 #undef FUNCNAME
 #define FUNCNAME issue_put_op
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int issue_put_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
                         MPIDI_RMA_Target_t * target_ptr, MPIDI_CH3_Pkt_flags_t flags)
 {
@@ -453,7 +453,6 @@ static int issue_put_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
         rma_op->reqs_size = 1;
 
         rma_op->single_req = curr_req;
-        win_ptr->active_req_cnt++;
     }
 
   fn_exit:
@@ -473,7 +472,7 @@ static int issue_put_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
 #undef FUNCNAME
 #define FUNCNAME issue_acc_op
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int issue_acc_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
                         MPIDI_RMA_Target_t * target_ptr, MPIDI_CH3_Pkt_flags_t flags)
 {
@@ -512,7 +511,6 @@ static int issue_acc_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
 
             rma_op->reqs_size = 1;
             rma_op->single_req = curr_req;
-            win_ptr->active_req_cnt++;
         }
         goto fn_exit;
     }
@@ -601,7 +599,6 @@ static int issue_acc_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
                 rma_op->single_req = curr_req;
             else
                 rma_op->multi_reqs[j] = curr_req;
-            win_ptr->active_req_cnt++;
         }
 
         rma_op->issued_stream_count++;
@@ -615,8 +612,10 @@ static int issue_acc_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
         }
     }   /* end of for loop */
 
-    /* Mark that all stream units have been issued */
-    rma_op->issued_stream_count = ALL_STREAM_UNITS_ISSUED;
+    if (rma_op->issued_stream_count == stream_unit_count) {
+        /* Mark that all stream units have been issued */
+        rma_op->issued_stream_count = ALL_STREAM_UNITS_ISSUED;
+    }
 
   fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_ISSUE_ACC_OP);
@@ -640,7 +639,7 @@ static int issue_acc_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
 #undef FUNCNAME
 #define FUNCNAME issue_get_acc_op
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int issue_get_acc_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
                             MPIDI_RMA_Target_t * target_ptr, MPIDI_CH3_Pkt_flags_t flags)
 {
@@ -695,17 +694,9 @@ static int issue_get_acc_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
 
         if (curr_req != NULL) {
             MPID_Request_release(curr_req);
-            curr_req = resp_req;
-        }
-        else {
-            curr_req = resp_req;
         }
 
-        /* For error checking */
-        resp_req = NULL;
-
-        rma_op->single_req = curr_req;
-        win_ptr->active_req_cnt++;
+        rma_op->single_req = resp_req;
 
         goto fn_exit;
     }
@@ -818,40 +809,14 @@ static int issue_get_acc_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
         if (mpi_errno != MPI_SUCCESS)
             MPIU_ERR_POP(mpi_errno);
 
-        /* This operation can generate two requests; one for inbound and one for
-         * outbound data. */
         if (curr_req != NULL) {
-            /* If we have both inbound and outbound requests (i.e. GACC
-             * operation), we need to ensure that the source buffer is
-             * available and that the response data has been received before
-             * informing the origin that this operation is complete.  Because
-             * the update needs to be done atomically at the target, they will
-             * not send back data until it has been received.  Therefore,
-             * completion of the response request implies that the send request
-             * has completed.
-             *
-             * Therefore: refs on the response request are set to two: one is
-             * held by the progress engine and the other by the RMA op
-             * completion code.  Refs on the outbound request are set to one;
-             * it will be completed by the progress engine.
-             */
-
             MPID_Request_release(curr_req);
-            curr_req = resp_req;
         }
-        else {
-            curr_req = resp_req;
-        }
-
-        /* For error checking */
-        resp_req = NULL;
 
         if (rma_op->reqs_size == 1)
-            rma_op->single_req = curr_req;
+            rma_op->single_req = resp_req;
         else
-            rma_op->multi_reqs[j] = curr_req;
-
-        win_ptr->active_req_cnt++;
+            rma_op->multi_reqs[j] = resp_req;
 
         rma_op->issued_stream_count++;
 
@@ -864,8 +829,10 @@ static int issue_get_acc_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
         }
     }   /* end of for loop */
 
-    /* Mark that all stream units have been issued */
-    rma_op->issued_stream_count = ALL_STREAM_UNITS_ISSUED;
+    if (rma_op->issued_stream_count == stream_unit_count) {
+        /* Mark that all stream units have been issued */
+        rma_op->issued_stream_count = ALL_STREAM_UNITS_ISSUED;
+    }
 
   fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_ISSUE_GET_ACC_OP);
@@ -873,13 +840,22 @@ static int issue_get_acc_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
     /* --BEGIN ERROR HANDLING-- */
   fn_fail:
     if (rma_op->reqs_size == 1) {
-        MPIDI_CH3_Request_destroy(rma_op->single_req);
+        /* error case: drop both our reference to the request and the
+         * progress engine's reference to it, since the progress
+         * engine didn't get a chance to see it yet. */
+        MPID_Request_release(rma_op->single_req);
+        MPID_Request_release(rma_op->single_req);
         rma_op->single_req = NULL;
     }
     else if (rma_op->reqs_size > 1) {
         for (i = 0; i < rma_op->reqs_size; i++) {
             if (rma_op->multi_reqs[i] != NULL) {
-                MPIDI_CH3_Request_destroy(rma_op->multi_reqs[i]);
+                /* error case: drop both our reference to the request
+                 * and the progress engine's reference to it, since
+                 * the progress engine didn't get a chance to see it
+                 * yet. */
+                MPID_Request_release(rma_op->multi_reqs[i]);
+                MPID_Request_release(rma_op->multi_reqs[i]);
             }
         }
         MPIU_Free(rma_op->multi_reqs);
@@ -894,7 +870,7 @@ static int issue_get_acc_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
 #undef FUNCNAME
 #define FUNCNAME issue_get_op
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int issue_get_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
                         MPIDI_RMA_Target_t * target_ptr, MPIDI_CH3_Pkt_flags_t flags)
 {
@@ -1005,7 +981,6 @@ static int issue_get_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
     }
 
     rma_op->single_req = curr_req;
-    win_ptr->active_req_cnt++;
 
   fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_ISSUE_GET_OP);
@@ -1022,7 +997,7 @@ static int issue_get_op(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr,
 #undef FUNCNAME
 #define FUNCNAME issue_cas_op
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int issue_cas_op(MPIDI_RMA_Op_t * rma_op,
                         MPID_Win * win_ptr, MPIDI_RMA_Target_t * target_ptr,
                         MPIDI_CH3_Pkt_flags_t flags)
@@ -1069,7 +1044,6 @@ static int issue_cas_op(MPIDI_RMA_Op_t * rma_op,
     }
 
     rma_op->single_req = curr_req;
-    win_ptr->active_req_cnt++;
 
   fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_ISSUE_CAS_OP);
@@ -1086,7 +1060,7 @@ static int issue_cas_op(MPIDI_RMA_Op_t * rma_op,
 #undef FUNCNAME
 #define FUNCNAME issue_fop_op
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int issue_fop_op(MPIDI_RMA_Op_t * rma_op,
                         MPID_Win * win_ptr, MPIDI_RMA_Target_t * target_ptr,
                         MPIDI_CH3_Pkt_flags_t flags)
@@ -1138,36 +1112,11 @@ static int issue_fop_op(MPIDI_RMA_Op_t * rma_op,
             MPIU_ERR_POP(mpi_errno);
     }
 
-    /* This operation can generate two requests; one for inbound and one for
-     * outbound data. */
     if (curr_req != NULL) {
-        /* If we have both inbound and outbound requests (i.e. GACC
-         * operation), we need to ensure that the source buffer is
-         * available and that the response data has been received before
-         * informing the origin that this operation is complete.  Because
-         * the update needs to be done atomically at the target, they will
-         * not send back data until it has been received.  Therefore,
-         * completion of the response request implies that the send request
-         * has completed.
-         *
-         * Therefore: refs on the response request are set to two: one is
-         * held by the progress engine and the other by the RMA op
-         * completion code.  Refs on the outbound request are set to one;
-         * it will be completed by the progress engine.
-         */
-
         MPID_Request_release(curr_req);
-        curr_req = resp_req;
-    }
-    else {
-        curr_req = resp_req;
     }
 
-    /* For error checking */
-    resp_req = NULL;
-
-    rma_op->single_req = curr_req;
-    win_ptr->active_req_cnt++;
+    rma_op->single_req = resp_req;
 
   fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_ISSUE_FOP_OP);
@@ -1186,7 +1135,7 @@ static int issue_fop_op(MPIDI_RMA_Op_t * rma_op,
 #undef FUNCNAME
 #define FUNCNAME issue_rma_op
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static inline int issue_rma_op(MPIDI_RMA_Op_t * op_ptr, MPID_Win * win_ptr,
                                MPIDI_RMA_Target_t * target_ptr, MPIDI_CH3_Pkt_flags_t flags)
 {
@@ -1232,91 +1181,6 @@ static inline int issue_rma_op(MPIDI_RMA_Op_t * op_ptr, MPID_Win * win_ptr,
   fn_fail:
     goto fn_exit;
     /* --END ERROR HANDLING-- */
-}
-
-#undef FUNCNAME
-#define FUNCNAME set_user_req_after_issuing_op
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-static inline int set_user_req_after_issuing_op(MPIDI_RMA_Op_t * op)
-{
-    int i, incomplete_req_cnt = 0;
-    int mpi_errno = MPI_SUCCESS;
-    MPIDI_STATE_DECL(MPID_STATE_SET_USER_REQ_AFTER_ISSUING_OP);
-
-    MPIDI_RMA_FUNC_ENTER(MPID_STATE_SET_USER_REQ_AFTER_ISSUING_OP);
-
-    if (op->ureq == NULL)
-        goto fn_exit;
-
-    if (op->reqs_size == 0) {
-        MPIU_Assert(op->single_req == NULL && op->multi_reqs == NULL);
-        /* Sending is completed immediately, complete user request
-         * and release ch3 ref. */
-
-        /* Complete user request and release the ch3 ref */
-        MPIDI_CH3U_Request_complete(op->ureq);
-    }
-    else {
-        MPID_Request **req_ptr = NULL;
-
-        /* Sending is not completed immediately. */
-
-        if (op->reqs_size == 1)
-            req_ptr = &(op->single_req);
-        else
-            req_ptr = op->multi_reqs;
-
-        for (i = 0; i < op->reqs_size; i++) {
-            if (req_ptr[i] == NULL || MPID_Request_is_complete(req_ptr[i]))
-                continue;
-
-            /* Setup user request info in order to be completed following send request. */
-            incomplete_req_cnt++;
-            MPID_cc_set(&(op->ureq->cc), incomplete_req_cnt);   /* increment CC counter */
-
-            req_ptr[i]->dev.request_handle = op->ureq->handle;
-
-            /* Setup user request completion handler.
-             *
-             * The handler is triggered when send request is completed at
-             * following places:
-             * - progress engine: complete PUT/ACC req.
-             * - GET/GET_ACC packet handler: complete GET/GET_ACC reqs.
-             *
-             * We always set OnFinal which should be called when sending or
-             * receiving the last segment. However, short put/acc ops are
-             * issued in one packet and the lower layer only check OnDataAvail
-             * so we have to set OnDataAvail as well.
-             *
-             * Note that a noncontig send also uses OnDataAvail to loop all
-             * segments but it must be changed to OnFinal when sending the
-             * last segment, so it is also correct for us.
-             *
-             * TODO: implement stack for overriding functions*/
-            if (req_ptr[i]->dev.OnDataAvail == NULL) {
-                req_ptr[i]->dev.OnDataAvail = MPIDI_CH3_ReqHandler_ReqOpsComplete;
-            }
-            req_ptr[i]->dev.OnFinal = MPIDI_CH3_ReqHandler_ReqOpsComplete;
-        }       /* end of for loop */
-
-        if (incomplete_req_cnt) {
-            /* Increase ref for completion handler */
-            MPIU_Object_add_ref(op->ureq);
-        }
-        else {
-            /* all requests are completed */
-            /* Complete user request and release ch3 ref */
-            MPIDI_CH3U_Request_complete(op->ureq);
-            op->ureq = NULL;
-        }
-    }
-
-  fn_exit:
-    MPIDI_RMA_FUNC_EXIT(MPID_STATE_SET_USER_REQ_AFTER_ISSUING_OP);
-    return mpi_errno;
-  fn_fail:
-    goto fn_exit;
 }
 
 #endif /* MPID_RMA_ISSUE_H_INCLUDED */

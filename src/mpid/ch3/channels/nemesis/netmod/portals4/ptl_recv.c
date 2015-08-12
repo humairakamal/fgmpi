@@ -70,7 +70,10 @@ static int handler_recv_complete(const ptl_event_t *e)
         if (REQ_PTL(rreq)->chunk_buffer[i])
             MPIU_Free(REQ_PTL(rreq)->chunk_buffer[i]);
     
-    MPIDI_CH3U_Request_complete(rreq);
+    mpi_errno = MPID_Request_complete(rreq);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
 
  fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_HANDLER_RECV_COMPLETE);
@@ -466,13 +469,17 @@ int MPID_nem_ptl_recv_posted(MPIDI_VC_t *vc, MPID_Request *rreq)
     me.min_free = 0;
 
     MPIDI_Datatype_get_info(rreq->dev.user_count, rreq->dev.datatype, dt_contig, data_sz, dt_ptr, dt_true_lb);
-    MPIU_DBG_MSG_FMT(CH3_CHANNEL, VERBOSE, (MPIU_DBG_FDEST, "count=%d datatype=%#x contig=%d data_sz=%lu", rreq->dev.user_count, rreq->dev.datatype, dt_contig, data_sz));
+    MPIU_DBG_MSG_FMT(CH3_CHANNEL, VERBOSE, (MPIU_DBG_FDEST, "count="MPI_AINT_FMT_DEC_SPEC" datatype=%#x contig=%d data_sz=%lu", rreq->dev.user_count, rreq->dev.datatype, dt_contig, data_sz));
 
     if (data_sz <= PTL_LARGE_THRESHOLD) {
         if (dt_contig) {
             /* small contig message */
+            void *start = (char *)rreq->dev.user_buf + dt_true_lb;
             MPIU_DBG_MSG(CH3_CHANNEL, VERBOSE, "Small contig message");
-            me.start = (char *)rreq->dev.user_buf + dt_true_lb;
+            if (start == NULL)
+                me.start = &dummy;
+            else
+                me.start = start;
             me.length = data_sz;
             REQ_PTL(rreq)->event_handler = handler_recv_dequeue_complete;
         } else {

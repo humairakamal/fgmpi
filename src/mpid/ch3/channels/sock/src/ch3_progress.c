@@ -23,7 +23,6 @@ static int MPIDI_CH3i_Progress_test(void);
 /* FIXME: Move thread stuff into some set of abstractions in order to remove
    ifdefs */
 volatile unsigned int MPIDI_CH3I_progress_completion_count = 0;
-int MPIDI_CH3I_num_active_issued_win = 0, MPIDI_CH3I_num_passive_win = 0;
 
 #ifdef MPICH_IS_THREADED
     volatile int MPIDI_CH3I_progress_blocked = FALSE;
@@ -53,7 +52,7 @@ static progress_func_ptr_t progress_hooks[MAX_PROGRESS_HOOKS] = { NULL };
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3i_Progress_test
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int MPIDI_CH3i_Progress_test(void)
 {
     MPIDU_Sock_event_t event;
@@ -129,7 +128,7 @@ static int MPIDI_CH3i_Progress_test(void)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3i_Progress_wait
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int MPIDI_CH3i_Progress_wait(MPID_Progress_state * progress_state)
 {
     MPIDU_Sock_event_t event;
@@ -272,7 +271,7 @@ static int MPIDI_CH3i_Progress_wait(MPID_Progress_state * progress_state)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Connection_terminate
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3_Connection_terminate(MPIDI_VC_t * vc)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -297,7 +296,7 @@ int MPIDI_CH3_Connection_terminate(MPIDI_VC_t * vc)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_Progress_init
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3I_Progress_init(void)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -347,7 +346,7 @@ int MPIDI_CH3I_Progress_init(void)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_Progress_finalize
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3I_Progress_finalize(void)
 {
     int mpi_errno;
@@ -407,7 +406,7 @@ int MPIDI_CH3I_Progress_finalize(void)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_Progress_wakeup
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 void MPIDI_CH3I_Progress_wakeup(void)
 {
     MPIU_DBG_MSG(CH3_OTHER,TYPICAL,"progress_wakeup called");
@@ -418,7 +417,7 @@ void MPIDI_CH3I_Progress_wakeup(void)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Get_business_card
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3_Get_business_card(int myRank, char *value, int length)
 {
     return MPIDI_CH3U_Get_business_card_sock(myRank, &value, &length);
@@ -428,7 +427,7 @@ int MPIDI_CH3_Get_business_card(int myRank, char *value, int length)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_Progress_handle_sock_event
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int MPIDI_CH3I_Progress_handle_sock_event(MPIDU_Sock_event_t * event)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -508,7 +507,10 @@ static int MPIDI_CH3I_Progress_handle_sock_event(MPIDU_Sock_event_t * event)
 		    reqFn = rreq->dev.OnDataAvail;
 		    if (!reqFn) {
 			MPIU_Assert(MPIDI_Request_get_type(rreq)!=MPIDI_REQUEST_TYPE_GET_RESP);
-			MPIDI_CH3U_Request_complete(rreq);
+                        mpi_errno = MPID_Request_complete(rreq);
+                        if (mpi_errno != MPI_SUCCESS) {
+                            MPIU_ERR_POP(mpi_errno);
+                        }
 			complete = TRUE;
 		    }
 		    else {
@@ -567,7 +569,11 @@ static int MPIDI_CH3I_Progress_handle_sock_event(MPIDU_Sock_event_t * event)
 		reqFn = sreq->dev.OnDataAvail;
 		if (!reqFn) {
 		    MPIU_Assert(MPIDI_Request_get_type(sreq)!=MPIDI_REQUEST_TYPE_GET_RESP);
-		    MPIDI_CH3U_Request_complete(sreq);
+                    mpi_errno = MPID_Request_complete(sreq);
+                    if (mpi_errno != MPI_SUCCESS) {
+                        MPIU_ERR_POP(mpi_errno);
+                    }
+
 		    complete = TRUE;
 		}
 		else {
@@ -611,7 +617,10 @@ static int MPIDI_CH3I_Progress_handle_sock_event(MPIDU_Sock_event_t * event)
 			    reqFn = sreq->dev.OnDataAvail;
 			    if (!reqFn) {
 				MPIU_Assert(MPIDI_Request_get_type(sreq)!=MPIDI_REQUEST_TYPE_GET_RESP);
-				MPIDI_CH3U_Request_complete(sreq);
+                                mpi_errno = MPID_Request_complete(sreq);
+                                if (mpi_errno != MPI_SUCCESS) {
+                                    MPIU_ERR_POP(mpi_errno);
+                                }
 				complete = TRUE;
 			    }
 			    else {
@@ -707,7 +716,7 @@ static int MPIDI_CH3I_Progress_handle_sock_event(MPIDU_Sock_event_t * event)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_Progress_delay
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int MPIDI_CH3I_Progress_delay(unsigned int completion_count)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -731,7 +740,7 @@ static int MPIDI_CH3I_Progress_delay(unsigned int completion_count)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_Progress_continue
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int MPIDI_CH3I_Progress_continue(unsigned int completion_count)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -757,7 +766,7 @@ static int MPIDI_CH3I_Progress_continue(unsigned int completion_count)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_VC_post_connect
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3I_VC_post_connect(MPIDI_VC_t * vc)
 {
     return MPIDI_CH3I_VC_post_sockconnect( vc );
@@ -768,7 +777,7 @@ int MPIDI_CH3I_VC_post_connect(MPIDI_VC_t * vc)
 #undef FUNCNAME
 #define FUNCNAME connection_pop_sendq_req
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static inline int connection_pop_sendq_req(MPIDI_CH3I_Connection_t * conn)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -801,7 +810,7 @@ static inline int connection_pop_sendq_req(MPIDI_CH3I_Connection_t * conn)
 #undef FUNCNAME
 #define FUNCNAME connection_post_recv_pkt
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static inline int connection_post_recv_pkt(MPIDI_CH3I_Connection_t * conn)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -885,7 +894,10 @@ static int ReadMoreData( MPIDI_CH3I_Connection_t * conn, MPID_Request *rreq )
 	    reqFn = rreq->dev.OnDataAvail;
 	    if (!reqFn) {
 		MPIU_Assert(MPIDI_Request_get_type(rreq)!=MPIDI_REQUEST_TYPE_GET_RESP);
-		MPIDI_CH3U_Request_complete(rreq);
+                mpi_errno = MPID_Request_complete(rreq);
+                if (mpi_errno != MPI_SUCCESS) {
+                    MPIU_ERR_POP(mpi_errno);
+                }
 		complete = TRUE;
 	    }
 	    else {
@@ -941,7 +953,7 @@ int MPIDI_CH3I_Progress( int blocking, MPID_Progress_state *state )
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_Progress_register_hook
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3I_Progress_register_hook(int (*progress_fn)(int*))
 {
     int mpi_errno = MPI_SUCCESS;
@@ -976,7 +988,7 @@ int MPIDI_CH3I_Progress_register_hook(int (*progress_fn)(int*))
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_Progress_deregister_hook
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3I_Progress_deregister_hook(int (*progress_fn)(int*))
 {
     int mpi_errno = MPI_SUCCESS;

@@ -119,10 +119,6 @@ int usleep(useconds_t usec);
 #define MAX_HOSTNAME_LEN MAXHOSTNAMELEN
 #endif
 
-/* Default PMI version to use */
-#define MPIU_DEFAULT_PMI_VERSION 1
-#define MPIU_DEFAULT_PMI_SUBVERSION 1
-
 /* This allows us to keep names local to a single file when we can use
    weak symbols */
 #ifdef  USE_WEAK_SYMBOLS
@@ -144,13 +140,6 @@ int usleep(useconds_t usec);
 /* Include some basic (and easily shared) definitions */
 #include "mpibase.h"
 
-/* FIXME: The code base should not define two of these */
-/* This is used to quote a name in a definition (see FUNCNAME/FCNAME below) */
-#ifndef MPIDI_QUOTE
-#define MPIDI_QUOTE(A) MPIDI_QUOTE2(A)
-#define MPIDI_QUOTE2(A) #A
-#endif
-
 /* 
    Include the implementation definitions (e.g., error reporting, thread
    portability)
@@ -158,16 +147,6 @@ int usleep(useconds_t usec);
  */
 /* FIXME: ... to do ... */
 #include "mpitypedefs.h"
-
-/* This is the default implementation of MPIU_Memcpy.  We define this
-   before including mpidpre.h so that it can be used when a device or
-   channel can use it if it's overriding MPIU_Memcpy.  */
-MPIU_DBG_ATTRIBUTE_NOINLINE
-ATTRIBUTE((unused))
-static MPIU_DBG_INLINE_KEYWORD void MPIUI_Memcpy(void * dst, const void * src, size_t len)
-{
-    memcpy(dst, src, len);
-}
 
 /* Include definitions from the device which must exist before items in this
    file (mpiimpl.h) can be defined. mpidpre.h must be included before any
@@ -178,18 +157,16 @@ static MPIU_DBG_INLINE_KEYWORD void MPIUI_Memcpy(void * dst, const void * src, s
 /* ------------------------------------------------------------------------- */
 
 /* Overriding memcpy:
-   Devices and channels can override the default implementation of
-   MPIU_Memcpy by defining the MPIU_Memcpy macro.  The implementation
-   can call MPIUI_Memcpy for the default memcpy implementation.   
-   Note that MPIU_Memcpy and MPIUI_Memcpy return void rather than a
-   pointer to the destination buffer.  This is different from C89
-   memcpy.
+     This is a utility function for memory copy.  The device might use
+     this directly or override it with a different device-specific
+     mechanism to provide an MPID_Memcpy function.  However, we
+     currently do not provide such an ADI function.
 */
 #ifndef MPIU_Memcpy
 #define MPIU_Memcpy(dst, src, len)                \
     do {                                          \
         MPIU_MEM_CHECK_MEMCPY((dst),(src),(len)); \
-        MPIUI_Memcpy((dst), (src), (len));        \
+        memcpy((dst), (src), (len));              \
     } while (0)
 #endif
 
@@ -1118,7 +1095,6 @@ extern MPID_Group * const MPID_Group_empty;
      do { MPIU_Object_release_ref( _group, _inuse ); } while (0)
 
 void MPIR_Group_setup_lpid_list( MPID_Group * );
-int MPIR_GroupCheckVCRSubset( MPID_Group *group_ptr, int vsize, MPID_VCR *vcr );
 
 /* ------------------------------------------------------------------------- */
 
@@ -1142,6 +1118,45 @@ typedef enum MPID_Comm_hierarchy_kind_t {
     MPID_HIERARCHY_SIZE             /* cardinality of this enum */
 } MPID_Comm_hierarchy_kind_t;
 /* Communicators */
+
+typedef enum {
+    MPIR_COMM_MAP_DUP,
+    MPIR_COMM_MAP_IRREGULAR
+} MPIR_Comm_map_type_t;
+
+/* direction of mapping: local to local, local to remote, remote to
+ * local, remote to remote */
+typedef enum {
+    MPIR_COMM_MAP_DIR_L2L,
+    MPIR_COMM_MAP_DIR_L2R,
+    MPIR_COMM_MAP_DIR_R2L,
+    MPIR_COMM_MAP_DIR_R2R
+} MPIR_Comm_map_dir_t;
+
+typedef struct MPIR_Comm_map {
+    MPIR_Comm_map_type_t type;
+
+    struct MPID_Comm *src_comm;
+
+    /* mapping direction for intercomms, which contain local and
+     * remote groups */
+    MPIR_Comm_map_dir_t dir;
+
+    /* only valid for irregular map type */
+    int src_mapping_size;
+    int *src_mapping;
+    int free_mapping;       /* we allocated the mapping */
+
+    struct MPIR_Comm_map *next;
+} MPIR_Comm_map_t;
+
+int MPIR_Comm_map_irregular(struct MPID_Comm *newcomm, struct MPID_Comm *src_comm,
+                            int *src_mapping, int src_mapping_size,
+                            MPIR_Comm_map_dir_t dir,
+                            MPIR_Comm_map_t **map);
+int MPIR_Comm_map_dup(struct MPID_Comm *newcomm, struct MPID_Comm *src_comm,
+                      MPIR_Comm_map_dir_t dir);
+int MPIR_Comm_map_free(struct MPID_Comm *comm);
 
 /*S
   MPID_Comm - Description of the Communicator data structure
@@ -1215,12 +1230,6 @@ typedef struct MPID_Comm {
     int           totprocs;      /* Total number of processes including all the FGPs. Value of MPI_Comm_size */
     struct Coproclet_shared_vars * co_shared_vars; /* This encapsulates pointers to rtw_map and co_barrier_vars among others */
 #endif
-    MPID_VCRT     vcrt;          /* virtual connecton reference table */
-    MPID_VCR *    vcr;           /* alias to the array of virtual connections
-				    in vcrt */
-    MPID_VCRT     local_vcrt;    /* local virtual connecton reference table */
-    MPID_VCR *    local_vcr;     /* alias to the array of local virtual
-				    connections in local vcrt */
     MPID_Attribute *attributes;  /* List of attributes */
     int           local_size;    /* Value of MPI_Comm_size for local group */
     MPID_Group   *local_group,   /* Groups in communicator. */
@@ -1266,6 +1275,11 @@ typedef struct MPID_Comm {
     int revoked;                    /* Flag to track whether the communicator
                                      * has been revoked */
 
+    int idup_count;              /* how many MPI_COMM_IDUPs duplicating from
+                                    the current communicator at the same time */
+    int idup_curr_seqnum;        /* give each child communicator a sequence number */
+    int idup_next_seqnum;        /* the smallest sequence number wins  */
+
     MPID_Info *info;                /* Hints to the communicator */
 
 #ifdef MPID_HAS_HETERO
@@ -1276,6 +1290,12 @@ typedef struct MPID_Comm {
     hcoll_comm_priv_t hcoll_priv;
 #endif /* HAVE_LIBHCOLL */
 
+    /* the mapper is temporarily filled out in order to allow the
+     * device to setup its network addresses.  it will be freed after
+     * the device has initialized the comm. */
+    MPIR_Comm_map_t *mapper_head;
+    MPIR_Comm_map_t *mapper_tail;
+
   /* Other, device-specific information */
 #ifdef MPID_DEV_COMM_DECL
     MPID_DEV_COMM_DECL
@@ -1284,7 +1304,7 @@ typedef struct MPID_Comm {
 extern MPIU_Object_alloc_t MPID_Comm_mem;
 
 /* this function should not be called by normal code! */
-int MPIR_Comm_delete_internal(MPID_Comm * comm_ptr, int isDisconnect);
+int MPIR_Comm_delete_internal(MPID_Comm * comm_ptr);
 
 #define MPIR_Comm_add_ref(_comm) \
     do { MPIU_Object_add_ref((_comm)); } while (0)
@@ -1303,7 +1323,7 @@ int MPIR_Comm_delete_internal(MPID_Comm * comm_ptr, int isDisconnect);
 #define FUNCNAME MPIR_Comm_release
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static inline int MPIR_Comm_release(MPID_Comm * comm_ptr, int isDisconnect)
+static inline int MPIR_Comm_release(MPID_Comm * comm_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
     int in_use;
@@ -1312,7 +1332,7 @@ static inline int MPIR_Comm_release(MPID_Comm * comm_ptr, int isDisconnect)
     if (unlikely(!in_use)) {
         /* the following routine should only be called by this function and its
          * "_always" variant. */
-        mpi_errno = MPIR_Comm_delete_internal(comm_ptr, isDisconnect);
+        mpi_errno = MPIR_Comm_delete_internal(comm_ptr);
         /* not ERR_POPing here to permit simpler inlining.  Our caller will
          * still report the error from the comm_delete level. */
     }
@@ -1325,7 +1345,7 @@ static inline int MPIR_Comm_release(MPID_Comm * comm_ptr, int isDisconnect)
 /* MPIR_Comm_release_always is the same as MPIR_Comm_release except it uses
    MPIR_Comm_release_ref_always instead.
 */
-int MPIR_Comm_release_always(MPID_Comm *comm_ptr, int isDisconnect);
+int MPIR_Comm_release_always(MPID_Comm *comm_ptr);
 
 /* applies the specified info chain to the specified communicator */
 int MPIR_Comm_apply_hints(MPID_Comm *comm_ptr, MPID_Info *info_ptr);
@@ -1534,6 +1554,30 @@ typedef struct MPID_Request {
     /* Errflag for NBC requests. Not used by other requests. */
     mpir_errflag_t errflag;
 
+    /* Notes about request_completed_cb:
+     *
+     *   1. The callback function is triggered when this requests
+     *      completion count reaches 0.
+     *
+     *   2. The callback function should be nonblocking.
+     *
+     *   3. The callback function should not poke the progress engine,
+     *      or call any function that pokes the progress engine.
+     *
+     *   4. The callback function can complete other requests, thus
+     *      calling those requests' callback functions.  However, the
+     *      recursion depth of request completion function is limited.
+     *      If we ever need deeper recurisve calls, we need to change
+     *      to an iterative design instead of a recursive design for
+     *      request completion.
+     *
+     *   5. In multithreaded programs, since the callback function is
+     *      nonblocking and never calls the progress engine, it would
+     *      never yield the lock to other threads.  So the recursion
+     *      should be multithreading-safe.
+     */
+    int (*request_completed_cb)(struct MPID_Request *);
+
     /* Other, device-specific information */
 #ifdef MPID_DEV_REQUEST_DECL
     MPID_DEV_REQUEST_DECL
@@ -1609,101 +1653,6 @@ MPID_Progress_state;
 /* end of mpirma.h (in src/mpi/rma?) */
 /* ------------------------------------------------------------------------- */
 
-/*
- * To provide more flexibility in the handling of RMA operations, we provide
- * these options:
- *
- *  Statically defined ADI routines
- *      MPID_Put etc, provided by the ADI
- *  Dynamically defined routines
- *      A function table is used, initialized during window creation
- *
- * Which of these is used is selected by the device.  If USE_MPID_RMA_TABLE is
- * defined, then the function table is used.  Otherwise, the calls turn into
- * MPID_<Rma operation>, e.g., MPID_Put or MPID_Win_create.
- */
-
-/* We need to export this header file (at least the struct) to the
-   device, so that it can implement the init routine. */
-#ifdef USE_MPID_RMA_TABLE
-#define MPIU_RMA_CALL(winptr,funccall) (winptr)->RMAFns.funccall
-
-#else
-/* Just use the MPID_<fcn> version of the function */
-#define MPIU_RMA_CALL(winptr,funccall) MPID_##funccall
-
-#endif /* USE_MPID_RMA_TABLE */
-
-/* Windows */
-#ifdef USE_MPID_RMA_TABLE
-struct MPID_Win;
-typedef struct MPID_RMA_Ops {
-    int (*Win_free)(struct MPID_Win **);
-
-    int (*Put) (const void *, int, MPI_Datatype, int, MPI_Aint, int,
-                MPI_Datatype, struct MPID_Win *);
-    int (*Get) (void *, int, MPI_Datatype, int, MPI_Aint, int, MPI_Datatype,
-                struct MPID_Win *);
-    int (*Accumulate) (const void *, int, MPI_Datatype, int, MPI_Aint, int,
-                       MPI_Datatype, MPI_Op, struct MPID_Win *);
-
-    int (*Win_fence)(int, struct MPID_Win *);
-    int (*Win_post)(MPID_Group *, int, struct MPID_Win *);
-    int (*Win_start)(MPID_Group *, int, struct MPID_Win *);
-    int (*Win_complete)(struct MPID_Win *);
-    int (*Win_wait)(struct MPID_Win *);
-    int (*Win_test)(struct MPID_Win *, int *);
-
-    int (*Win_lock)(int, int, int, struct MPID_Win *);
-    int (*Win_unlock)(int, struct MPID_Win *);
-
-    /* MPI-3 Functions */
-    int (*Win_attach)(struct MPID_Win *, void *, MPI_Aint);
-    int (*Win_detach)(struct MPID_Win *, const void *);
-    int (*Win_shared_query)(struct MPID_Win *, int, MPI_Aint *, int *, void *);
-
-    int (*Win_set_info)(struct MPID_Win *, MPID_Info *);
-    int (*Win_get_info)(struct MPID_Win *, MPID_Info **);
-
-    int (*Win_lock_all)(int, struct MPID_Win *);
-    int (*Win_unlock_all)(struct MPID_Win *);
-
-    int (*Win_flush)(int, struct MPID_Win *);
-    int (*Win_flush_all)(struct MPID_Win *);
-    int (*Win_flush_local)(int, struct MPID_Win *);
-    int (*Win_flush_local_all)(struct MPID_Win *);
-    int (*Win_sync)(struct MPID_Win *);
-
-    int (*Get_accumulate)(const void *, int , MPI_Datatype, void *, int,
-                          MPI_Datatype, int, MPI_Aint, int, MPI_Datatype, MPI_Op,
-                          struct MPID_Win *);
-    int (*Fetch_and_op)(const void *, void *, MPI_Datatype, int, MPI_Aint, MPI_Op,
-                        struct MPID_Win *);
-    int (*Compare_and_swap)(const void *, const void *, void *, MPI_Datatype, int,
-                            MPI_Aint, struct MPID_Win *);
-
-    int (*Rput)(const void *, int, MPI_Datatype, int, MPI_Aint, int, MPI_Datatype,
-                struct MPID_Win *, MPID_Request**);
-    int (*Rget)(void *, int, MPI_Datatype, int, MPI_Aint, int, MPI_Datatype,
-                struct MPID_Win *, MPID_Request**);
-    int (*Raccumulate)(const void *, int, MPI_Datatype, int, MPI_Aint, int,
-                       MPI_Datatype, MPI_Op, struct MPID_Win *, MPID_Request**);
-    int (*Rget_accumulate)(const void *, int , MPI_Datatype, void *, int,
-                           MPI_Datatype, int, MPI_Aint, int, MPI_Datatype, MPI_Op,
-                           struct MPID_Win *, MPID_Request**);
-
-} MPID_RMAFns;
-#define MPID_RMAFNS_VERSION 2
-/* Note that the memory allocation/free routines do not take a window, 
-   so they must be initialized separately, and are a per-run, not per-window
-   object.  If the device can manage different kinds of memory allocations,
-   these routines must internally provide that flexibility. */
-/* 
-    void *(*Alloc_mem)(size_t, MPID_Info *);
-    int (*Free_mem)(void *);
-*/
-#endif
-
 /*S
   MPID_Win - Description of the Window Object data structure.
 
@@ -1756,10 +1705,6 @@ typedef struct MPID_Win {
     HANDLE passive_target_thread_id;
 #endif
 #endif
-    /* */
-#ifdef USE_MPID_RMA_TABLE
-    MPID_RMAFns RMAFns;
-#endif    
     /* These are COPIES of the values so that addresses to them
        can be returned as attributes.  They are initialized by the
        MPI_Win_get_attr function.
@@ -2299,8 +2244,8 @@ struct StateWrapper {
     unsigned int *LBI_maskFG;
     int initialize_LBI_maskFG;
 };
-extern MPID_VCRT     vcrt_world;          /* virtual connecton reference table for MPI_COMM_WORLD */
-extern MPID_VCR *    vcr_world;           /* alias to the array of virtual connections in vcrt_world */
+extern struct MPIDI_VCRT * vcrt_world; /* virtual connecton reference table for MPI_COMM_WORLD */
+
 
 #else
 extern MPICH_PerProcess_t MPIR_Process;
@@ -3672,13 +3617,13 @@ int MPID_Progress_poke(void);
   This routine is intended for use by 'MPI_Grequest_start' only.  Note that 
   once a request is created with this routine, any progress engine must assume 
   that an outside function can complete a request with 
-  'MPID_Request_set_completed'.
+  'MPID_Request_complete'.
 
   The request object returned by this routine should be initialized such that
   ref_count is one and handle contains a valid handle referring to the object.
   @*/
 MPID_Request * MPID_Request_create(void);
-void MPID_Request_set_completed(MPID_Request *);
+
 /*@
   MPID_Request_release - Release a request 
 
@@ -3694,6 +3639,23 @@ void MPID_Request_set_completed(MPID_Request *);
   Request
 @*/
 void MPID_Request_release(MPID_Request *);
+
+/*@
+  MPID_Request_complete - Complete a request
+
+  Input Parameter:
+. request - request to complete
+
+  Notes:
+  This routine is called to decrement the completion count of a
+  request object.  If the completion count of the request object has
+  reached zero, the reference count for the object will be
+  decremented.
+
+  Module:
+  Request
+@*/
+int MPID_Request_complete(MPID_Request *);
 
 typedef struct MPID_Grequest_class {
      MPIU_OBJECT_HEADER; /* adds handle and ref_count fields */
@@ -3848,45 +3810,9 @@ int MPID_Get_universe_size(int  * universe_size);
 #define MPIR_UNIVERSE_SIZE_NOT_SET -1
 #define MPIR_UNIVERSE_SIZE_NOT_AVAILABLE -2
 
-/*
- * FIXME: VCs should not be exposed to the top layer, which implies that these routines should not be exposed either.  Instead,
- * the creation, duplication and destruction of communicator objects should be communicated to the device, allowing the device to
- * manage the underlying connections in a way that is appropriate (and efficient).
- */
-
 /*@
-  MPID_VCRT_Create - Create a virtual connection reference table
-  @*/
-int MPID_VCRT_Create(int size, MPID_VCRT *vcrt_ptr);
-
-/*@
-  MPID_VCRT_Add_ref - Add a reference to a VCRT
-  @*/
-int MPID_VCRT_Add_ref(MPID_VCRT vcrt);
-
-/*@
-  MPID_VCRT_Release - Release a reference to a VCRT
-  
-  Notes:
-  The 'isDisconnect' argument allows this routine to handle the special
-  case of 'MPI_Comm_disconnect', which needs to take special action
-  if all references to a VC are removed.
-  @*/
-int MPID_VCRT_Release(MPID_VCRT vcrt, int isDisconnect);
-
-/*@
-  MPID_VCRT_Get_ptr - 
-  @*/
-int MPID_VCRT_Get_ptr(MPID_VCRT vcrt, MPID_VCR **vc_pptr);
-
-/*@
-  MPID_VCR_Dup - Create a duplicate reference to a virtual connection
-  @*/
-int MPID_VCR_Dup(MPID_VCR orig_vcr, MPID_VCR * new_vcr);
-
-/*@
-   MPID_VCR_Get_lpid - Get the local process id that corresponds to a 
-   virtual connection reference.
+   MPID_Comm_get_lpid - Get the local process id that corresponds to a
+   comm rank.
 
    Notes:
    The local process ids are described elsewhere.  Basically, they are
@@ -3894,7 +3820,7 @@ int MPID_VCR_Dup(MPID_VCR orig_vcr, MPID_VCR * new_vcr);
    to which it is connected.  These are local process ids because different
    processes may use different ids to identify the same target process
   @*/
-int MPID_VCR_Get_lpid(MPID_VCR vcr, int * lpid_ptr);
+int MPID_Comm_get_lpid(MPID_Comm *comm_ptr, int idx, int * lpid_ptr, MPIU_BOOL is_remote);
 
 /* prototypes and declarations for the MPID_Sched interface for nonblocking
  * collectives */
@@ -4234,13 +4160,15 @@ int MPIR_Comm_create_group(MPID_Comm * comm_ptr, MPID_Group * group_ptr, int tag
 /* comm_create helper functions, used by both comm_create and comm_create_group */
 int MPIR_Comm_create_calculate_mapping(MPID_Group  *group_ptr,
                                        MPID_Comm   *comm_ptr,
-                                       MPID_VCR   **mapping_vcr_out,
-                                       int        **mapping_out);
-int MPIR_Comm_create_create_and_map_vcrt(int n,
-                                         int *mapping,
-                                         MPID_VCR *mapping_vcr,
-                                         MPID_VCRT *out_vcrt,
-                                         MPID_VCR **out_vcr);
+                                       int        **mapping_out,
+                                       MPID_Comm **mapping_comm);
+
+int MPIR_Comm_create_map(int local_n,
+                         int remote_n,
+                         int *local_mapping,
+                         int *remote_mapping,
+                         MPID_Comm *mapping_comm,
+                         MPID_Comm *newcomm);
 
 /* implements the logic for MPI_Comm_create for intracommunicators only */
 int MPIR_Comm_create_intra(MPID_Comm *comm_ptr, MPID_Group *group_ptr,
@@ -4387,6 +4315,9 @@ int MPIR_Iscan_SMP(const void *sendbuf, void *recvbuf, int count, MPI_Datatype d
 int MPIR_Iexscan(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr, MPID_Sched_t s);
 int MPIR_Ialltoallw_intra(const void *sendbuf, const int *sendcounts, const int *sdispls, const MPI_Datatype *sendtypes, void *recvbuf, const int *recvcounts, const int *rdispls, const MPI_Datatype *recvtypes, MPID_Comm *comm_ptr, MPID_Sched_t s);
 int MPIR_Ialltoallw_inter(const void *sendbuf, const int *sendcounts, const int *sdispls, const MPI_Datatype *sendtypes, void *recvbuf, const int *recvcounts, const int *rdispls, const MPI_Datatype *recvtypes, MPID_Comm *comm_ptr, MPID_Sched_t s);
+
+/* group functionality */
+int MPIR_Group_check_subset(MPID_Group * group_ptr, MPID_Comm * comm_ptr);
 
 /* begin impl functions for MPI_T (MPI_T_ right now) */
 int MPIR_T_cvar_handle_alloc_impl(int cvar_index, void *obj_handle, MPI_T_cvar_handle *handle, int *count);

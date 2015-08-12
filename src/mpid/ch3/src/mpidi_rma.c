@@ -79,15 +79,13 @@ cvars:
 */
 
 
-MPIDI_RMA_Op_t *global_rma_op_pool_head = NULL, *global_rma_op_pool_tail =
-    NULL, *global_rma_op_pool_start = NULL;
-MPIDI_RMA_Target_t *global_rma_target_pool_head = NULL, *global_rma_target_pool_tail =
-    NULL, *global_rma_target_pool_start = NULL;
+MPIDI_RMA_Op_t *global_rma_op_pool_head = NULL, *global_rma_op_pool_start = NULL;
+MPIDI_RMA_Target_t *global_rma_target_pool_head = NULL, *global_rma_target_pool_start = NULL;
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_RMA_init
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_RMA_init(void)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -103,8 +101,7 @@ int MPIDI_RMA_init(void)
                         mpi_errno, "RMA op pool");
     for (i = 0; i < MPIR_CVAR_CH3_RMA_OP_GLOBAL_POOL_SIZE; i++) {
         global_rma_op_pool_start[i].pool_type = MPIDI_RMA_POOL_GLOBAL;
-        MPL_LL_APPEND(global_rma_op_pool_head, global_rma_op_pool_tail,
-                      &(global_rma_op_pool_start[i]));
+        MPL_DL_APPEND(global_rma_op_pool_head, &(global_rma_op_pool_start[i]));
     }
 
     MPIU_CHKPMEM_MALLOC(global_rma_target_pool_start, MPIDI_RMA_Target_t *,
@@ -112,8 +109,7 @@ int MPIDI_RMA_init(void)
                         mpi_errno, "RMA target pool");
     for (i = 0; i < MPIR_CVAR_CH3_RMA_TARGET_GLOBAL_POOL_SIZE; i++) {
         global_rma_target_pool_start[i].pool_type = MPIDI_RMA_POOL_GLOBAL;
-        MPL_LL_APPEND(global_rma_target_pool_head, global_rma_target_pool_tail,
-                      &(global_rma_target_pool_start[i]));
+        MPL_DL_APPEND(global_rma_target_pool_head, &(global_rma_target_pool_start[i]));
     }
 
   fn_exit:
@@ -129,7 +125,7 @@ int MPIDI_RMA_init(void)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_RMA_finalize
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 void MPIDI_RMA_finalize(void)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_RMA_FINALIZE);
@@ -144,38 +140,23 @@ void MPIDI_RMA_finalize(void)
 
 
 #undef FUNCNAME
-#define FUNCNAME MPIDI_Win_free
+#define FUNCNAME MPID_Win_free
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_Win_free(MPID_Win ** win_ptr)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPID_Win_free(MPID_Win ** win_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
     int in_use;
     MPID_Comm *comm_ptr;
     mpir_errflag_t errflag = MPIR_ERR_NONE;
-    MPIDI_RMA_Win_list_t *win_elem;
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_FREE);
+    MPIDI_STATE_DECL(MPID_STATE_MPID_WIN_FREE);
 
-    MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_WIN_FREE);
+    MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPID_WIN_FREE);
 
-    /* it is possible that there is a IBARRIER in MPI_WIN_FENCE with
-     * MODE_NOPRECEDE not being completed, we let the progress engine
-     * to delete its request when it is completed. */
-    if ((*win_ptr)->fence_sync_req != MPI_REQUEST_NULL) {
-        MPID_Request *req_ptr;
-        MPID_Request_get_ptr((*win_ptr)->fence_sync_req, req_ptr);
-        MPID_Request_release(req_ptr);
-        (*win_ptr)->fence_sync_req = MPI_REQUEST_NULL;
-        (*win_ptr)->states.access_state = MPIDI_RMA_NONE;
-        MPIDI_CH3I_num_active_issued_win--;
-        MPIU_Assert(MPIDI_CH3I_num_active_issued_win >= 0);
-    }
-
-    if ((*win_ptr)->states.access_state == MPIDI_RMA_FENCE_GRANTED)
-        (*win_ptr)->states.access_state = MPIDI_RMA_NONE;
-
-    MPIU_ERR_CHKANDJUMP((*win_ptr)->states.access_state != MPIDI_RMA_NONE ||
-                        (*win_ptr)->states.exposure_state != MPIDI_RMA_NONE,
+    MPIU_ERR_CHKANDJUMP(((*win_ptr)->states.access_state != MPIDI_RMA_NONE &&
+                         (*win_ptr)->states.access_state != MPIDI_RMA_FENCE_ISSUED &&
+                         (*win_ptr)->states.access_state != MPIDI_RMA_FENCE_GRANTED) ||
+                        ((*win_ptr)->states.exposure_state != MPIDI_RMA_NONE),
                         mpi_errno, MPI_ERR_RMA_SYNC, "**rmasync");
 
     /* 1. Here we must wait until all passive locks are released on this target,
@@ -191,7 +172,7 @@ int MPIDI_Win_free(MPID_Win ** win_ptr)
     while ((*win_ptr)->current_lock_type != MPID_LOCK_NONE ||
            (*win_ptr)->at_completion_counter != 0 ||
            (*win_ptr)->target_lock_queue_head != NULL ||
-           (*win_ptr)->current_target_lock_data_bytes != 0) {
+           (*win_ptr)->current_target_lock_data_bytes != 0 || (*win_ptr)->sync_request_cnt != 0) {
         mpi_errno = wait_progress_engine();
         if (mpi_errno != MPI_SUCCESS)
             MPIU_ERR_POP(mpi_errno);
@@ -209,14 +190,8 @@ int MPIDI_Win_free(MPID_Win ** win_ptr)
     }
 
     /* dequeue window from the global list */
-    for (win_elem = MPIDI_RMA_Win_list; win_elem && win_elem->win_ptr != *win_ptr;
-         win_elem = win_elem->next);
-    MPIU_ERR_CHKANDJUMP(win_elem == NULL, mpi_errno, MPI_ERR_RMA_SYNC, "**rmasync");
-    MPL_LL_DELETE(MPIDI_RMA_Win_list, MPIDI_RMA_Win_list_tail, win_elem);
-    MPIU_Free(win_elem);
-
-    if (MPIDI_RMA_Win_list == NULL)
-        MPID_Progress_deregister_hook(MPIDI_CH3I_RMA_Make_progress_global);
+    MPIU_Assert((*win_ptr)->active == FALSE);
+    MPL_DL_DELETE(MPIDI_RMA_Win_inactive_list_head, (*win_ptr));
 
     comm_ptr = (*win_ptr)->comm_ptr;
     mpi_errno = MPIR_Comm_free_impl(comm_ptr);
@@ -246,71 +221,9 @@ int MPIDI_Win_free(MPID_Win ** win_ptr)
     MPIU_Handle_obj_free(&MPID_Win_mem, *win_ptr);
 
   fn_exit:
-    MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_WIN_FREE);
+    MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPID_WIN_FREE);
     return mpi_errno;
 
   fn_fail:
     goto fn_exit;
-}
-
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_Win_shared_query
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_Win_shared_query(MPID_Win * win_ptr, int target_rank, MPI_Aint * size,
-                           int *disp_unit, void *baseptr)
-{
-    int mpi_errno = MPI_SUCCESS;
-
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_SHARED_QUERY);
-    MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_WIN_SHARED_QUERY);
-
-    *(void **) baseptr = win_ptr->base;
-    *size = win_ptr->size;
-    *disp_unit = win_ptr->disp_unit;
-
-  fn_exit:
-    MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_WIN_SHARED_QUERY);
-    return mpi_errno;
-    /* --BEGIN ERROR HANDLING-- */
-  fn_fail:
-    goto fn_exit;
-    /* --END ERROR HANDLING-- */
-}
-
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_Alloc_mem
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-void *MPIDI_Alloc_mem(size_t size, MPID_Info * info_ptr)
-{
-    void *ap;
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_ALLOC_MEM);
-
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_ALLOC_MEM);
-
-    ap = MPIDI_CH3I_Alloc_mem(size, info_ptr);
-
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_ALLOC_MEM);
-    return ap;
-}
-
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_Free_mem
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_Free_mem(void *ptr)
-{
-    int mpi_errno = MPI_SUCCESS;
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_FREE_MEM);
-
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_FREE_MEM);
-
-    MPIDI_CH3I_Free_mem(ptr);
-
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_FREE_MEM);
-    return mpi_errno;
 }

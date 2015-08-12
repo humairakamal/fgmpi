@@ -32,6 +32,10 @@ int MPID_nem_choose_netmod(void);
 int MPIDI_CH3I_comm_create(MPID_Comm *comm, void *param);
 int MPIDI_CH3I_comm_destroy(MPID_Comm *comm, void *param);
 
+/* rendezvous hooks */
+int MPID_nem_lmt_RndvSend(MPID_Request **sreq_p, const void * buf, MPI_Aint count, MPI_Datatype datatype, int dt_contig,
+                          MPIDI_msg_sz_t data_sz, MPI_Aint dt_true_lb, int rank, int tag, MPID_Comm * comm, int context_offset);
+int MPID_nem_lmt_RndvRecv(struct MPIDI_VC *vc, MPID_Request *rreq);
 
 #define MPID_nem_mpich_release_fbox(cell)                                                                     \
     (OPA_store_release_int(&MPID_nem_mem_region.mailboxes.in[(cell)->pkt.mpich.source]->mpich.flag.value, 0), \
@@ -152,8 +156,10 @@ typedef union MPIDI_CH3_nem_pkt
         if (mpi_errno != MPI_SUCCESS)                                                                   \
         {                                                                                               \
             if (NULL != _rts_req) {                                                                     \
-                MPIU_Object_set_ref(_rts_req, 0);                                                       \
-                MPIDI_CH3_Request_destroy(_rts_req);                                                    \
+                /* error case: drop both the ch3 and nemesis                                            \
+                 * references, so the request can be cleanly freed */                                   \
+                MPID_Request_release(_rts_req);                                                         \
+                MPID_Request_release(_rts_req);                                                         \
             }                                                                                           \
             MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**rtspkt");                                  \
         }                                                                                               \
@@ -163,8 +169,10 @@ typedef union MPIDI_CH3_nem_pkt
             if (_rts_req->status.MPI_ERROR != MPI_SUCCESS)                                              \
             {                                                                                           \
                 mpi_errno = _rts_req->status.MPI_ERROR;                                                 \
-                MPIU_Object_set_ref(_rts_req, 0);                                                       \
-                MPIDI_CH3_Request_destroy(_rts_req);                                                    \
+                /* error case: drop both the ch3 and nemesis                                            \
+                 * references, so the request can be cleanly freed */                                   \
+                MPID_Request_release(_rts_req);                                                         \
+                MPID_Request_release(_rts_req);                                                         \
                 MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**rtspkt");                              \
             }                                                                                           \
             MPID_Request_release(_rts_req);                                                             \
@@ -200,7 +208,7 @@ typedef union MPIDI_CH3_nem_pkt
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_lmt_send_COOKIE
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static inline int MPID_nem_lmt_send_COOKIE(MPIDI_VC_t *vc, MPID_Request *req,
                                            void *cookie_buf, MPI_Aint cookie_len)
 {

@@ -54,7 +54,7 @@ int ADD_SUFFIX(MPID_nem_ofi_recv_callback)(cq_tagged_entry_t * wc, MPID_Request 
         /* ---------------------------------------------------- */
         vc = REQ_OFI(rreq)->vc;
         if (!vc) {      /* MPI_ANY_SOURCE -- Post message from status, complete the VC */
-            vc = rreq->comm->vcr[src];
+            vc = rreq->comm->dev.vcrt->vcr_table[src];
             MPIU_Assert(vc);
         }
 #if API_SET == API_SET_1
@@ -90,7 +90,7 @@ int ADD_SUFFIX(MPID_nem_ofi_recv_callback)(cq_tagged_entry_t * wc, MPID_Request 
         /* request object                                       */
         /* ---------------------------------------------------- */
         MPIDI_CH3U_Recvq_DP(rreq);
-        MPIDI_CH3U_Request_complete(rreq);
+        MPIDI_CH3I_NM_OFI_RC(MPID_Request_complete(rreq));
     }
     END_FUNC_RC(FCNAME);
 }

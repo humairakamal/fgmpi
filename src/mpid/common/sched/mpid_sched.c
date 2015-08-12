@@ -424,12 +424,7 @@ fn_fail:
     if (*req)
         *req = NULL;
     if (r) {
-        /* overly complicated, but we can't just destroy the req directly
-         * because we aren't truly inside the device and don't have access to
-         * MPIDI_CH3_Request_destroy (we may not even be CH3) */
-        int inuse = TRUE;
-        MPIR_Request_release_ref(r, &inuse); /* the schedule's ref */
-        MPIU_Assert(inuse);
+        MPID_Request_release(r); /* the schedule's ref */
         MPID_Request_release(r); /* the user's ref */
     }
 
@@ -857,7 +852,7 @@ static int MPIDU_Sched_progress_state(struct MPIDU_Sched_state *state, int *made
                             e->status = MPIDU_SCHED_ENTRY_STATUS_COMPLETE;
                         MPID_Request_release(e->u.send.sreq);
                         e->u.send.sreq = NULL;
-                        MPIR_Comm_release(e->u.send.comm, /*isDisconnect=*/FALSE);
+                        MPIR_Comm_release(e->u.send.comm);
                         dtype_release_if_not_builtin(e->u.send.datatype);
                     }
                     break;
@@ -872,7 +867,7 @@ static int MPIDU_Sched_progress_state(struct MPIDU_Sched_state *state, int *made
                             e->status = MPIDU_SCHED_ENTRY_STATUS_COMPLETE;
                         MPID_Request_release(e->u.recv.rreq);
                         e->u.recv.rreq = NULL;
-                        MPIR_Comm_release(e->u.recv.comm, /*isDisconnect=*/FALSE);
+                        MPIR_Comm_release(e->u.recv.comm);
                         dtype_release_if_not_builtin(e->u.recv.datatype);
                     }
                     break;
@@ -916,8 +911,11 @@ static int MPIDU_Sched_progress_state(struct MPIDU_Sched_state *state, int *made
                     break;
             }
 
-            MPID_REQUEST_SET_COMPLETED(s->req);
-            MPID_Request_release(s->req);
+            mpi_errno = MPID_Request_complete(s->req);
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+
             s->req = NULL;
             MPIU_Free(s->entries);
             MPIU_Free(s);

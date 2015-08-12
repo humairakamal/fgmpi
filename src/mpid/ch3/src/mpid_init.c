@@ -55,7 +55,7 @@ MPIDI_CH3U_Win_pkt_ordering_t MPIDI_CH3U_Win_pkt_orderings = { 0 };
 #undef FUNCNAME
 #define FUNCNAME finalize_failed_procs_group
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int finalize_failed_procs_group(void *param)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -97,7 +97,7 @@ static int set_eager_threshold(MPID_Comm *comm_ptr, MPID_Info *info, void *state
 #undef FUNCNAME
 #define FUNCNAME MPID_Init
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_Init(int *argc, char ***argv, int requested, int *provided, 
 	      int *has_args, int *has_env)
 {
@@ -302,6 +302,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 #endif
     comm->remote_size = pg_size;
     comm->local_size  = pg_size;
+
 #if defined(FINEGRAIN_MPI)
     comm->rank = my_fgrank;
     PMI_Get_totprocs(&(comm->totprocs));
@@ -310,54 +311,39 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 
 #if defined(FINEGRAIN_MPI)
     if(FGP_WITHIN_INIT == FGP_init_state) {
-        mpi_errno = MPID_VCRT_Create(comm->remote_size, &vcrt_world);/* FG: TODO Double-check ref_count */
+        mpi_errno = MPIDI_VCRT_Create(comm->remote_size, &vcrt_world);/* FG: TODO Double-check ref_count */
         if (mpi_errno != MPI_SUCCESS)
         {
             MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**dev|vcrt_create",
                                  "**dev|vcrt_create %s", "MPI_COMM_WORLD");
         }
 
-        mpi_errno = MPID_VCRT_Get_ptr(vcrt_world, &vcr_world);
-        if (mpi_errno != MPI_SUCCESS)
-        {
-            MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**dev|vcrt_get_ptr",
-                                 "dev|vcrt_get_ptr %s", "MPI_COMM_WORLD");
-        }
-
         /* Initialize the connection table on COMM_WORLD from the process group's
            connection table */
         for (p = 0; p < pg_size; p++)
         {
-            MPID_VCR_Dup(&pg->vct[p], &vcr_world[p]);
+            MPIDI_VCR_Dup(&pg->vct[p], &vcrt_world->vcr_table[p]);
         }
     }
-    MPIU_Assert( (vcrt_world != NULL) && (vcr_world != NULL) );
-    comm->vcrt = vcrt_world;
-    comm->vcr  = vcr_world;
+    MPIU_Assert( (vcrt_world != NULL) );
+    comm->dev.vcrt = vcrt_world;
 
     mpi_errno = MPIR_Comm_commit(comm); /*FG: TODO Check all places it is called in MPI_Init */
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
 #else
-    mpi_errno = MPID_VCRT_Create(comm->remote_size, &comm->vcrt);
+    mpi_errno = MPIDI_VCRT_Create(comm->remote_size, &comm->dev.vcrt);
     if (mpi_errno != MPI_SUCCESS)
     {
 	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**dev|vcrt_create", 
 			     "**dev|vcrt_create %s", "MPI_COMM_WORLD");
     }
-    
-    mpi_errno = MPID_VCRT_Get_ptr(comm->vcrt, &comm->vcr);
-    if (mpi_errno != MPI_SUCCESS)
-    {
-	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**dev|vcrt_get_ptr", 
-			     "dev|vcrt_get_ptr %s", "MPI_COMM_WORLD");
-    }
-    
+
     /* Initialize the connection table on COMM_WORLD from the process group's
        connection table */
     for (p = 0; p < pg_size; p++)
     {
-	MPID_VCR_Dup(&pg->vct[p], &comm->vcr[p]);
+	MPIDI_VCR_Dup(&pg->vct[p], &comm->dev.vcrt->vcr_table[p]);
     }
 
     mpi_errno = MPIR_Comm_commit(comm); 
@@ -381,21 +367,14 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     comm->co_shared_vars = NULL; /* FG: TODO FIX Double-check */
 #endif
     
-    mpi_errno = MPID_VCRT_Create(comm->remote_size, &comm->vcrt);
+    mpi_errno = MPIDI_VCRT_Create(comm->remote_size, &comm->dev.vcrt);
     if (mpi_errno != MPI_SUCCESS)
     {
 	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**dev|vcrt_create", 
 			     "**dev|vcrt_create %s", "MPI_COMM_SELF");
     }
     
-    mpi_errno = MPID_VCRT_Get_ptr(comm->vcrt, &comm->vcr);
-    if (mpi_errno != MPI_SUCCESS)
-    {
-	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**dev|vcrt_get_ptr", 
-			     "dev|vcrt_get_ptr %s", "MPI_COMM_WORLD");
-    }
-    
-    MPID_VCR_Dup(&pg->vct[pg_rank], &comm->vcr[0]);
+    MPIDI_VCR_Dup(&pg->vct[pg_rank], &comm->dev.vcrt->vcr_table[0]);
 
     //    mpi_errno = MPIR_Comm_commit(comm); /* FG:TODO IMPORTANT comm_self needs comm->co_shared_vars */
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
@@ -420,9 +399,8 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     PMI_Get_totprocs(&(comm->totprocs));
     comm->co_shared_vars = world_co_shared_vars;
 #endif
-    MPID_VCRT_Add_ref( MPIR_Process.comm_world->vcrt );
-    comm->vcrt = MPIR_Process.comm_world->vcrt;
-    comm->vcr  = MPIR_Process.comm_world->vcr;
+    MPIDI_VCRT_Add_ref( MPIR_Process.comm_world->dev.vcrt );
+    comm->dev.vcrt = MPIR_Process.comm_world->dev.vcrt;
     
     //mpi_errno = MPIR_Comm_commit(comm); /* FG: TODO IMPORTANT */
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);

@@ -263,7 +263,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Recvq_FU
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3U_Recvq_FU(int source, int tag, int context_id, MPI_Status *s)
 {
     MPID_Request * rreq;
@@ -356,7 +356,7 @@ int MPIDI_CH3U_Recvq_FU(int source, int tag, int context_id, MPI_Status *s)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Recvq_FDU
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 MPID_Request * MPIDI_CH3U_Recvq_FDU(MPI_Request sreq_id, 
 				    MPIDI_Message_match * match)
 {
@@ -458,7 +458,7 @@ MPID_Request * MPIDI_CH3U_Recvq_FDU(MPI_Request sreq_id,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Recvq_FDU_matchonly
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 MPID_Request * MPIDI_CH3U_Recvq_FDU_matchonly(int source, int tag, int context_id, MPID_Comm *comm, int *foundp)
 {
     int found = FALSE;
@@ -605,7 +605,7 @@ lock_exit:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Recvq_FDU_or_AEP
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 MPID_Request * MPIDI_CH3U_Recvq_FDU_or_AEP(int source, int tag, 
                                            int context_id, MPID_Comm *comm, void *user_buf,
                                            MPI_Aint user_count, MPI_Datatype datatype, int * foundp)
@@ -779,7 +779,7 @@ MPID_Request * MPIDI_CH3U_Recvq_FDU_or_AEP(int source, int tag,
             if (vc->state == MPIDI_VC_STATE_MORIBUND) {
                 MPIU_ERR_SET1(mpi_errno, MPIX_ERR_PROC_FAILED, "**comm_fail", "**comm_fail %d", vc->pg_rank);
                 rreq->status.MPI_ERROR = mpi_errno;
-                MPIDI_CH3U_Request_complete(rreq);
+                MPID_Request_complete(rreq);
                 goto lock_exit;
             }
         }
@@ -829,7 +829,7 @@ MPID_Request * MPIDI_CH3U_Recvq_FDU_or_AEP(int source, int tag,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Recvq_DP
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3U_Recvq_DP(MPID_Request * rreq)
 {
     int found;
@@ -922,7 +922,7 @@ int MPIDI_CH3U_Recvq_DP(MPID_Request * rreq)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Recvq_FDP_or_AEU
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 MPID_Request * MPIDI_CH3U_Recvq_FDP_or_AEU(MPIDI_Message_match * match, 
 					   int * foundp)
 {
@@ -953,8 +953,6 @@ MPID_Request * MPIDI_CH3U_Recvq_FDP_or_AEU(MPIDI_Message_match * match,
 #if defined(FINEGRAIN_MPI)
     GET_MATCH_QUEUE_INDEX(match->parts.dest_rank, &fg_offset);
 #endif
-
- top_loop:
     prev_rreq = NULL;
 
 #if defined(FINEGRAIN_MPI)
@@ -986,21 +984,27 @@ MPID_Request * MPIDI_CH3U_Recvq_FDP_or_AEU(MPIDI_Message_match * match,
 	    }
         MPIR_T_PVAR_LEVEL_DEC(RECVQ, posted_recvq_length, 1);
 
-            /* give channel a chance to match the request, try again if so */
-	    channel_matched = MPIDI_POSTED_RECV_DEQUEUE_HOOK(rreq);
-            if (channel_matched) /* FG: TODO Double-check */
-                goto top_loop;
-            
-	    found = TRUE;
-
+            /* Give channel a chance to match the request */
+            channel_matched = MPIDI_POSTED_RECV_DEQUEUE_HOOK(rreq);
+            if (!channel_matched) { /* FG: TODO Double-check */
+                /* If the channel did not match the request, the match here is
+                 * valid and we can stop searching for the request. */
+                found = TRUE;
 #if defined(FINEGRAIN_MPI)
-            /* FG: TODO Zerocopy */
-            FG_Notify_on_event(match->parts.dest_rank, UNBLOCK);
+                /* FG: TODO Zerocopy */
+                FG_Notify_on_event(match->parts.dest_rank, UNBLOCK);
 #endif
-	    goto lock_exit;
-	}
-	prev_rreq = rreq;
-	rreq = rreq->dev.next;
+                goto lock_exit;
+            } else {
+                /* If the channel did match the request, then it's already
+                 * matched in the channel and the request here should be
+                 * discarded. Continue searching. */
+                rreq = rreq->dev.next;
+            }
+        } else {
+            prev_rreq = rreq;
+            rreq = rreq->dev.next;
+        }
     }
     MPIR_T_PVAR_TIMER_END(RECVQ, time_failed_matching_postedq);
 
@@ -1115,7 +1119,7 @@ static inline void dequeue_and_set_error(MPID_Request **req,  MPID_Request *prev
 
     /* set error and complete */
     (*req)->status.MPI_ERROR = *error;
-    MPIDI_CH3U_Request_complete(*req);
+    MPID_Request_complete(*req);
     MPIU_DBG_MSG_FMT(CH3_OTHER, VERBOSE,
                      (MPIU_DBG_FDEST, "set error of req %p (%#08x) to %#x and completing.",
                       *req, (*req)->handle, *error));
@@ -1508,7 +1512,7 @@ void MPIDI_CH3U_Dbg_print_recvq(FILE *stream);
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Dbg_print_recvq
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 void MPIDI_CH3U_Dbg_print_recvq(FILE *stream)
 {
     MPID_Request * rreq;
@@ -1587,7 +1591,7 @@ void MPIDI_CH3U_Dbg_print_recvq(FILE *stream)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Recvq_count_unexp
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3U_Recvq_count_unexp(void)
 {
     int count = 0;

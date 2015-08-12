@@ -24,7 +24,7 @@ static void MPID_nem_llc_recv_handler(void *vp_vc, uint64_t raddr, void *buf, si
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_llc_poll
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_nem_llc_poll(int in_blocking_progress)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -51,7 +51,7 @@ int MPID_nem_llc_poll(int in_blocking_progress)
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_llc_send_handler
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static void MPID_nem_llc_send_handler(void *cba, uint64_t * p_reqid)
 {
     /* int mpi_errno = 0; */
@@ -134,7 +134,10 @@ static void MPID_nem_llc_send_handler(void *cba, uint64_t * p_reqid)
                 if (reqFn == 0) {
                     MPIU_Assert(reqtype != MPIDI_REQUEST_TYPE_GET_RESP);
 
-                    MPIDI_CH3U_Request_complete(sreq);
+                    r_mpi_errno = MPID_Request_complete(sreq);
+                    if (r_mpi_errno != MPI_SUCCESS) {
+                        MPIU_ERR_POP(r_mpi_errno);
+                    }
                     MPIU_DBG_MSG(CH3_CHANNEL, VERBOSE, ".... complete");
                 }
                 else {
@@ -173,7 +176,7 @@ static void MPID_nem_llc_send_handler(void *cba, uint64_t * p_reqid)
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_llc_recv_handler
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static void MPID_nem_llc_recv_handler(void *vp_vc, uint64_t raddr, void *buf, size_t bsz)
 {
     int mpi_errno = 0;
@@ -227,7 +230,7 @@ static void MPID_nem_llc_recv_handler(void *vp_vc, uint64_t raddr, void *buf, si
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_llc_recv_posted
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_nem_llc_recv_posted(struct MPIDI_VC *vc, struct MPID_Request *req)
 {
     int mpi_errno = MPI_SUCCESS, llc_errno;
@@ -342,7 +345,7 @@ int MPID_nem_llc_recv_posted(struct MPIDI_VC *vc, struct MPID_Request *req)
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_llc_anysource_posted
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 void MPID_nem_llc_anysource_posted(MPID_Request * req)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -358,7 +361,7 @@ void MPID_nem_llc_anysource_posted(MPID_Request * req)
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_llc_anysource_matched
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_nem_llc_anysource_matched(MPID_Request * req)
 {
     int matched = FALSE;

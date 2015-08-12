@@ -178,9 +178,9 @@ int MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     {
 	MPID_Progress_state progress_state;
 #if defined(FINEGRAIN_MPI)
-        MPIR_Rank_t dest = sreq->dev.match.parts.rank;
+        MPIDI_Rank_t dest = sreq->dev.match.parts.rank;
         MPID_Comm *scomm_ptr = sreq->comm;
-        MPIR_Rank_t source = rreq->dev.match.parts.rank;
+        MPIDI_Rank_t source = rreq->dev.match.parts.rank;
         MPID_Comm *rcomm_ptr = rreq->comm;
 #endif
 

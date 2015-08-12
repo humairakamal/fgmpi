@@ -77,7 +77,7 @@ static void free_status_index(int index)
 #undef FUNCNAME
 #define FUNCNAME open_knem_dev
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int open_knem_dev(void)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -112,7 +112,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME do_dma_send
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int do_dma_send(MPIDI_VC_t *vc,  MPID_Request *sreq, int send_iov_n,
                        MPID_IOV send_iov[], knem_cookie_t *s_cookiep)
 {
@@ -163,7 +163,7 @@ fn_exit:
 #undef FUNCNAME
 #define FUNCNAME do_dma_recv
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int do_dma_recv(int iov_n, MPID_IOV iov[], knem_cookie_t s_cookie, int nodma, volatile knem_status_t **status_p_p, knem_status_t *current_status_p)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -227,7 +227,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME send_sreq_data
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int send_sreq_data(MPIDI_VC_t *vc, MPID_Request *sreq, knem_cookie_t *s_cookiep)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -292,7 +292,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME check_req_complete
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static inline int check_req_complete(MPIDI_VC_t *vc, MPID_Request *req, int *complete)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -305,7 +305,10 @@ static inline int check_req_complete(MPIDI_VC_t *vc, MPID_Request *req, int *com
     }
     else {
         *complete = 1;
-        MPIDI_CH3U_Request_complete(req);
+        mpi_errno = MPID_Request_complete(req);
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIU_ERR_POP(mpi_errno);
+        }
     }
 
 fn_fail:
@@ -316,7 +319,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_lmt_dma_initiate_lmt
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_nem_lmt_dma_initiate_lmt(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, MPID_Request *sreq)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -347,7 +350,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_lmt_dma_start_recv
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_nem_lmt_dma_start_recv(MPIDI_VC_t *vc, MPID_Request *rreq, MPID_IOV s_cookie)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -458,7 +461,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_lmt_dma_done_send
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_nem_lmt_dma_done_send(MPIDI_VC_t *vc, MPID_Request *sreq)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -478,7 +481,10 @@ int MPID_nem_lmt_dma_done_send(MPIDI_VC_t *vc, MPID_Request *sreq)
        reason. */
     reqFn = sreq->dev.OnDataAvail;
     if (!reqFn) {
-        MPIDI_CH3U_Request_complete(sreq);
+        mpi_errno = MPID_Request_complete(sreq);
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIU_ERR_POP(mpi_errno);
+        }
         MPIU_DBG_MSG(CH3_CHANNEL, VERBOSE, ".... complete");
         goto fn_exit;
     }
@@ -508,7 +514,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_lmt_dma_handle_cookie
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_nem_lmt_dma_handle_cookie(MPIDI_VC_t *vc, MPID_Request *req, MPID_IOV cookie)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -550,7 +556,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_lmt_dma_progress
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_nem_lmt_dma_progress(void)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -611,7 +617,10 @@ int MPID_nem_lmt_dma_progress(void)
                 cur->req->status.MPI_ERROR = MPI_SUCCESS;
                 MPIU_ERR_SET1(cur->req->status.MPI_ERROR, MPI_ERR_OTHER, "**recv_status", "**recv_status %d", *cur->status_p);
 
-                MPIDI_CH3U_Request_complete(cur->req);
+                mpi_errno = MPID_Request_complete(cur->req);
+                if (mpi_errno != MPI_SUCCESS) {
+                    MPIU_ERR_POP(mpi_errno);
+                }
 
                 if (cur == outstanding_head) {
                     outstanding_head = cur->next;
@@ -679,7 +688,7 @@ int MPID_nem_lmt_dma_vc_terminated(MPIDI_VC_t *vc)
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_lmt_dma_start_send
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_nem_lmt_dma_start_send(MPIDI_VC_t *vc, MPID_Request *req, MPID_IOV r_cookie)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -695,7 +704,7 @@ int MPID_nem_lmt_dma_start_send(MPIDI_VC_t *vc, MPID_Request *req, MPID_IOV r_co
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_lmt_dma_done_recv
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_nem_lmt_dma_done_recv(MPIDI_VC_t *vc, MPID_Request *rreq)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_LMT_DMA_DONE_RECV);

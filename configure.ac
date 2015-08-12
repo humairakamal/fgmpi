@@ -1536,10 +1536,14 @@ done
 IFS="$save_IFS"
 
 if test "$enable_append_g" = "yes" ; then
-    CFLAGS="$CFLAGS -g"
-    CXXFLAGS="$CXXFLAGS -g"
-    FFLAGS="$FFLAGS -g"
-    FCFLAGS="$FCFLAGS -g"
+    PAC_APPEND_FLAG([-g],[CFLAGS])
+    PAC_APPEND_FLAG([-g],[CXXFLAGS])
+    PAC_APPEND_FLAG([-g],[FFLAGS])
+    PAC_APPEND_FLAG([-g],[FCFLAGS])
+    PAC_APPEND_FLAG([-g],[WRAPPER_CFLAGS])
+    PAC_APPEND_FLAG([-g],[WRAPPER_CXXFLAGS])
+    PAC_APPEND_FLAG([-g],[WRAPPER_FFLAGS])
+    PAC_APPEND_FLAG([-g],[WRAPPER_FCFLAGS])
 fi
 if test -n "$perform_meminit" ; then
     AC_DEFINE(MPICH_DEBUG_MEMINIT,1,[Define to enable preinitialization of memory used by structures and unions])
@@ -6049,6 +6053,12 @@ if test "X$enable_shared" = "Xyes" ; then
         # unify the same common symbols in different dylibs. It needs to be
         # added in linking stage for both the shared library and the final
         # executable file.
+
+        # In Fortran programs, we implement global definitions such as MPI_BOTTOM
+        # as common symbols. We check the address of the user input and translate it
+        # to the C global definition if it is equal to the internal pre-stored address
+        # in the Fortran binding layer. Without -flat-namespace, we may get different
+        # addresses and thus treat the predefined constant as a normal buffer.
 
         # Although gfortran works fine by only adding -flat-namespace, and
         # ifort works by only adding -Wl,-commons,use_dylibs, we should add

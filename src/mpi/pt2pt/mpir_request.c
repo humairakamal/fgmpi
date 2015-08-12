@@ -34,7 +34,7 @@ int FG_Yield_on_incomplete_request(MPID_Request *req)
 int MPIR_Progress_wait_request_with_progress_state(MPID_Request *req, MPID_Progress_state* progress_state_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
-    MPIR_Rank_t dest = req->dev.match.parts.rank;
+    MPIDI_Rank_t dest = req->dev.match.parts.rank;
     MPID_Comm *comm_ptr = req->comm;
     int is_colocated = Is_within_same_HWP(dest, comm_ptr, NULL);
     int num_of_colocated_yields = 0;
@@ -70,7 +70,7 @@ fn_exit:
 int MPIR_Progress_wait_request(MPID_Request *req) /* FG: TODO Double-check all places it is called */
 {
     int mpi_errno = MPI_SUCCESS;
-    MPIR_Rank_t dest = req->dev.match.parts.rank;
+    MPIDI_Rank_t dest = req->dev.match.parts.rank;
     MPID_Comm *comm_ptr = req->comm;
 
     if (!MPID_Request_is_complete(req))
@@ -690,7 +690,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPIR_Grequest_waitall
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Grequest_waitall(int count, MPID_Request * const * request_ptrs)
 {
     void ** state_ptrs;

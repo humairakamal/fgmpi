@@ -45,8 +45,8 @@ typedef enum MPIDI_CH3I_VC_state
 MPIDI_CH3I_VC_state_t;
 
 /* size of private data area in vc and req for network modules */
-#define MPID_NEM_VC_NETMOD_AREA_LEN 128
-#define MPID_NEM_REQ_NETMOD_AREA_LEN 192
+#define MPIDI_NEM_VC_NETMOD_AREA_LEN 128
+#define MPIDI_NEM_REQ_NETMOD_AREA_LEN 192
 
 /* define functions for access MPID_nem_lmt_rts_queue_t */
 typedef GENERIC_Q_DECL(struct MPID_Request) MPID_nem_lmt_rts_queue_t;
@@ -143,7 +143,7 @@ typedef struct MPIDI_CH3I_VC
     
     union
     {
-        char padding[MPID_NEM_VC_NETMOD_AREA_LEN];
+        char padding[MPIDI_NEM_VC_NETMOD_AREA_LEN];
 
         /* Temporary helper field for ticket #1679.  Should force proper pointer
          * alignment on finnicky platforms like SPARC.  Proper fix is to stop
@@ -174,7 +174,7 @@ struct MPIDI_CH3I_Request
 
     union
     {
-        char padding[MPID_NEM_REQ_NETMOD_AREA_LEN];
+        char padding[MPIDI_NEM_REQ_NETMOD_AREA_LEN];
 
         /* Temporary helper field for ticket #1679.  Should force proper pointer
          * alignment on finnicky platforms like SPARC.  Proper fix is to stop
@@ -228,7 +228,6 @@ MPIDI_CH3I_Progress_state;
 #define MPIDI_CH3_PROGRESS_STATE_DECL MPIDI_CH3I_Progress_state ch;
 
 extern OPA_int_t MPIDI_CH3I_progress_completion_count;
-extern int MPIDI_CH3I_num_active_issued_win, MPIDI_CH3I_num_passive_win;
 
 #define MPIDI_CH3I_INCR_PROGRESS_COMPLETION_COUNT do {                                  \
         OPA_write_barrier();                                                            \

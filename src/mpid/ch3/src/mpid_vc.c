@@ -66,24 +66,6 @@ cvars:
 === END_MPI_T_CVAR_INFO_BLOCK ===
 */
 
-/*S
- * MPIDI_VCRT - virtual connection reference table
- *
- * handle - this element is not used, but exists so that we may use the 
- * MPIU_Object routines for reference counting
- *
- * ref_count - number of references to this table
- *
- * vcr_table - array of virtual connection references
- S*/
-typedef struct MPIDI_VCRT
-{
-    MPIU_OBJECT_HEADER; /* adds handle and ref_count fields */
-    int size;
-    MPIDI_VC_t * vcr_table[1];
-}
-MPIDI_VCRT_t;
-
 /* What is the arrangement of VCRT and VCR and VC? 
    
    Each VC (the virtual connection itself) is refered to by a reference 
@@ -96,28 +78,26 @@ MPIDI_VCRT_t;
 
  */
 
-static int MPIDI_CH3U_VC_FinishPending( MPIDI_VCRT_t *vcrt );
-
 /*@
-  MPID_VCRT_Create - Create a table of VC references
+  MPIDI_VCRT_Create - Create a table of VC references
 
   Notes:
   This routine only provides space for the VC references.  Those should
   be added by assigning to elements of the vc array within the 
-  'MPID_VCRT' object.
+  'MPIDI_VCRT' object.
   @*/
 #undef FUNCNAME
-#define FUNCNAME MPID_VCRT_Create
+#define FUNCNAME MPIDI_VCRT_Create
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_VCRT_Create(int size, MPID_VCRT *vcrt_ptr)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIDI_VCRT_Create(int size, struct MPIDI_VCRT **vcrt_ptr)
 {
     MPIDI_VCRT_t * vcrt;
     int mpi_errno = MPI_SUCCESS;
     MPIU_CHKPMEM_DECL(1);
-    MPIDI_STATE_DECL(MPID_STATE_MPID_VCRT_CREATE);
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_VCRT_CREATE);
 
-    MPIDI_FUNC_ENTER(MPID_STATE_MPID_VCRT_CREATE);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_VCRT_CREATE);
 
     MPIU_CHKPMEM_MALLOC(vcrt, MPIDI_VCRT_t *, sizeof(MPIDI_VCRT_t) + (size - 1) * sizeof(MPIDI_VC_t *),	mpi_errno, "**nomem");
     vcrt->handle = HANDLE_SET_KIND(0, HANDLE_KIND_INVALID);
@@ -127,7 +107,7 @@ int MPID_VCRT_Create(int size, MPID_VCRT *vcrt_ptr)
 
  fn_exit:
     MPIU_CHKPMEM_COMMIT();
-    MPIDI_FUNC_EXIT(MPID_STATE_MPID_VCRT_CREATE);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_VCRT_CREATE);
     return mpi_errno;
  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
@@ -137,7 +117,7 @@ int MPID_VCRT_Create(int size, MPID_VCRT *vcrt_ptr)
 }
 
 /*@
-  MPID_VCRT_Add_ref - Add a reference to a VC reference table
+  MPIDI_VCRT_Add_ref - Add a reference to a VC reference table
 
   Notes:
   This is called when a communicator duplicates its group of processes.
@@ -146,39 +126,39 @@ int MPID_VCRT_Create(int size, MPID_VCRT *vcrt_ptr)
   virtural connections (VCs).
   @*/
 #undef FUNCNAME
-#define FUNCNAME MPID_VCRT_Add_ref
+#define FUNCNAME MPIDI_VCRT_Add_ref
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_VCRT_Add_ref(MPID_VCRT vcrt)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIDI_VCRT_Add_ref(struct MPIDI_VCRT *vcrt)
 {
-    MPIDI_STATE_DECL(MPID_STATE_MPID_VCRT_ADD_REF);
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_VCRT_ADD_REF);
 
-    MPIDI_FUNC_ENTER(MPID_STATE_MPID_VCRT_ADD_REF);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_VCRT_ADD_REF);
     MPIU_Object_add_ref(vcrt);
     MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST, "Incr VCRT %p ref count",vcrt));
-    MPIDI_FUNC_EXIT(MPID_STATE_MPID_VCRT_ADD_REF);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_VCRT_ADD_REF);
     return MPI_SUCCESS;
 }
 
 /* FIXME: What should this do?  See proc group and vc discussion */
 
 /*@
-  MPID_VCRT_Release - Release a reference to a VC reference table
+  MPIDI_VCRT_Release - Release a reference to a VC reference table
 
   Notes:
   
   @*/
 #undef FUNCNAME
-#define FUNCNAME MPID_VCRT_Release
+#define FUNCNAME MPIDI_VCRT_Release
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_VCRT_Release(MPID_VCRT vcrt, int isDisconnect )
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIDI_VCRT_Release(struct MPIDI_VCRT *vcrt, int isDisconnect )
 {
     int in_use;
     int mpi_errno = MPI_SUCCESS;
-    MPIDI_STATE_DECL(MPID_STATE_MPID_VCRT_RELEASE);
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_VCRT_RELEASE);
 
-    MPIDI_FUNC_ENTER(MPID_STATE_MPID_VCRT_RELEASE);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_VCRT_RELEASE);
 
     MPIU_Object_release_ref(vcrt, &in_use);
     MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST, "Decr VCRT %p ref count",vcrt));
@@ -190,12 +170,6 @@ int MPID_VCRT_Release(MPID_VCRT vcrt, int isDisconnect )
     */
     if (!in_use) {
 	int i, inuse;
-
-	/* FIXME: Need a better way to define how vc's are closed that 
-	 takes into account pending operations on vcs, including 
-	 close events received from other processes. */
-	/* mpi_errno = MPIDI_CH3U_VC_FinishPending( vcrt ); */
-        if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 
 	for (i = 0; i < vcrt->size; i++)
 	{
@@ -270,37 +244,14 @@ int MPID_VCRT_Release(MPID_VCRT vcrt, int isDisconnect )
     }
 
  fn_exit:    
-    MPIDI_FUNC_EXIT(MPID_STATE_MPID_VCRT_RELEASE);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_VCRT_RELEASE);
     return mpi_errno;
  fn_fail:
     goto fn_exit;
 }
 
 /*@
-  MPID_VCRT_Get_ptr - Return a pointer to the array of VCs for this 
-  reference table
-
-  Notes:
-  This routine is always used with MPID_VCRT_Create and should be 
-  combined with it.
-
-  @*/
-#undef FUNCNAME
-#define FUNCNAME MPID_VCRT_Get_ptr
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_VCRT_Get_ptr(MPID_VCRT vcrt, MPID_VCR **vc_pptr)
-{
-    MPIDI_STATE_DECL(MPID_STATE_MPID_VCRT_GET_PTR);
-
-    MPIDI_FUNC_ENTER(MPID_STATE_MPID_VCRT_GET_PTR);
-    *vc_pptr = vcrt->vcr_table;
-    MPIDI_FUNC_EXIT(MPID_STATE_MPID_VCRT_GET_PTR);
-    return MPI_SUCCESS;
-}
-
-/*@
-  MPID_VCR_Dup - Duplicate a virtual connection reference 
+  MPIDI_VCR_Dup - Duplicate a virtual connection reference
 
   Notes:
   If the VC is being used for the first time in a VC reference
@@ -314,10 +265,10 @@ int MPID_VCRT_Get_ptr(MPID_VCRT vcrt, MPID_VCR **vc_pptr)
   
   @*/
 #undef FUNCNAME
-#define FUNCNAME MPID_VCR_Dup
+#define FUNCNAME MPIDI_VCR_Dup
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_VCR_Dup(MPID_VCR orig_vcr, MPID_VCR * new_vcr)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIDI_VCR_Dup(MPIDI_VCR orig_vcr, MPIDI_VCR * new_vcr)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPID_VCR_DUP);
 
@@ -351,18 +302,25 @@ int MPID_VCR_Dup(MPID_VCR orig_vcr, MPID_VCR * new_vcr)
 }
 
 /*@
-  MPID_VCR_Get_lpid - Get the local process ID for a given VC reference
+  MPID_Comm_get_lpid - Get the local process ID for a given VC reference
   @*/
 #undef FUNCNAME
-#define FUNCNAME MPID_VCR_Get_lpid
+#define FUNCNAME MPID_Comm_get_lpid
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_VCR_Get_lpid(MPID_VCR vcr, int * lpid_ptr)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPID_Comm_get_lpid(MPID_Comm *comm_ptr, int idx, int * lpid_ptr, MPIU_BOOL is_remote)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPID_VCR_GET_LPID);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_VCR_GET_LPID);
-    *lpid_ptr = vcr->lpid;
+
+    if (comm_ptr->comm_kind == MPID_INTRACOMM)
+        *lpid_ptr = comm_ptr->dev.vcrt->vcr_table[idx]->lpid;
+    else if (is_remote)
+        *lpid_ptr = comm_ptr->dev.vcrt->vcr_table[idx]->lpid;
+    else
+        *lpid_ptr = comm_ptr->dev.local_vcrt->vcr_table[idx]->lpid;
+
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_VCR_GET_LPID);
     return MPI_SUCCESS;
 }
@@ -376,7 +334,7 @@ int MPID_VCR_Get_lpid(MPID_VCR vcr, int * lpid_ptr)
 #undef FUNCNAME
 #define FUNCNAME MPID_GPID_GetAllInComm
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_GPID_GetAllInComm( MPID_Comm *comm_ptr, int local_size, 
 			    int local_gpids[], int *singlePG )
 {
@@ -384,7 +342,7 @@ int MPID_GPID_GetAllInComm( MPID_Comm *comm_ptr, int local_size,
     int i;
     int *gpid = local_gpids;
     int lastPGID = -1, pgid;
-    MPID_VCR vc;
+    MPIDI_VCR vc;
     MPIDI_STATE_DECL(MPID_STATE_MPID_GPID_GETALLINCOMM);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_GPID_GETALLINCOMM);
@@ -393,7 +351,7 @@ int MPID_GPID_GetAllInComm( MPID_Comm *comm_ptr, int local_size,
     
     *singlePG = 1;
     for (i=0; i<comm_ptr->local_size; i++) {
-	vc = comm_ptr->vcr[i];
+	vc = comm_ptr->dev.vcrt->vcr_table[i];
 
 	/* Get the process group id as an int */
 	MPIDI_PG_IdToNum( vc->pg, &pgid );
@@ -418,13 +376,13 @@ int MPID_GPID_GetAllInComm( MPID_Comm *comm_ptr, int local_size,
 #undef FUNCNAME
 #define FUNCNAME MPID_GPID_Get
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_GPID_Get( MPID_Comm *comm_ptr, int rank, int gpid[] )
 {
     int      pgid;
-    MPID_VCR vc;
+    MPIDI_VCR vc;
     
-    vc = comm_ptr->vcr[rank];
+    vc = comm_ptr->dev.vcrt->vcr_table[rank];
 
     /* Get the process group id as an int */
     MPIDI_PG_IdToNum( vc->pg, &pgid );
@@ -443,7 +401,7 @@ int MPID_GPID_Get( MPID_Comm *comm_ptr, int rank, int gpid[] )
 #undef FUNCNAME
 #define FUNCNAME MPID_GPID_ToLpidArray
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_GPID_ToLpidArray( int size, int gpid[], int lpid[] )
 {
     int i, mpi_errno = MPI_SUCCESS;
@@ -499,19 +457,19 @@ int MPID_GPID_ToLpidArray( int size, int gpid[], int lpid[] )
 }
 
 /*@
-  MPID_VCR_CommFromLpids - Create a new communicator from a given set
+  MPID_Create_intercomm_from_lpids - Create a new communicator from a given set
   of lpids.  
 
   Notes:
   This is used to create a communicator that is not a subset of some
   existing communicator, for example, in a 'MPI_Comm_spawn' or 
-  'MPI_Comm_connect/MPI_Comm_accept'.
+  'MPI_Comm_connect/MPI_Comm_accept'.  Thus, it is only used for intercommunicators.
  @*/
 #undef FUNCNAME
-#define FUNCNAME MPID_VCR_CommFromLpids
+#define FUNCNAME MPID_Create_intercomm_from_lpids
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_VCR_CommFromLpids( MPID_Comm *newcomm_ptr, 
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPID_Create_intercomm_from_lpids( MPID_Comm *newcomm_ptr,
 			    int size, const int lpids[] )
 {
     int mpi_errno = MPI_SUCCESS;
@@ -521,8 +479,7 @@ int MPID_VCR_CommFromLpids( MPID_Comm *newcomm_ptr,
 
     commworld_ptr = MPIR_Process.comm_world;
     /* Setup the communicator's vc table: remote group */
-    MPID_VCRT_Create( size, &newcomm_ptr->vcrt );
-    MPID_VCRT_Get_ptr( newcomm_ptr->vcrt, &newcomm_ptr->vcr );
+    MPIDI_VCRT_Create( size, &newcomm_ptr->dev.vcrt );
     for (i=0; i<size; i++) {
 	MPIDI_VC_t *vc = 0;
 
@@ -534,7 +491,7 @@ int MPID_VCR_CommFromLpids( MPID_Comm *newcomm_ptr,
 	/* printf( "[%d] Remote rank %d has lpid %d\n", 
 	   MPIR_Process.comm_world->rank, i, lpids[i] ); */
 	if (lpids[i] < commworld_ptr->remote_size) {
-	    vc = commworld_ptr->vcr[lpids[i]];
+	    vc = commworld_ptr->dev.vcrt->vcr_table[lpids[i]];
 	}
 	else {
 	    /* We must find the corresponding vcr for a given lpid */	
@@ -568,7 +525,7 @@ int MPID_VCR_CommFromLpids( MPID_Comm *newcomm_ptr,
 	   (int)vc, lpids[i] ); */
 	/* Note that his will increment the ref count for the associate
 	   PG if necessary.  */
-	MPID_VCR_Dup( vc, &newcomm_ptr->vcr[i] );
+	MPIDI_VCR_Dup( vc, &newcomm_ptr->dev.vcrt->vcr_table[i] );
     }
 fn_exit:
     return mpi_errno;
@@ -594,7 +551,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPID_PG_ForwardPGInfo
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_PG_ForwardPGInfo( MPID_Comm *peer_ptr, MPID_Comm *comm_ptr, 
 			   int nPGids, const int gpids[], 
 			   int root )
@@ -653,100 +610,6 @@ int MPID_PG_ForwardPGInfo( MPID_Comm *peer_ptr, MPID_Comm *comm_ptr,
     return MPI_SUCCESS;
  fn_fail:
     goto fn_exit;
-}
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3U_VC_FinishPending
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-static int MPIDI_CH3U_VC_FinishPending( MPIDI_VCRT_t *vcrt )
-{
-    int mpi_errno = MPI_SUCCESS;
-    MPIDI_VC_t **vc;
-    int i, size, nPending;
-    MPID_Progress_state progress_state; 
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3U_VC_FINISHPENDING);
-
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_VC_FINISHPENDING);
-
-    do {
-	/* Compute the number of pending ops.
-	   A virtual connection has pending operations if the state
-	   is not INACTIVE or if the sendq is not null */
-	nPending = 0;
-	vc       = vcrt->vcr_table;
-	size     = vcrt->size;
-	/* printf( "Size = %d\n", size ); fflush(stdout); */
-	for (i=0; i<size; i++) {
-	    if (vc[i]->state != MPIDI_VC_STATE_INACTIVE) {
-		/* FIXME: Printf for debugging */
-		printf ("state for vc[%d] is %d\n",
-			i, vc[i]->state ); fflush(stdout);
-		nPending++;
-	    }
-	}
-	if (nPending > 0) {
-	    /* FIXME: See note about printfs above.  It is never valid
-	       to use printfs, even for panic messages */
-	    MPIU_Internal_error_printf( "Panic! %d pending operations!\n", nPending );
-	    /* printf( "Panic! %d pending operations!\n", nPending ); */
-	    fflush(stdout);
-	    MPIU_Assert( nPending == 0 );
-	}
-	else {
-	    break;
-	}
-
-	MPID_Progress_start(&progress_state);
-	MPIU_DBG_MSG_D(CH3_DISCONNECT,VERBOSE,
-		       "Waiting for %d close operations",
-		       nPending);
-	mpi_errno = MPID_Progress_wait(&progress_state);
-	/* --BEGIN ERROR HANDLING-- */
-	if (mpi_errno != MPI_SUCCESS) {
-	    MPID_Progress_end(&progress_state);
-	    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
-				"**ch3|close_progress");
-	}
-	/* --END ERROR HANDLING-- */
-	MPID_Progress_end(&progress_state);
-    } while(nPending > 0);
-
- fn_exit:
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3U_VC_FINISHPENDING);
-    return mpi_errno;
- fn_fail:
-    goto fn_exit;
-}
-
-/*
- * MPIDI_CH3U_Comm_FinishPending - Complete any pending operations on the 
- * communicator.  
- *
- * Notes: 
- * This should be used before freeing or disconnecting a communicator.
- *
- * For better scalability, we might want to form a list of VC's with 
- * pending operations.
- */
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3U_Comm_FinishPending
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3U_Comm_FinishPending( MPID_Comm *comm_ptr )
-{
-    int mpi_errno = MPI_SUCCESS;
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3U_COMM_FINISHPENDING);
-
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_COMM_FINISHPENDING);
-
-    mpi_errno = MPIDI_CH3U_VC_FinishPending( comm_ptr->vcrt );
-    if (!mpi_errno && comm_ptr->local_vcrt) {
-	mpi_errno = MPIDI_CH3U_VC_FinishPending( comm_ptr->local_vcrt );
-    }
-
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3U_COMM_FINISHPENDING);
-    return mpi_errno;
 }
 
 /* ----------------------------------------------------------------------- */
@@ -812,17 +675,17 @@ char MPIU_hostname[MAX_HOSTNAME_LEN] = "_UNKNOWN_"; /* '_' is an illegal char fo
 #undef FUNCNAME
 #define FUNCNAME MPID_Get_node_id
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_Get_node_id(MPID_Comm *comm, int rank, MPID_Node_id_t *id_p)
 {
-    *id_p = comm->vcr[rank]->node_id;
+    *id_p = comm->dev.vcrt->vcr_table[rank]->node_id;
     return MPI_SUCCESS;
 }
 
 #undef FUNCNAME
 #define FUNCNAME MPID_Get_max_node_id
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 /* Providing a comm argument permits optimization, but this function is always
    allowed to return the max for the universe. */
 int MPID_Get_max_node_id(MPID_Comm *comm, MPID_Node_id_t *max_id_p)
@@ -995,7 +858,7 @@ typedef struct map_block
 #undef FUNCNAME
 #define FUNCNAME parse_mapping
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int parse_mapping(char *map_str, mapping_type_t *type, map_block_t **map, int *nblocks)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -1171,7 +1034,7 @@ static int compare_ints(const void *orig_x, const void *orig_y)
 #undef FUNCNAME
 #define FUNCNAME populate_ids_from_mapping
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int populate_ids_from_mapping(char *mapping, int *num_nodes, MPIDI_PG_t *pg, int *did_map)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -1296,7 +1159,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_Populate_vc_node_ids
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -1311,7 +1174,8 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
     char *node_name_buf;
     int no_local = 0;
     int odd_even_cliques = 0;
-    int pmi_version = MPIU_DEFAULT_PMI_VERSION, pmi_subversion = MPIU_DEFAULT_PMI_SUBVERSION;
+    int pmi_version = MPIDI_CH3I_DEFAULT_PMI_VERSION;
+    int pmi_subversion = MPIDI_CH3I_DEFAULT_PMI_SUBVERSION;
     MPIU_CHKLMEM_DECL(4);
 
 #if defined(FINEGRAIN_MPI)

@@ -107,8 +107,20 @@ noinst_PROGRAMS =      \
     nbredscat          \
     nbredscat3	       \
     nbredscatinter     \
-    nbcoll2            
-
+    nbcoll2            \
+    nbicbarrier        \
+    nbicallgather      \
+    nbicallgatherv     \
+    nbicallreduce      \
+    nbicbcast          \
+    nbicalltoall       \
+    nbicalltoallw      \
+    nbicalltoallv      \
+    nbicgather         \
+    nbicgatherv        \
+    nbicreduce         \
+    nbicscatter        \
+    nbicscatterv
 allgatherv4_LDADD = $(LDADD) -lm
 
 bcast_full_SOURCES = bcast.c
@@ -119,21 +131,48 @@ bcast_min_datatypes_SOURCES = bcast.c
 bcast_comm_world_CPPFLAGS = -DBCAST_COMM_WORLD_ONLY $(AM_CPPFLAGS)
 bcast_comm_world_SOURCES = bcast.c
 
-# Create tests of the nonblocking collectives by reusing the blocking tests,
-# using the MPI profiling interface to intercept the blocking call and
-# replace it with a MPI_Ixxx/MPI_Wait pair.
+# Generate tests of the nonblocking collectives by reusing the blocking tests.
 nballtoall1_SOURCES = alltoall1.c
-nballtoall1_LDADD   = $(LDADD) ../util/nbc_pmpi_adapter.$(OBJEXT)
+nballtoall1_CPPFLAGS  = -DUSE_MTEST_NBC $(AM_CPPFLAGS)
 nbredscat_SOURCES   = redscat.c
-nbredscat_LDADD     = $(LDADD) ../util/nbc_pmpi_adapter.$(OBJEXT)
+nbredscat_CPPFLAGS     = -DUSE_MTEST_NBC $(AM_CPPFLAGS)
 nbredscat3_SOURCES   = redscat3.c
-nbredscat3_LDADD     = $(LDADD) ../util/nbc_pmpi_adapter.$(OBJEXT)
+nbredscat3_CPPFLAGS     = -DUSE_MTEST_NBC $(AM_CPPFLAGS)
 nbredscatinter_SOURCES   = redscatinter.c
-nbredscatinter_LDADD     = $(LDADD) ../util/nbc_pmpi_adapter.$(OBJEXT)
+nbredscatinter_CPPFLAGS     = -DUSE_MTEST_NBC $(AM_CPPFLAGS)
 nbcoll2_SOURCES = coll2.c
-nbcoll2_LDADD   = $(LDADD) ../util/nbc_pmpi_adapter.$(OBJEXT)
+nbcoll2_CPPFLAGS   = -DUSE_MTEST_NBC $(AM_CPPFLAGS)
 
-# This is here instead of Makefile.mtest because it is only used in this 
-# set of tests
-$(top_builddir)/util/nbc_pmpi_adapter.$(OBJEXT): $(top_srcdir)/util/nbc_pmpi_adapter.c
-	(cd $(top_builddir)/util && $(MAKE) nbc_pmpi_adapter.$(OBJEXT))
+nbicbarrier_SOURCES = icbarrier.c
+nbicbarrier_CPPFLAGS = -DUSE_MTEST_NBC $(AM_CPPFLAGS)
+
+nbicallgather_SOURCES = icallgather.c
+nbicallgather_CPPFLAGS = -DUSE_MTEST_NBC $(AM_CPPFLAGS)
+nbicallgatherv_SOURCES = icallgatherv.c
+nbicallgatherv_CPPFLAGS = -DUSE_MTEST_NBC $(AM_CPPFLAGS)
+
+nbicallreduce_SOURCES = icallreduce.c
+nbicallreduce_CPPFLAGS = -DUSE_MTEST_NBC $(AM_CPPFLAGS)
+
+nbicalltoall_SOURCES = icalltoall.c
+nbicalltoall_CPPFLAGS = -DUSE_MTEST_NBC $(AM_CPPFLAGS)
+nbicalltoallv_SOURCES = icalltoallv.c
+nbicalltoallv_CPPFLAGS = -DUSE_MTEST_NBC $(AM_CPPFLAGS)
+nbicalltoallw_SOURCES = icalltoallw.c
+nbicalltoallw_CPPFLAGS = -DUSE_MTEST_NBC $(AM_CPPFLAGS)
+
+nbicbcast_SOURCES = icbcast.c
+nbicbcast_CPPFLAGS = -DUSE_MTEST_NBC $(AM_CPPFLAGS)
+
+nbicgather_SOURCES = icgather.c
+nbicgather_CPPFLAGS = -DUSE_MTEST_NBC $(AM_CPPFLAGS)
+nbicgatherv_SOURCES = icgatherv.c
+nbicgatherv_CPPFLAGS = -DUSE_MTEST_NBC $(AM_CPPFLAGS)
+
+nbicreduce_SOURCES = icreduce.c
+nbicreduce_CPPFLAGS = -DUSE_MTEST_NBC $(AM_CPPFLAGS)
+
+nbicscatter_SOURCES = icscatter.c
+nbicscatter_CPPFLAGS = -DUSE_MTEST_NBC $(AM_CPPFLAGS)
+nbicscatterv_SOURCES = icscatterv.c
+nbicscatterv_CPPFLAGS = -DUSE_MTEST_NBC $(AM_CPPFLAGS)

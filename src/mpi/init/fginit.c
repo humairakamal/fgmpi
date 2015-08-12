@@ -15,8 +15,7 @@ FGP_tuple_t *pid_to_fgps;          /* FG: pid_to_fgps is a 1-many mapping from t
 RTWmap *worldcomm_rtw_map;
 hshtbl *contextLeader_hshtbl;      /* This will remain a hashtable. */
 struct coproclet_barrier_vars *worldcomm_barrier_vars;
-MPID_VCRT     vcrt_world;          /* virtual connecton reference table for MPI_COMM_WORLD */
-MPID_VCR *    vcr_world;           /* alias to the array of virtual connections in vcrt_world */
+struct MPIDI_VCRT * vcrt_world;    /* virtual connecton reference table for MPI_COMM_WORLD */
 hshtbl *cidLookup_hshtbl;          /* FG: This is the new cid lookup hashtable that will be used with
                                     the new CID = <LID,LBI> algorithm. */
 Coproclet_shared_vars_t * world_co_shared_vars;

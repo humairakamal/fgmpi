@@ -9,7 +9,7 @@
 #undef FUNCNAME
 #define FUNCNAME update_request
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static void update_request(MPID_Request * sreq, MPID_IOV * iov, int iov_count,
 			   int iov_offset, MPIU_Size_t nb)
 {
@@ -39,7 +39,7 @@ static void update_request(MPID_Request * sreq, MPID_IOV * iov, int iov_count,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_iSendv
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, 
 		     MPID_IOV * iov, int n_iov)
 {
@@ -139,7 +139,10 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq,
 		    reqFn = sreq->dev.OnDataAvail;
 		    if (!reqFn) {
 			MPIU_Assert(MPIDI_Request_get_type(sreq)!=MPIDI_REQUEST_TYPE_GET_RESP);
-			MPIDI_CH3U_Request_complete(sreq);
+                        mpi_errno = MPID_Request_complete(sreq);
+                        if (mpi_errno != MPI_SUCCESS) {
+                            MPIU_ERR_POP(mpi_errno);
+                        }
 		    }
 		    else {
 			int complete;
@@ -187,7 +190,7 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq,
 			       MPI_ERR_INTERN, "**ch3|sock|writefailed", 
 			       "**ch3|sock|writefailed %d", rc );
 		 /* MT - CH3U_Request_complete performs write barrier */
-		MPIDI_CH3U_Request_complete(sreq);
+		MPID_Request_complete(sreq);
 		/* Return error to calling routine */
 		mpi_errno = sreq->status.MPI_ERROR;
 	    }
@@ -233,7 +236,7 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq,
 	/* TODO: Create an appropriate error message */
 	sreq->status.MPI_ERROR = MPI_ERR_INTERN;
 	/* MT - CH3U_Request_complete performs write barrier */
-	MPIDI_CH3U_Request_complete(sreq);
+	MPID_Request_complete(sreq);
     }
     /* --END ERROR HANDLING-- */
 

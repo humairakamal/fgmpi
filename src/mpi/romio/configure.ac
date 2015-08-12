@@ -792,7 +792,10 @@ if test -n "$file_system_panfs"; then
 	AC_DEFINE(ROMIO_PANFS,1,[Define for ROMIO with PANFS]),
 	AC_MSG_ERROR([PANFS support requested but cannot find pan_fs_client_cw_mode.h header file])
     )
+    AC_CHECK_TYPES([pan_fs_client_raidn_encoding_t], , ,
+		   [[#include <pan_fs_client_cw_mode.h>]])
 fi
+AM_CONDITIONAL([BUILD_PANFS_OPEN6], [test "X$ac_cv_type_pan_fs_client_raidn_encoding_t" = "Xyes"])
 
 if test -n "$file_system_ufs"; then
     AC_DEFINE(ROMIO_UFS,1,[Define for ROMIO with UFS])
@@ -971,11 +974,13 @@ fi
 AS_IF([test -n "$file_system_gpfs"],
     [SYSDEP_INC=-I${prefix}/include], [SYSDEP_INC=])
 
-AC_CHECK_HEADERS([gpfs.h gpfs_fcntl.h])
-AS_IF([test "$ac_cv_header_gpfs_h" = "yes" -o "$ac_cv_header_gpfs_fcntl_h" = "yes"], [
-  AC_SEARCH_LIBS([gpfs_fcntl], [gpfs], [],
-    [AC_MSG_ERROR([Library containing gpfs_fcntl symbols not found])])
-])
+AS_IF([test -n "$file_system_gpfs"],
+	AC_CHECK_HEADERS([gpfs.h gpfs_fcntl.h])
+	AS_IF([test "$ac_cv_header_gpfs_h" = "yes" -o "$ac_cv_header_gpfs_fcntl_h" = "yes"], [
+	  AC_SEARCH_LIBS([gpfs_fcntl], [gpfs], [],
+	    [AC_MSG_ERROR([Library containing gpfs_fcntl symbols not found])])
+	])
+	)
 # Check for presence and characteristics of async. I/O calls if
 # not disabled.
 

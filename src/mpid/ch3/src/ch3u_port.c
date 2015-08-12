@@ -112,7 +112,7 @@ static int MPIDI_CH3I_Initialize_tmp_comm(MPID_Comm **comm_pptr,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_Create_inter_root_communicator_connect
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int MPIDI_Create_inter_root_communicator_connect(const char *port_name, 
 							MPID_Comm **comm_pptr, 
 							MPIDI_VC_t **vc_pptr)
@@ -161,7 +161,7 @@ static int MPIDI_Create_inter_root_communicator_connect(const char *port_name,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_Create_inter_root_communicator_accept
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int MPIDI_Create_inter_root_communicator_accept(const char *port_name, 
 						MPID_Comm **comm_pptr, 
 						MPIDI_VC_t **vc_pptr)
@@ -233,7 +233,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME  MPIDI_CH3I_Initialize_tmp_comm
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int MPIDI_CH3I_Initialize_tmp_comm(MPID_Comm **comm_pptr, 
 					  MPIDI_VC_t *vc_ptr, int is_low_group, int context_id_offset)
 {
@@ -280,28 +280,23 @@ static int MPIDI_CH3I_Initialize_tmp_comm(MPID_Comm **comm_pptr,
     /* No pg structure needed since vc has already been set up 
        (connection has been established). */
 
-    /* Point local vcr, vcrt at those of commself_ptr */
+    /* Point local vcrt at those of commself_ptr */
     /* FIXME: Explain why */
-    tmp_comm->local_vcrt = commself_ptr->vcrt;
-    MPID_VCRT_Add_ref(commself_ptr->vcrt);
-    tmp_comm->local_vcr  = commself_ptr->vcr;
+    tmp_comm->dev.local_vcrt = commself_ptr->dev.vcrt;
+    MPIDI_VCRT_Add_ref(commself_ptr->dev.vcrt);
 
     /* No pg needed since connection has already been formed. 
        FIXME - ensure that the comm_release code does not try to
        free an unallocated pg */
 
     /* Set up VC reference table */
-    mpi_errno = MPID_VCRT_Create(tmp_comm->remote_size, &tmp_comm->vcrt);
+    mpi_errno = MPIDI_VCRT_Create(tmp_comm->remote_size, &tmp_comm->dev.vcrt);
     if (mpi_errno != MPI_SUCCESS) {
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**init_vcrt");
     }
-    mpi_errno = MPID_VCRT_Get_ptr(tmp_comm->vcrt, &tmp_comm->vcr);
-    if (mpi_errno != MPI_SUCCESS) {
-	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**init_getptr");
-    }
 
     /* FIXME: Why do we do a dup here? */
-    MPID_VCR_Dup(vc_ptr, tmp_comm->vcr);
+    MPIDI_VCR_Dup(vc_ptr, &tmp_comm->dev.vcrt->vcr_table[0]);
 
     /* Even though this is a tmp comm and we don't call
        MPI_Comm_commit, we still need to call the creation hook
@@ -334,7 +329,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_Comm_connect
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_Comm_connect(const char *port_name, MPID_Info *info, int root, 
 		       MPID_Comm *comm_ptr, MPID_Comm **newcomm)
 {
@@ -506,7 +501,7 @@ int MPIDI_Comm_connect(const char *port_name, MPID_Info *info, int root,
         }
 
         /* All communication with remote root done. Release the communicator. */
-        MPIR_Comm_release(tmp_comm,0);
+        MPIR_Comm_release(tmp_comm);
     }
 
     /*printf("connect:barrier\n");fflush(stdout);*/
@@ -578,7 +573,7 @@ int MPIDI_Comm_connect(const char *port_name, MPID_Info *info, int root,
 #undef FUNCNAME
 #define FUNCNAME ExtractLocalPGInfo
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int ExtractLocalPGInfo( MPID_Comm *comm_p, 
 			       pg_translation local_translation[], 
 			       pg_node **pg_list_p,
@@ -606,19 +601,19 @@ static int ExtractLocalPGInfo( MPID_Comm *comm_p,
     MPIU_CHKPMEM_MALLOC(pg_list,pg_node*,sizeof(pg_node),mpi_errno,
 			"pg_list");
     
-    pg_list->pg_id = MPIU_Strdup(comm_p->vcr[0]->pg->id);
+    pg_list->pg_id = MPIU_Strdup(comm_p->dev.vcrt->vcr_table[0]->pg->id);
     pg_list->index = cur_index++;
     pg_list->next = NULL;
     /* XXX DJG FIXME-MT should we be checking this?  the add/release macros already check this */
-    MPIU_Assert( MPIU_Object_get_ref(comm_p->vcr[0]->pg));
-    mpi_errno = MPIDI_PG_To_string(comm_p->vcr[0]->pg, &pg_list->str, 
+    MPIU_Assert( MPIU_Object_get_ref(comm_p->dev.vcrt->vcr_table[0]->pg));
+    mpi_errno = MPIDI_PG_To_string(comm_p->dev.vcrt->vcr_table[0]->pg, &pg_list->str,
 				   &pg_list->lenStr );
     if (mpi_errno != MPI_SUCCESS) {
 	MPIU_ERR_POP(mpi_errno);
     }
     MPIU_DBG_STMT(CH3_CONNECT,VERBOSE,MPIDI_PrintConnStr(__FILE__,__LINE__,"PG as string is", pg_list->str ));
     local_translation[0].pg_index = 0;
-    local_translation[0].pg_rank = comm_p->vcr[0]->pg_rank;
+    local_translation[0].pg_rank = comm_p->dev.vcrt->vcr_table[0]->pg_rank;
     pg_iter = pg_list;
     for (i=1; i<local_comm_size; i++) {
 	pg_iter = pg_list;
@@ -626,10 +621,10 @@ static int ExtractLocalPGInfo( MPID_Comm *comm_p,
 	while (pg_iter != NULL) {
 	    /* Check to ensure pg is (probably) valid */
             /* XXX DJG FIXME-MT should we be checking this?  the add/release macros already check this */
-	    MPIU_Assert(MPIU_Object_get_ref(comm_p->vcr[i]->pg) != 0);
-	    if (MPIDI_PG_Id_compare(comm_p->vcr[i]->pg->id, pg_iter->pg_id)) {
+	    MPIU_Assert(MPIU_Object_get_ref(comm_p->dev.vcrt->vcr_table[i]->pg) != 0);
+	    if (MPIDI_PG_Id_compare(comm_p->dev.vcrt->vcr_table[i]->pg->id, pg_iter->pg_id)) {
 		local_translation[i].pg_index = pg_iter->index;
-		local_translation[i].pg_rank  = comm_p->vcr[i]->pg_rank;
+		local_translation[i].pg_rank  = comm_p->dev.vcrt->vcr_table[i]->pg_rank;
 		break;
 	    }
 	    if (pg_trailer != pg_iter)
@@ -643,16 +638,16 @@ static int ExtractLocalPGInfo( MPID_Comm *comm_p,
 	    if (!pg_iter) {
 		MPIU_ERR_POP(mpi_errno);
 	    }
-	    pg_iter->pg_id = MPIU_Strdup(comm_p->vcr[i]->pg->id);
+	    pg_iter->pg_id = MPIU_Strdup(comm_p->dev.vcrt->vcr_table[i]->pg->id);
 	    pg_iter->index = cur_index++;
 	    pg_iter->next = NULL;
-	    mpi_errno = MPIDI_PG_To_string(comm_p->vcr[i]->pg, &pg_iter->str,
+	    mpi_errno = MPIDI_PG_To_string(comm_p->dev.vcrt->vcr_table[i]->pg, &pg_iter->str,
 					   &pg_iter->lenStr );
 	    if (mpi_errno != MPI_SUCCESS) {
 		MPIU_ERR_POP(mpi_errno);
 	    }
 	    local_translation[i].pg_index = pg_iter->index;
-	    local_translation[i].pg_rank = comm_p->vcr[i]->pg_rank;
+	    local_translation[i].pg_rank = comm_p->dev.vcrt->vcr_table[i]->pg_rank;
 	    pg_trailer->next = pg_iter;
 	}
     }
@@ -685,7 +680,7 @@ static int ExtractLocalPGInfo( MPID_Comm *comm_p,
 #undef FUNCNAME
 #define FUNCNAME ReceivePGAndDistribute
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int ReceivePGAndDistribute( MPID_Comm *tmp_comm, MPID_Comm *comm_ptr, 
 				   int root, int *recvtag_p, 
 				   int n_remote_pgs, MPIDI_PG_t *remote_pg[] )
@@ -764,7 +759,7 @@ static int ReceivePGAndDistribute( MPID_Comm *tmp_comm, MPID_Comm *comm_ptr,
 #undef FUNCNAME
 #define FUNCNAME MPID_PG_BCast
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_PG_BCast( MPID_Comm *peercomm_p, MPID_Comm *comm_p, int root )
 {
     int n_local_pgs=0, mpi_errno = MPI_SUCCESS;
@@ -868,7 +863,7 @@ int MPID_PG_BCast( MPID_Comm *peercomm_p, MPID_Comm *comm_p, int root )
 #undef FUNCNAME
 #define FUNCNAME SendPGtoPeerAndFree
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int SendPGtoPeerAndFree( MPID_Comm *tmp_comm, int *sendtag_p, 
 				pg_node *pg_list )
 {
@@ -930,7 +925,7 @@ static int SendPGtoPeerAndFree( MPID_Comm *tmp_comm, int *sendtag_p,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_Comm_accept
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_Comm_accept(const char *port_name, MPID_Info *info, int root, 
 		      MPID_Comm *comm_ptr, MPID_Comm **newcomm)
 {
@@ -1095,7 +1090,7 @@ int MPIDI_Comm_accept(const char *port_name, MPID_Info *info, int root,
         }
 
         /* All communication with remote root done. Release the communicator. */
-        MPIR_Comm_release(tmp_comm,0);
+        MPIR_Comm_release(tmp_comm);
     }
 
     MPIU_DBG_MSG(CH3_CONNECT,VERBOSE,"Barrier");
@@ -1147,7 +1142,7 @@ Input/Output Parameters:
 #undef FUNCNAME
 #define FUNCNAME SetupNewIntercomm
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int SetupNewIntercomm( MPID_Comm *comm_ptr, int remote_comm_size, 
 			      pg_translation remote_translation[],
 			      MPIDI_PG_t **remote_pg, 
@@ -1169,23 +1164,18 @@ static int SetupNewIntercomm( MPID_Comm *comm_ptr, int remote_comm_size,
     intercomm->local_comm   = NULL;
     intercomm->coll_fns     = NULL;
 
-    /* Point local vcr, vcrt at those of incoming intracommunicator */
-    intercomm->local_vcrt = comm_ptr->vcrt;
-    MPID_VCRT_Add_ref(comm_ptr->vcrt);
-    intercomm->local_vcr  = comm_ptr->vcr;
+    /* Point local vcrt at those of incoming intracommunicator */
+    intercomm->dev.local_vcrt = comm_ptr->dev.vcrt;
+    MPIDI_VCRT_Add_ref(comm_ptr->dev.vcrt);
 
     /* Set up VC reference table */
-    mpi_errno = MPID_VCRT_Create(intercomm->remote_size, &intercomm->vcrt);
+    mpi_errno = MPIDI_VCRT_Create(intercomm->remote_size, &intercomm->dev.vcrt);
     if (mpi_errno != MPI_SUCCESS) {
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**init_vcrt");
     }
-    mpi_errno = MPID_VCRT_Get_ptr(intercomm->vcrt, &intercomm->vcr);
-    if (mpi_errno != MPI_SUCCESS) {
-	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**init_getptr");
-    }
     for (i=0; i < intercomm->remote_size; i++) {
 	MPIDI_PG_Dup_vcr(remote_pg[remote_translation[i].pg_index], 
-			 remote_translation[i].pg_rank, &intercomm->vcr[i]);
+			 remote_translation[i].pg_rank, &intercomm->dev.vcrt->vcr_table[i]);
     }
 
     mpi_errno = MPIR_Comm_commit(intercomm);
@@ -1209,7 +1199,7 @@ static int SetupNewIntercomm( MPID_Comm *comm_ptr, int remote_comm_size,
 #undef FUNCNAME
 #define FUNCNAME FreeNewVC
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int FreeNewVC( MPIDI_VC_t *new_vc )
 {
     MPID_Progress_state progress_state;
@@ -1271,7 +1261,7 @@ static int AcceptQueueSize    = 0;
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_Acceptq_enqueue
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3I_Acceptq_enqueue(MPIDI_VC_t * vc, int port_name_tag )
 {
     int mpi_errno=MPI_SUCCESS;
@@ -1315,7 +1305,7 @@ int MPIDI_CH3I_Acceptq_enqueue(MPIDI_VC_t * vc, int port_name_tag )
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_Acceptq_dequeue
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3I_Acceptq_dequeue(MPIDI_VC_t ** vc, int port_name_tag)
 {
     int mpi_errno=MPI_SUCCESS;

@@ -22,12 +22,12 @@ static int nemesis_initialized = 0;
 #undef FUNCNAME
 #define FUNCNAME split_type
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int split_type(MPID_Comm * comm_ptr, int stype, int key,
                       MPID_Info *info_ptr, MPID_Comm ** newcomm_ptr)
 {
     MPID_Node_id_t id;
-    MPIR_Rank_t nid;
+    MPIDI_Rank_t nid;
     int mpi_errno = MPI_SUCCESS;
 
     if (MPIDI_CH3I_Shm_supported()) {
@@ -73,7 +73,7 @@ static MPID_CommOps comm_fns = {
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Init
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t *pg_p, int pg_rank)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -129,7 +129,7 @@ int MPIDI_CH3_PortFnsInit( MPIDI_PortFns *portFns )
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Get_business_card
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3_Get_business_card(int myRank, char *value, int length)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -151,7 +151,7 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_VC_Init
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3_VC_Init( MPIDI_VC_t *vc )
 {
     int mpi_errno = MPI_SUCCESS;
@@ -199,7 +199,7 @@ int MPIDI_CH3_VC_Init( MPIDI_VC_t *vc )
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_VC_Destroy
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3_VC_Destroy(MPIDI_VC_t *vc )
 {
     int mpi_errno = MPI_SUCCESS;
@@ -227,7 +227,7 @@ fn_exit:
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Connect_to_root
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3_Connect_to_root (const char *port_name, MPIDI_VC_t **new_vc)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -319,7 +319,7 @@ static struct {initcomp_cb_t *top;} initcomp_cb_stack = {0};
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_register_initcomp_cb
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_nem_register_initcomp_cb(int (* callback)(void))
 {
     int mpi_errno = MPI_SUCCESS;
@@ -345,7 +345,7 @@ int MPID_nem_register_initcomp_cb(int (* callback)(void))
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_InitCompleted
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3_InitCompleted(void)
 {
     int mpi_errno = MPI_SUCCESS;

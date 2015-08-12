@@ -21,6 +21,9 @@
 #define MPID_REQUEST_PREALLOC 8
 #endif
 
+/* Max depth of recursive calls of MPID_Request_complete */
+#define REQUEST_CB_DEPTH 2
+
 MPID_Request MPID_Request_direct[MPID_REQUEST_PREALLOC] = {{0}};
 MPIU_Object_alloc_t MPID_Request_mem = {
     0, 0, 0, 0, MPID_REQUEST, sizeof(MPID_Request), MPID_Request_direct,
@@ -31,7 +34,7 @@ MPIU_Object_alloc_t MPID_Request_mem = {
 #undef FUNCNAME
 #define FUNCNAME MPID_Request_create
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 MPID_Request * MPID_Request_create(void)
 {
     MPID_Request * req;
@@ -74,6 +77,7 @@ MPID_Request * MPID_Request_create(void)
 	req->comm		   = NULL;
         req->greq_fns              = NULL;
         req->errflag               = MPIR_ERR_NONE;
+        req->request_completed_cb  = NULL;
 	req->dev.datatype_ptr	   = NULL;
 	req->dev.segment_ptr	   = NULL;
 	/* Masks and flags for channel device state in an MPID_Request */
@@ -96,6 +100,8 @@ MPID_Request * MPID_Request_create(void)
         req->dev.tmpbuf            = NULL;
         req->dev.ext_hdr_ptr       = NULL;
         req->dev.ext_hdr_sz        = 0;
+        req->dev.rma_op_ptr        = NULL;
+        req->dev.request_handle    = MPI_REQUEST_NULL;
 #ifdef MPIDI_CH3_REQUEST_INIT
 	MPIDI_CH3_REQUEST_INIT(req);
 #endif
@@ -108,76 +114,6 @@ MPID_Request * MPID_Request_create(void)
     
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_REQUEST_CREATE);
     return req;
-}
-
-/* FIXME: We need a lighter-weight version of this to avoid all of the
-   extra checks.  One posibility would be a single, no special case (no 
-   comm, datatype, or srbuf to check) and a more general (check everything)
-   version.  */
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3_Request_destroy
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-void MPIDI_CH3_Request_destroy(MPID_Request * req)
-{
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_REQUEST_DESTROY);
-    
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_REQUEST_DESTROY);
-    MPIU_DBG_MSG_P(CH3_CHANNEL,VERBOSE,
-		   "freeing request, handle=0x%08x", req->handle);
-    
-#ifdef MPICH_DBG_OUTPUT
-    /*MPIU_Assert(HANDLE_GET_MPI_KIND(req->handle) == MPID_REQUEST);*/
-    if (HANDLE_GET_MPI_KIND(req->handle) != MPID_REQUEST)
-    {
-	int mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, 
-                      FCNAME, __LINE__, MPI_ERR_OTHER, 
-                      "**invalid_handle", "**invalid_handle %d", req->handle);
-	MPID_Abort(MPIR_Process.comm_world, mpi_errno, -1, NULL);
-    }
-    /* XXX DJG FIXME should we be checking this? */
-    /*MPIU_Assert(req->ref_count == 0);*/
-    if (req->ref_count != 0)
-    {
-	int mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL,
-                       FCNAME, __LINE__, MPI_ERR_OTHER, 
-              "**invalid_refcount", "**invalid_refcount %d", req->ref_count);
-	MPID_Abort(MPIR_Process.comm_world, mpi_errno, -1, NULL);
-    }
-#endif
-
-    /* FIXME: We need a better way to handle these so that we
-       do not always need to initialize these fields and check them
-       when we destroy a request */
-    /* FIXME: We need a way to call these routines ONLY when the 
-       related ref count has become zero. */
-    if (req->comm != NULL) {
-	MPIR_Comm_release(req->comm, 0);
-    }
-
-    if (req->greq_fns != NULL) {
-        MPIU_Free(req->greq_fns);
-    }
-
-    if (req->dev.datatype_ptr != NULL) {
-	MPID_Datatype_release(req->dev.datatype_ptr);
-    }
-
-    if (req->dev.segment_ptr != NULL) {
-	MPID_Segment_free(req->dev.segment_ptr);
-    }
-
-    if (MPIDI_Request_get_srbuf_flag(req)) {
-	MPIDI_CH3U_SRBuf_free(req);
-    }
-
-    if (req->dev.ext_hdr_ptr != NULL) {
-        MPIU_Free(req->dev.ext_hdr_ptr);
-    }
-
-    MPIU_Handle_obj_free(&MPID_Request_mem, req);
-    
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_REQUEST_DESTROY);
 }
 
 
@@ -200,7 +136,7 @@ void MPIDI_CH3_Request_destroy(MPID_Request * req)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Request_load_send_iov
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3U_Request_load_send_iov(MPID_Request * const sreq, 
 				     MPID_IOV * const iov, int * const iov_n)
 {
@@ -312,7 +248,7 @@ int MPIDI_CH3U_Request_load_send_iov(MPID_Request * const sreq,
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Request_load_recv_iov
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3U_Request_load_recv_iov(MPID_Request * const rreq)
 {
     MPI_Aint last;
@@ -521,7 +457,7 @@ int MPIDI_CH3U_Request_load_recv_iov(MPID_Request * const rreq)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Request_unpack_srbuf
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3U_Request_unpack_srbuf(MPID_Request * rreq)
 {
     MPI_Aint last;
@@ -598,7 +534,7 @@ int MPIDI_CH3U_Request_unpack_srbuf(MPID_Request * rreq)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Request_unpack_uebuf
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIDI_CH3U_Request_unpack_uebuf(MPID_Request * rreq)
 {
     int dt_contig;
@@ -676,11 +612,94 @@ int MPIDI_CH3U_Request_unpack_uebuf(MPID_Request * rreq)
     return mpi_errno;
 }
 
-/* 
- * Export the function to set a request as completed for use by
- * the generalized request functions in mpich/src/pt2pt/greq_complete.c
- */
-void MPID_Request_set_completed( MPID_Request *req )
+int MPID_Request_complete(MPID_Request *req)
 {
-    MPID_REQUEST_SET_COMPLETED(req);
+    int incomplete;
+    int mpi_errno = MPI_SUCCESS;
+    static int called_cnt = 0;
+
+    MPIU_Assert(called_cnt <= REQUEST_CB_DEPTH);
+    called_cnt++;
+
+    MPIDI_CH3U_Request_decrement_cc(req, &incomplete);
+    if (!incomplete) {
+        /* trigger request_completed callback function */
+        if (req->request_completed_cb != NULL) {
+            mpi_errno = req->request_completed_cb(req);
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+        }
+
+	MPID_Request_release(req);
+	MPIDI_CH3_Progress_signal_completion();
+    }
+
+ fn_exit:
+    called_cnt--;
+    return mpi_errno;
+ fn_fail:
+    goto fn_exit;
+}
+
+void MPID_Request_release(MPID_Request *req)
+{
+    int inuse;
+
+    MPIR_Request_release_ref(req, &inuse);
+    if (inuse == 0) {
+        MPIU_DBG_MSG_P(CH3_CHANNEL,VERBOSE,
+                       "freeing request, handle=0x%08x", req->handle);
+
+#ifdef MPICH_DBG_OUTPUT
+        /*MPIU_Assert(HANDLE_GET_MPI_KIND(req->handle) == MPID_REQUEST);*/
+        if (HANDLE_GET_MPI_KIND(req->handle) != MPID_REQUEST)
+        {
+            int mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL,
+                                                 FCNAME, __LINE__, MPI_ERR_OTHER,
+                                                 "**invalid_handle", "**invalid_handle %d", req->handle);
+            MPID_Abort(MPIR_Process.comm_world, mpi_errno, -1, NULL);
+        }
+        /* XXX DJG FIXME should we be checking this? */
+        /*MPIU_Assert(req->ref_count == 0);*/
+        if (req->ref_count != 0)
+        {
+            int mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL,
+                                                 FCNAME, __LINE__, MPI_ERR_OTHER,
+                                                 "**invalid_refcount", "**invalid_refcount %d", req->ref_count);
+            MPID_Abort(MPIR_Process.comm_world, mpi_errno, -1, NULL);
+        }
+#endif
+
+        /* FIXME: We need a better way to handle these so that we do
+           not always need to initialize these fields and check them
+           when we destroy a request */
+        /* FIXME: We need a way to call these routines ONLY when the
+           related ref count has become zero. */
+        if (req->comm != NULL) {
+            MPIR_Comm_release(req->comm);
+        }
+
+        if (req->greq_fns != NULL) {
+            MPIU_Free(req->greq_fns);
+        }
+
+        if (req->dev.datatype_ptr != NULL) {
+            MPID_Datatype_release(req->dev.datatype_ptr);
+        }
+
+        if (req->dev.segment_ptr != NULL) {
+            MPID_Segment_free(req->dev.segment_ptr);
+        }
+
+        if (MPIDI_Request_get_srbuf_flag(req)) {
+            MPIDI_CH3U_SRBuf_free(req);
+        }
+
+        if (req->dev.ext_hdr_ptr != NULL) {
+            MPIU_Free(req->dev.ext_hdr_ptr);
+        }
+
+        MPIU_Handle_obj_free(&MPID_Request_mem, req);
+    }
 }

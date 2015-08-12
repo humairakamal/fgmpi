@@ -13,7 +13,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPID_Cancel_send
 #undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPID_Cancel_send(MPID_Request * sreq)
 {
     MPIDI_VC_t * vc;
@@ -67,17 +67,19 @@ int MPID_Cancel_send(MPID_Request * sreq)
              "send-to-self cancellation successful, sreq=0x%08x, rreq=0x%08x",
 						sreq->handle, rreq->handle));
 
-            /* Pull the message out of the unexpected queue since it's being
-             * cancelled */
-            MPIU_Object_set_ref(rreq, 0);
-            MPIDI_CH3_Request_destroy(rreq);
+            /* Pull the message out of the unexpected queue since it's
+             * being cancelled.  The below request release drops one
+             * reference.  We explicitly drop a second reference,
+             * because the receive request will never be visible to
+             * the user. */
+            MPID_Request_release(rreq);
+            MPID_Request_release(rreq);
 
 	    MPIR_STATUS_SET_CANCEL_BIT(sreq->status, TRUE);
-	    /* no other thread should be waiting on sreq, so it is safe to 
-	       reset ref_count and cc */
-            MPID_cc_set(&sreq->cc, 0);
-            /* FIXME should be a decr and assert, not a set */
-	    MPIU_Object_set_ref(sreq, 1);
+            mpi_errno = MPID_Request_complete(sreq);
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIU_ERR_POP(mpi_errno);
+            }
 	}
 	else
 	{
@@ -296,6 +298,7 @@ int MPIDI_CH3_PktHandler_CancelSendResp( MPIDI_VC_t *vc ATTRIBUTE((unused)),
 {
     MPIDI_CH3_Pkt_cancel_send_resp_t * resp_pkt = &pkt->cancel_send_resp;
     MPID_Request * sreq;
+    int mpi_errno = MPI_SUCCESS;
     
     MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
 			"received cancel send resp pkt, sreq=0x%08x, ack=%d",
@@ -327,11 +330,17 @@ int MPIDI_CH3_PktHandler_CancelSendResp( MPIDI_VC_t *vc ATTRIBUTE((unused)),
 	MPIU_DBG_MSG(CH3_OTHER,TYPICAL,"unable to cancel message");
     }
     
-    MPIDI_CH3U_Request_complete(sreq);
-    
+    mpi_errno = MPID_Request_complete(sreq);
+    if (mpi_errno != MPI_SUCCESS) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+
     *rreqp = NULL;
 
-    return MPI_SUCCESS;
+ fn_exit:
+    return mpi_errno;
+ fn_fail:
+    goto fn_exit;
 }
 
 /*

@@ -99,7 +99,7 @@ int MPI_Waitsome(int incount, MPI_Request array_of_requests[],
     int disabled_anysource = FALSE;
     int mpi_errno = MPI_SUCCESS;
 #if defined(FINEGRAIN_MPI)
-    MPIR_Rank_t dest = -1;
+    MPIDI_Rank_t dest = -1;
     MPID_Comm *comm_ptr = NULL;
     int atleast_one_is_colocated = 0;
     int is_colocated_index = -1;
