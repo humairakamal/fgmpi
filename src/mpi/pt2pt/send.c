@@ -133,20 +133,14 @@ int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int ta
 	goto fn_exit;
     }
 
+#if defined(FINEGRAIN_MPI)
+    mpi_errno = MPIR_Progress_wait_send_request(comm_ptr, dest, request_ptr);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+#else
     /* If a request was returned, then we need to block until the request 
        is complete */
     if (!MPID_Request_is_complete(request_ptr))
     {
-#if defined(FINEGRAIN_MPI)
-      if ( Is_within_same_HWP(dest, comm_ptr, NULL) )
-      {
-           while(!MPID_Request_is_complete(request_ptr))
-           {
-               FG_Yield();
-           }
-      }
-      else {
-#endif
 	MPID_Progress_state progress_state;
 	    
 	MPID_Progress_start(&progress_state);
@@ -160,20 +154,10 @@ int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int ta
 		goto fn_fail;
 		/* --END ERROR HANDLING-- */
 	    }
-#if defined(FINEGRAIN_MPI)
-            /* FG: TODO Remove? The following is likely ineffective and is not
-               being called because there is a FG_Yield() inside MPIDI_CH3I_Progress(). */
-            if(!MPID_Request_is_complete(request_ptr))
-            {
-                FG_Yield();
-            }
-#endif
 	}
 	MPID_Progress_end(&progress_state);
-#if defined(FINEGRAIN_MPI)
-      }
-#endif
     }
+#endif
 
     mpi_errno = request_ptr->status.MPI_ERROR;
     MPID_Request_release(request_ptr);

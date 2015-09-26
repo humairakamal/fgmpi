@@ -61,7 +61,11 @@ static int MPIR_Reduce_scatter_noncomm(const void *sendbuf, void *recvbuf, const
 {
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
+#if defined(FINEGRAIN_MPI)
+    int comm_size = comm_ptr->totprocs;
+#else
     int comm_size = comm_ptr->local_size;
+#endif
     int rank = comm_ptr->rank;
     int pof2;
     int log2_comm_size;
@@ -259,7 +263,11 @@ int MPIR_Reduce_scatter_intra(const void *sendbuf, void *recvbuf, const int recv
     MPIU_THREADPRIV_DECL;
     MPIU_CHKLMEM_DECL(5);
 
+#if defined(FINEGRAIN_MPI)
+    comm_size = comm_ptr->totprocs;
+#else
     comm_size = comm_ptr->local_size;
+#endif
     rank = comm_ptr->rank;
 
     /* set op_errno to 0. stored in perthread structure */
@@ -1154,7 +1162,11 @@ int MPI_Reduce_scatter(const void *sendbuf, void *recvbuf, const int recvcounts[
             MPID_Comm_valid_ptr( comm_ptr, mpi_errno, FALSE );
             if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
-            size = comm_ptr->local_size; 
+#if defined(FINEGRAIN_MPI)
+            size = comm_ptr->totprocs;
+#else
+            size = comm_ptr->local_size;
+#endif
             /* even in intercomm. case, recvcounts is of size local_size */
 
             sum = 0;

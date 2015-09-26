@@ -1020,6 +1020,8 @@ static int MPIR_SMP_Bcast(
     int recvd_size;
 #if defined(FINEGRAIN_MPI)
     int comm_size = comm_ptr->totprocs;
+    int osproc_leader_rank = -1;
+    int osproc_local_rank = -1;
 #endif
 
     if (!MPIR_CVAR_ENABLE_SMP_COLLECTIVES || !MPIR_CVAR_ENABLE_SMP_BCAST) {
@@ -1052,16 +1054,60 @@ static int MPIR_SMP_Bcast(
         goto fn_exit; /* nothing to do */
 
 #if defined(FINEGRAIN_MPI)
+        osproc_local_rank = MPIU_Get_intra_osproc_rank(comm_ptr, root);
+        /* send to osproc_colocated_comm rank 0 in the root's os-process */
+        if (comm_ptr->osproc_colocated_comm != NULL &&
+            osproc_local_rank > 0)          /* is not the intra_osproc root (0) */
+        {                                   /* and is colocated to our os-process (!-1) */
+            if (root == comm_ptr->rank) {
+                mpi_errno = MPIC_Send(buffer,count,datatype,0,
+                                         MPIR_BCAST_TAG,comm_ptr->osproc_colocated_comm, errflag);
+                if (mpi_errno) {
+                    /* for communication errors, just record the error but continue */
+                    *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                    MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                }
+            }
+            else if (0 == comm_ptr->osproc_colocated_comm->rank) {
+                mpi_errno = MPIC_Recv(buffer,count,datatype,osproc_local_rank,
+                                         MPIR_BCAST_TAG,comm_ptr->osproc_colocated_comm, &status, errflag);
+                if (mpi_errno) {
+                    /* for communication errors, just record the error but continue */
+                    *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                    MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                }
+                /* check that we received as much as we expected */
+                MPIR_Get_count_impl(&status, MPI_BYTE, &recvd_size);
+                /* recvd_size may not be accurate for packed heterogeneous data */
+                if (is_homogeneous && recvd_size != nbytes) {
+                    if (*errflag == MPIR_ERR_NONE) *errflag = MPIR_ERR_OTHER;
+                    MPIU_ERR_SET2(mpi_errno, MPI_ERR_OTHER,
+				  "**collective_size_mismatch",
+				  "**collective_size_mismatch %d %d",
+				  recvd_size, nbytes );
+                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                }
+            }
+        }
+
     if ((nbytes < MPIR_CVAR_BCAST_SHORT_MSG_SIZE) || (comm_size < MPIR_CVAR_BCAST_MIN_PROCS))
+    {
+        osproc_leader_rank = MPIU_Get_intranode_rank(comm_ptr, root); /* osproc_leader_rank is rank in comm_ptr->node_comm */
 #else
     if ((nbytes < MPIR_CVAR_BCAST_SHORT_MSG_SIZE) || (comm_ptr->local_size < MPIR_CVAR_BCAST_MIN_PROCS))
-#endif
     {
+#endif
         /* send to intranode-rank 0 on the root's node */
         if (comm_ptr->node_comm != NULL &&
             MPIU_Get_intranode_rank(comm_ptr, root) > 0) /* is not the node root (0) */ 
         {                                                /* and is on our node (!-1) */
+#if defined(FINEGRAIN_MPI)
+            if (osproc_leader_rank == comm_ptr->node_comm->rank) {
+#else
             if (root == comm_ptr->rank) {
+#endif
                 mpi_errno = MPIC_Send(buffer,count,datatype,0,
                                          MPIR_BCAST_TAG,comm_ptr->node_comm, errflag);
                 if (mpi_errno) {
@@ -1110,6 +1156,16 @@ static int MPIR_SMP_Bcast(
             MPIR_Bcast_fn_or_override(MPIR_Bcast_binomial, mpi_errno_ret,
                                       buffer, count, datatype, 0, comm_ptr->node_comm, errflag);
         }
+
+#if defined(FINEGRAIN_MPI)
+        /* perform the intra_osproc broadcast */
+        if (comm_ptr->osproc_colocated_comm != NULL)
+        {
+            MPIR_Bcast_fn_or_override(MPIR_Bcast_binomial, mpi_errno_ret,
+                                      buffer, count, datatype, 0, comm_ptr->osproc_colocated_comm, errflag);
+        }
+#endif
+
     }
     else /* (nbytes > MPIR_CVAR_BCAST_SHORT_MSG_SIZE) && (comm_ptr->size >= MPIR_CVAR_BCAST_MIN_PROCS) */
     {
@@ -1170,6 +1226,15 @@ static int MPIR_SMP_Bcast(
                 MPIR_Bcast_fn_or_override(MPIR_Bcast_binomial, mpi_errno_ret,
                                           buffer, count, datatype, 0, comm_ptr->node_comm, errflag);
             }
+
+#if defined(FINEGRAIN_MPI)
+            /* perform the intra_osproc broadcast */
+            if (comm_ptr->osproc_colocated_comm != NULL)
+            {
+                MPIR_Bcast_fn_or_override(MPIR_Bcast_binomial, mpi_errno_ret,
+                                          buffer, count, datatype, 0, comm_ptr->osproc_colocated_comm, errflag);
+            }
+#endif
         }
         else /* large msg or non-pof2 */
         {

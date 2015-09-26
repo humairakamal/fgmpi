@@ -156,13 +156,14 @@ int MPI_Finalize( void )
 
     /* ... body of routine ... */
 
-#if defined(FINEGRAIN_MPI) /* FG: TODO MPI_Finalize() */
-       FGP_finalizations++;
+#if defined(FINEGRAIN_MPI)
+    MPI_Barrier(MPI_COMM_WORLD);
+    FGP_finalizations++;
 
-        if (IS_SPAWNER){
-            //            FG_Finalize();
-        }
-        goto fn_exit;
+    if (IS_SPAWNER){
+        FG_Finalize();
+    }
+    goto fn_exit;
 #endif
 
     /* If the user requested for asynchronous progress, we need to

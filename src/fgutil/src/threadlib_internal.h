@@ -17,7 +17,7 @@
 
 extern void* fatalerror(char *fmt, ...);
 
-#define MALLOC(retval, len, type, cast) ((retval=(cast)malloc(len * sizeof(type)))!=NULL) ? retval : fatalerror("MALLOC error")
+#define MALLOC(retval, len, type, cast) ((retval=(cast)MPIU_Malloc(len * sizeof(type)))!=NULL) ? retval : fatalerror("MALLOC error")
 
 
 struct FWraparg {

@@ -73,8 +73,13 @@ int MPIR_Scatterv(const void *sendbuf, const int *sendcounts, const int *displs,
     /* If I'm the root, then scatter */
     if (((comm_ptr->comm_kind == MPID_INTRACOMM) && (root == rank)) ||
         ((comm_ptr->comm_kind == MPID_INTERCOMM) && (root == MPI_ROOT))) {
+#if defined(FINEGRAIN_MPI)
+        if (comm_ptr->comm_kind == MPID_INTRACOMM)
+            comm_size = comm_ptr->totprocs;
+#else
         if (comm_ptr->comm_kind == MPID_INTRACOMM)
             comm_size = comm_ptr->local_size;
+#endif
         else
             comm_size = comm_ptr->remote_size;
 
@@ -270,7 +275,11 @@ int MPI_Scatterv(const void *sendbuf, const int *sendcounts, const int *displs,
             if (comm_ptr->comm_kind == MPID_INTRACOMM) {
 		MPIR_ERRTEST_INTRA_ROOT(comm_ptr, root, mpi_errno);
                 rank = comm_ptr->rank;
+#if defined(FINEGRAIN_MPI)
+                comm_size = comm_ptr->totprocs;
+#else
                 comm_size = comm_ptr->local_size;
+#endif
 
                 if (rank == root) {
                     for (i=0; i<comm_size; i++) {

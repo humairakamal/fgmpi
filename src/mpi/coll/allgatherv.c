@@ -120,7 +120,11 @@ int MPIR_Allgatherv_intra (
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
 
+#if defined(FINEGRAIN_MPI)
+    comm_size = comm_ptr->totprocs;
+#else
     comm_size = comm_ptr->local_size;
+#endif
     rank = comm_ptr->rank;
     
     total_count = 0;
@@ -1070,9 +1074,14 @@ int MPI_Allgatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                     MPIR_ERRTEST_ALIAS_COLL(sendbuf, (char*)recvbuf + displs[comm_ptr->rank]*recvtype_size, mpi_errno);
                 }
             }
-
+#if defined(FINEGRAIN_MPI)
+            if (comm_ptr->comm_kind == MPID_INTRACOMM) {
+                comm_size = comm_ptr->totprocs;
+            }
+#else
             if (comm_ptr->comm_kind == MPID_INTRACOMM) 
                 comm_size = comm_ptr->local_size;
+#endif
             else
                 comm_size = comm_ptr->remote_size;
 

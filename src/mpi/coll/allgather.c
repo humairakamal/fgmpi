@@ -140,7 +140,11 @@ int MPIR_Allgather_intra (
     if (((sendcount == 0) && (sendbuf != MPI_IN_PLACE)) || (recvcount == 0))
         return MPI_SUCCESS;
 
+#if defined(FINEGRAIN_MPI)
+    comm_size = comm_ptr->totprocs;
+#else
     comm_size = comm_ptr->local_size;
+#endif
     rank = comm_ptr->rank;
 
     MPID_Datatype_get_extent_macro( recvtype, recvtype_extent );
@@ -154,7 +158,7 @@ int MPIR_Allgather_intra (
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
 
     tot_bytes = (MPI_Aint)recvcount * comm_size * type_size;
-    if ((tot_bytes < MPIR_CVAR_ALLGATHER_LONG_MSG_SIZE) && !(comm_size & (comm_size - 1))) {
+    if ((tot_bytes < MPIR_CVAR_ALLGATHER_LONG_MSG_SIZE) && !(comm_size & (comm_size - 1))) { /* FG: TODO IMPORTANT Double-check that this works (see note in FG-MPICH2) */
 
         /* Short or medium size message and power-of-two no. of processes. Use
          * recursive doubling algorithm */   

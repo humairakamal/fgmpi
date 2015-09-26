@@ -97,7 +97,11 @@ static int MPIR_Reduce_binomial (
 
     if (count == 0) return MPI_SUCCESS;
 
+#if defined(FINEGRAIN_MPI)
+    comm_size = comm_ptr->totprocs;
+#else
     comm_size = comm_ptr->local_size;
+#endif
     rank = comm_ptr->rank;
 
     /* Create a temporary buffer */
@@ -304,7 +308,11 @@ static int MPIR_Reduce_redscat_gather (
     MPIU_CHKLMEM_DECL(4);
     MPIU_THREADPRIV_DECL;
 
+#if defined(FINEGRAIN_MPI)
+    comm_size = comm_ptr->totprocs;
+#else
     comm_size = comm_ptr->local_size;
+#endif
     rank = comm_ptr->rank;
 
     /* set op_errno to 0. stored in perthread structure */
@@ -705,7 +713,6 @@ fn_fail:
    End Algorithm: MPI_Reduce
 */
 
-
 /* not declared static because a machine-specific function may call this one 
    in some cases */
 #undef FUNCNAME
@@ -750,9 +757,14 @@ int MPIR_Reduce_intra (
         void *tmp_buf = NULL;
         MPI_Aint  true_lb, true_extent, extent;
 
+#if defined(FINEGRAIN_MPI)
+        int did_reduce = 0;
+        /* Create a temporary buffer on leaders of all os-processes */
+        if ( (comm_ptr->node_comm != NULL) || (comm_ptr->osproc_colocated_comm != NULL && 0 == comm_ptr->osproc_colocated_comm->rank) ) {
+#else
         /* Create a temporary buffer on local roots of all nodes */
         if (comm_ptr->node_roots_comm != NULL) {
-
+#endif
             MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
             MPID_Datatype_get_extent_macro(datatype, extent);
 
@@ -764,11 +776,46 @@ int MPIR_Reduce_intra (
             tmp_buf = (void *)((char*)tmp_buf - true_lb);
         }
 
+#if defined(FINEGRAIN_MPI)
+        /* do osproc_colocated_comm reduce within all os-processes
+           other than the root's os-process */
+        if (comm_ptr->osproc_colocated_comm != NULL &&
+            MPIU_Get_intra_osproc_rank(comm_ptr, root) == -1) {
+            if (0 == comm_ptr->osproc_colocated_comm->rank) {
+                MPIU_Assert(NULL != tmp_buf);
+            }
+            mpi_errno = MPIR_Reduce_impl(sendbuf, tmp_buf, count, datatype,
+                                         op, 0, comm_ptr->osproc_colocated_comm, errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+            did_reduce = 1;
+        }
+#endif
+
         /* do the intranode reduce on all nodes other than the root's node */
         if (comm_ptr->node_comm != NULL &&
             MPIU_Get_intranode_rank(comm_ptr, root) == -1) {
+#if defined(FINEGRAIN_MPI)
+            void *buf = NULL;
+            if (comm_ptr->osproc_colocated_comm != NULL) {
+                /* I participated in the first intra_osproc reduce */
+                MPIU_Assert(1 == did_reduce);
+                MPIU_Assert(0 == comm_ptr->osproc_colocated_comm->rank);
+                buf = (0 == comm_ptr->node_comm->rank) ? MPI_IN_PLACE : tmp_buf;
+            } else {
+                buf = sendbuf;
+            }
+            mpi_errno = MPIR_Reduce_impl(buf, tmp_buf, count, datatype,
+                                         op, 0, comm_ptr->node_comm, errflag);
+            did_reduce = 1;
+#else
             mpi_errno = MPIR_Reduce_impl(sendbuf, tmp_buf, count, datatype,
                                          op, 0, comm_ptr->node_comm, errflag);
+#endif
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
                 *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
@@ -782,7 +829,12 @@ int MPIR_Reduce_intra (
             if (comm_ptr->node_roots_comm->rank != MPIU_Get_internode_rank(comm_ptr, root)) {
                 /* I am not on root's node.  Use tmp_buf if we
                    participated in the first reduce, otherwise use sendbuf */
+#if defined(FINEGRAIN_MPI)
+                const void *buf = ((comm_ptr->node_comm == NULL) && (comm_ptr->osproc_colocated_comm == NULL)) ? sendbuf : tmp_buf;
+                if (buf == tmp_buf) MPIU_Assert(1 == did_reduce);
+#else
                 const void *buf = (comm_ptr->node_comm == NULL ? sendbuf : tmp_buf);
+#endif
                 mpi_errno = MPIR_Reduce_impl(buf, NULL, count, datatype,
                                              op, MPIU_Get_internode_rank(comm_ptr, root),
                                              comm_ptr->node_roots_comm, errflag);
@@ -792,28 +844,37 @@ int MPIR_Reduce_intra (
                     MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
                     MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
                 }
+                did_reduce = 1;
             }
             else { /* I am on root's node. I have not participated in the earlier reduce. */
                 if (comm_ptr->rank != root) {
                     /* I am not the root though. I don't have a valid recvbuf.
                        Use tmp_buf as recvbuf. */
+#if defined(FINEGRAIN_MPI)
+                    /* I may have participated in the earlier intra_osproc reduce */
+                    void *buf = (comm_ptr->osproc_colocated_comm != NULL && MPIU_Get_intra_osproc_rank(comm_ptr, root) == -1) ? MPI_IN_PLACE : sendbuf;
+                    if (buf == MPI_IN_PLACE) MPIU_Assert(1 == did_reduce);
+                    mpi_errno = MPIR_Reduce_impl(buf, tmp_buf, count, datatype,
+                                             op, MPIU_Get_internode_rank(comm_ptr, root),
+                                             comm_ptr->node_roots_comm, errflag);
+#else
 
                     mpi_errno = MPIR_Reduce_impl(sendbuf, tmp_buf, count, datatype,
                                                  op, MPIU_Get_internode_rank(comm_ptr, root),
                                                  comm_ptr->node_roots_comm, errflag);
+#endif
                     if (mpi_errno) {
                         /* for communication errors, just record the error but continue */
                         *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
                         MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
                         MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
                     }
-
+                    did_reduce = 1;
                     /* point sendbuf at tmp_buf to make final intranode reduce easy */
                     sendbuf = tmp_buf;
                 }
                 else {
                     /* I am the root. in_place is automatically handled. */
-
                     mpi_errno = MPIR_Reduce_impl(sendbuf, recvbuf, count, datatype,
                                                  op, MPIU_Get_internode_rank(comm_ptr, root),
                                                  comm_ptr->node_roots_comm, errflag);
@@ -823,7 +884,7 @@ int MPIR_Reduce_intra (
                         MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
                         MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
                     }
-
+                    did_reduce = 1;
                     /* set sendbuf to MPI_IN_PLACE to make final intranode reduce easy. */
                     sendbuf = MPI_IN_PLACE;
                 }
@@ -831,9 +892,84 @@ int MPIR_Reduce_intra (
 
         }
 
+#if defined(FINEGRAIN_MPI)
         /* do the intranode reduce on the root's node */
         if (comm_ptr->node_comm != NULL &&
-            MPIU_Get_intranode_rank(comm_ptr, root) != -1) { 
+            MPIU_Get_intranode_rank(comm_ptr, root) != -1) {
+            if (comm_ptr->node_comm->rank != MPIU_Get_intranode_rank(comm_ptr, root)) {
+                /* I am not the leader in root's os-process.  Use tmp_buf if we
+                   participated in an earlier reduce, otherwise use sendbuf */
+                const void *buf = (comm_ptr->osproc_colocated_comm != NULL || comm_ptr->node_roots_comm != NULL) ? tmp_buf : sendbuf;
+                if (buf == tmp_buf) MPIU_Assert(1 == did_reduce);
+                mpi_errno = MPIR_Reduce_impl(buf, NULL, count, datatype,
+                                             op, MPIU_Get_intranode_rank(comm_ptr, root),
+                                             comm_ptr->node_comm, errflag);
+                if (mpi_errno) {
+                    /* for communication errors, just record the error but continue */
+                    *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                    MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                }
+
+            }
+            else { /* I am in root's os-process. I have not participated in
+                      the intra_osproc reduce but I could have participated
+                      in the internode reduce */
+                if (comm_ptr->rank != root) {
+                    /* I am not the root though. I don't have a valid recvbuf.
+                       Use tmp_buf as recvbuf. */
+                    const void *buf = (comm_ptr->node_roots_comm != NULL) ? MPI_IN_PLACE : sendbuf;
+                    if (buf == MPI_IN_PLACE) MPIU_Assert(1 == did_reduce);
+                    mpi_errno = MPIR_Reduce_impl(buf, tmp_buf, count, datatype,
+                                                 op, MPIU_Get_intranode_rank(comm_ptr, root),
+                                                 comm_ptr->node_comm, errflag);
+                    if (mpi_errno) {
+                        /* for communication errors, just record the error but continue */
+                        *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                        MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                    }
+
+                    /* point sendbuf at tmp_buf to make final osproc_colocated_comm reduce easy */
+                    sendbuf = tmp_buf;
+                }
+                else {
+                    /* I am the root. in_place is automatically handled. */
+                    mpi_errno = MPIR_Reduce_impl(sendbuf, recvbuf, count, datatype,
+                                                 op, MPIU_Get_intranode_rank(comm_ptr, root),
+                                                 comm_ptr->node_comm, errflag);
+                    if (mpi_errno) {
+                        /* for communication errors, just record the error but continue */
+                        *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                        MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                    }
+
+                    /* set sendbuf to MPI_IN_PLACE to make final osproc_colocated_comm reduce easy. */
+                    sendbuf = MPI_IN_PLACE;
+                }
+            }
+
+        }
+
+        /* do the osproc_colocated_comm reduce on the root's os-process */
+        if (comm_ptr->osproc_colocated_comm != NULL &&
+            MPIU_Get_intra_osproc_rank(comm_ptr, root) != -1) {
+            mpi_errno = MPIR_Reduce_impl(sendbuf, recvbuf, count, datatype,
+                                         op, MPIU_Get_intra_osproc_rank(comm_ptr, root),
+                                         comm_ptr->osproc_colocated_comm, errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+
+#else
+        /* do the intranode reduce on the root's node */
+        if (comm_ptr->node_comm != NULL &&
+            MPIU_Get_intranode_rank(comm_ptr, root) != -1) {
             mpi_errno = MPIR_Reduce_impl(sendbuf, recvbuf, count, datatype,
                                          op, MPIU_Get_intranode_rank(comm_ptr, root),
                                          comm_ptr->node_comm, errflag);
@@ -844,13 +980,16 @@ int MPIR_Reduce_intra (
                 MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
         }
-        
+#endif
         goto fn_exit;
     }
     }
 
+#if defined(FINEGRAIN_MPI)
+    comm_size = comm_ptr->totprocs;
+#else
     comm_size = comm_ptr->local_size;
-
+#endif
     MPID_Datatype_get_size_macro(datatype, type_size);
 
     /* find nearest power-of-two less than or equal to comm_size */

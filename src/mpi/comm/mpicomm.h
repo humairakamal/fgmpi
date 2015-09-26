@@ -13,10 +13,10 @@ int MPIR_Get_intercomm_contextid( MPID_Comm *, MPIR_Context_id_t *, MPIR_Context
 
 #if 0//defined(FINEGRAIN_MPI) /* FG: TODO TBR Move this to fgmpicomm.h?
                               and function definitions in fgcommutil.c
-                              FG: IMPORTANT TODO lowestTag in commutil.c - Check
+                              FG: TODO IMPORTANT lowestTag in commutil.c - Check
                               possibility not support MPICH native contextid algo?
                            */
-/* FG: TODO fix this.
+/* FG: TODO IMPORTANT fix this.
    Following variables like initialize_context_mask, mask_in_use etc., are defined are static global in src/mpi/comm/commutil.c
    Ideally, I would like them to be only visible to that file, however, I am defining them here because they require
    initializors other than zero, and initialization is being done in MPI_Init().

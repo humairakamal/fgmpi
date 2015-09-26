@@ -178,10 +178,9 @@ int MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     {
 	MPID_Progress_state progress_state;
 #if defined(FINEGRAIN_MPI)
-        MPIDI_Rank_t dest = sreq->dev.match.parts.rank;
-        MPID_Comm *scomm_ptr = sreq->comm;
-        MPIDI_Rank_t source = rreq->dev.match.parts.rank;
-        MPID_Comm *rcomm_ptr = rreq->comm;
+        int sreq_is_colocated =  Is_within_same_HWP(dest, comm_ptr, NULL);
+        int rreq_is_colocated =  (source != MPI_ANY_SOURCE) ? Is_within_same_HWP(source, comm_ptr, NULL) : 0;
+        int num_of_colocated_yields = 0;
 #endif
 
 	MPID_Progress_start(&progress_state);
@@ -190,37 +189,27 @@ int MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
 #if defined(FINEGRAIN_MPI)
              /* FG SCHEDULER - Giving priority to sending messages by not
                 blocking as long as *sreq->cc_ptr != 0 */
-            if (!MPID_Request_is_complete(sreq))
-            {
-                if ( Is_within_same_HWP(dest, scomm_ptr, NULL) )
+            if ( sreq_is_colocated && (num_of_colocated_yields < MAX_COLOCATED_YIELDS) && !MPID_Request_is_complete(sreq) ) {
+                num_of_colocated_yields++;
+                FG_Yield();
+            } else if ( rreq_is_colocated && (num_of_colocated_yields < MAX_COLOCATED_YIELDS) && !MPID_Request_is_complete(rreq) ) {
+                num_of_colocated_yields++;
+                scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
+                FG_Yield_on_event(tye);
+            } else {
+                mpi_errno = MPID_Progress_wait(&progress_state);
+                if (mpi_errno != MPI_SUCCESS)
                 {
-                    FG_Yield();
-                } else {
-                    mpi_errno = MPID_Progress_wait(&progress_state);
-                    if (mpi_errno != MPI_SUCCESS)
-                    {
-                        /* --BEGIN ERROR HANDLING-- */
-                        MPID_Progress_end(&progress_state);
-                        goto fn_fail;
-                        /* --END ERROR HANDLING-- */
-                    }
+                    /* --BEGIN ERROR HANDLING-- */
+                    MPID_Progress_end(&progress_state);
+                    goto fn_fail;
+                    /* --END ERROR HANDLING-- */
                 }
-            }
-            else if(!MPID_Request_is_complete(rreq))
-            {
-                if ( Is_within_same_HWP(source, rcomm_ptr, NULL) )
-                {
+                if (!MPID_Request_is_complete(sreq)) {
+                    FG_Yield();
+                } else if(!MPID_Request_is_complete(rreq)) {
                     scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
                     FG_Yield_on_event(tye);
-                }  else {
-                    mpi_errno = MPID_Progress_wait(&progress_state);
-                    if (mpi_errno != MPI_SUCCESS)
-                    {
-                        /* --BEGIN ERROR HANDLING-- */
-                        MPID_Progress_end(&progress_state);
-                        goto fn_fail;
-                        /* --END ERROR HANDLING-- */
-                    }
                 }
             }
 #else

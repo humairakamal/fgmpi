@@ -6,6 +6,7 @@
 
 #if defined(FINEGRAIN_MPI)
 
+#include "threadlib.h"
 #include "threadlib_internal.h"
 #include "mpiimpl.h"
 
@@ -22,7 +23,88 @@ Coproclet_shared_vars_t * world_co_shared_vars;
 
 
 static void* FG_Process_wrapper( void* wrapargs );
-extern void FG_Spawn_threads(FG_WrapperProcessPtr_t WrapProcessPtr, FWraparg_t* FG_WrapArgs, int num_spawn, int *argc, char ***argv);
+void FG_Spawn_threads(FG_WrapperProcessPtr_t WrapProcessPtr, FWraparg_t* FG_WrapArgs, int num_spawn, int *argc, char ***argv);
+extern void (*sched_start_progress_thread)(void);
+extern void (*sched_init_progress_thread)(void);
+static int FGP_inits = 0;
+static int numFGspawn = 0;
+static thread_t** Fprog_spawn_ret = NULL;
+FWraparg_t* FG_Wrapargs = NULL;
+
+FGP_Init_State_t FGP_init_state = FGP_PRE_INIT;
+
+void FG_Init(void)
+{
+    FGP_inits++;
+    /* Adding an FGP barrier */
+    while(FGP_inits < (numFGspawn+1))
+    {
+      runlist_init();  /* The number of times this is called is numfgps-1 */
+    }
+    return;
+}
+
+
+
+void FG_Finalize(void)
+{
+    int i;
+
+    /* co_main waits for all coroutines to finish before exiting. */
+    for(i=0; i<numFGspawn; i++)
+    {
+        thread_join(Fprog_spawn_ret[i], NULL);
+    }
+
+    if (progress_thread ) {
+        if (!is_progress_thread_running())
+        {
+            sched_start_progress_thread();
+        }
+        thread_join(progress_thread, NULL);
+    }
+
+    if (Fprog_spawn_ret)
+    {
+        MPIU_Free(Fprog_spawn_ret);
+    }
+    if (FG_Wrapargs) {
+        MPIU_Free(FG_Wrapargs);
+    }
+
+    return;
+}
+
+
+void FG_Spawn_threads(FG_WrapperProcessPtr_t WrapProcessPtr, FWraparg_t* FG_WrapArgs, int num_spawn, int *argc, char ***argv)
+{
+    int i;
+    FG_WrapperProcessPtr_t FG_wrapperFPtr = WrapProcessPtr;
+
+    numFGspawn = num_spawn;
+    MALLOC(Fprog_spawn_ret, numFGspawn, thread_t*, thread_t**);
+
+    /* creating coroutines of the function pointers */
+    /* IMPORTANT NOTE: DO NOT REUSE THE ARGUMENTS PASSED TO EACH thread_spawn.
+       EACH MUST HAVE ITS OWN SEPARATE ARGUMENTS ALLOCATED THOUGH MALLOC ABOVE. */
+    for (i=0; i<num_spawn; i++)
+    {
+	  Fprog_spawn_ret[i] = thread_spawn("FG_PROG", (FG_WrapperProcessPtr_t)(FG_wrapperFPtr), (void*)(&FG_WrapArgs[i]));
+
+    }
+
+    /* Adding an FGP barrier */
+    while(FGP_inits < numFGspawn)
+        {
+            runlist_init();
+        }
+    FGP_inits++; /* This is Main co */
+    FGP_init_state = FGP_ALL_POST_INIT;
+
+    sched_init_progress_thread();
+
+    return;
+}
 
 
 void* FG_Process_wrapper( void* wrapargs )
@@ -132,7 +214,7 @@ void mpix_usleep_(unsigned long long utime)
      MPIX_Usleep(utime);
 }
 
-inline void FG_yield_on_event(scheduler_event yld_event, const char fcname[], int lineno){ 
+inline void FG_yield_on_event(scheduler_event yld_event, const char fcname[], int lineno){
     int numfgps;
     MPIX_Get_collocated_size(&numfgps);
     if( (numfgps > 1) && ((runlist_size() > 0) || (sleepq_size() > 0)) )
@@ -145,7 +227,7 @@ inline void FG_notify_on_event(int worldrank, int action, const char fcname[], i
     scheduler_event notification;
     notification.worldrank = worldrank;
     notification.action_on_event = action;
-    thread_notify_on_event(notification);    
+    thread_notify_on_event(notification);
 }
 
 #define LESS -1
@@ -156,13 +238,13 @@ static int is_Within(int rank, int start_fgrank, int numfgps)
 {
     if( (rank >=start_fgrank) && (rank < (start_fgrank+numfgps)) ) /* found it */
         return EQUAL;
-    else if(rank >= (start_fgrank+numfgps)) 
+    else if(rank >= (start_fgrank+numfgps))
         return GREATER;
     else if(rank < start_fgrank)
         return LESS;
     else {
         MPIU_Internal_error_printf("Error: In is_Within(). This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);
-        MPID_Abort(NULL, MPI_SUCCESS, -1, NULL); 
+        MPID_Abort(NULL, MPI_SUCCESS, -1, NULL);
         MPIU_Exit(-1); /* HK: If for some reason MPID_Abort returns, exit here. */
     }
 }
@@ -172,7 +254,7 @@ static int is_Within(int rank, int start_fgrank, int numfgps)
  */
 int _FGworldrank_to_pid(const int fgwrank, int *pid_ptr)
 {
-    int low, high, mid;    
+    int low, high, mid;
     int pid_size;
     PMI_Get_size(&pid_size); /* HK: Getting the number of HWPs.
                                   TODO Should we have keep getter functions for the number of HWPs and
@@ -182,7 +264,7 @@ int _FGworldrank_to_pid(const int fgwrank, int *pid_ptr)
 
     low = 0;
     high = pid_size - 1;
-    
+
     while (low <= high)
     {
         mid = (low + high) / 2;
@@ -204,12 +286,12 @@ int _FGworldrank_to_pid(const int fgwrank, int *pid_ptr)
 /* HK: Takes a FGworldrank as parameter returns its HWP rank (pid) for  MPI_COMM_WORLD only. */
 int FGworldrank_to_pid(int FG_worldrank)
 {
-    int pid, reterr;    
+    int pid, reterr;
     reterr = _FGworldrank_to_pid(FG_worldrank, &pid);
     if(MPI_SUCCESS != reterr)
     {
-        MPIU_Internal_error_printf("Error: No pid found. This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);
-        MPID_Abort(NULL, MPI_SUCCESS, -1, NULL); 
+        MPIU_Internal_error_printf("Error: No pid found for worldrank=%d. This part of code should not be reached in file %s at line %d\n", FG_worldrank, __FILE__, __LINE__);
+        MPID_Abort(NULL, MPI_SUCCESS, -1, NULL);
         MPIU_Exit(-1); /* HK: If for some reason MPID_Abort returns, exit here. */
     }
     return pid;
@@ -250,6 +332,8 @@ inline int Set_PROC_NULL(int *worldrank_ptr, int *pid_ptr) /* OUT,OUT */
 int Is_within_same_HWP(int reqfgrank, MPID_Comm *comm, int *reqrankpid)
 {
     int reqpid=-1, worldrank = -1, commfgrankpid=-2; /* Unequal initializers */
+    MPIU_Assert( NULL != comm );
+    MPIU_Assert( (reqfgrank > MPI_ANY_SOURCE) && (reqfgrank < comm->totprocs) );
     MPIDI_Comm_get_pid_worldrank(comm, reqfgrank, &reqpid, &worldrank);
     if(NULL != reqrankpid){
         *reqrankpid = reqpid;
@@ -261,7 +345,6 @@ int Is_within_same_HWP(int reqfgrank, MPID_Comm *comm, int *reqrankpid)
     else
         return (0);
 }
-
 
 
 #endif /* #if defined (FINEGRAIN_MPI) */

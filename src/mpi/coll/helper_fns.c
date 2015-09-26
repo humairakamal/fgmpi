@@ -217,17 +217,6 @@ int MPIC_Wait(MPID_Request * request_ptr, mpir_errflag_t *errflag)
 
     if (!MPID_Request_is_complete(request_ptr))
     {
-#if defined(FINEGRAIN_MPI) /* FG:TODO IMPORTANT Doublecheck */
-        MPIDI_Rank_t dest = request_ptr->dev.match.parts.rank;
-        MPID_Comm *comm_ptr = request_ptr->comm;
-        if ( Is_within_same_HWP(dest, comm_ptr, NULL) )
-        {
-            while(!MPID_Request_is_complete(request_ptr))
-            {
-                mpi_errno = FG_Yield_on_incomplete_request(request_ptr);
-            }
-        } else {
-#endif
 	MPID_Progress_state progress_state;
 	
 	MPID_Progress_start(&progress_state);
@@ -237,14 +226,17 @@ int MPIC_Wait(MPID_Request * request_ptr, mpir_errflag_t *errflag)
 	    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 #if defined(FINEGRAIN_MPI)
             if (!MPID_Request_is_complete(request_ptr)) {
-                FG_Yield_on_incomplete_request(request_ptr);
+                if( MPID_REQUEST_RECV == request_ptr->kind ){
+                    scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
+                    FG_Yield_on_event(tye);
+                }
+                else {
+                    FG_Yield();
+                }
             }
 #endif
         }
 	MPID_Progress_end(&progress_state);
-#if defined(FINEGRAIN_MPI)
-        }
-#endif
     }
 
     if (request_ptr->kind == MPID_REQUEST_RECV)

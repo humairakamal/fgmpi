@@ -97,8 +97,8 @@ static void (*sched_add_init_thread)(thread_t *t);
 static thread_t* (*sched_next_init_thread)(void);
 static void (*sched_block_thread)(thread_t *t, void *event);
 static void (*sched_unblock_thread)(void *event);
-static void (*sched_init_progress_thread)(void);
-static void (*sched_start_progress_thread)(void);
+void (*sched_init_progress_thread)(void);
+void (*sched_start_progress_thread)(void);
 
 /* flags regarding the state of main_thread */
 int exit_whole_program = 0;
@@ -1120,86 +1120,4 @@ inline int sleepq_size(void)
 void thread_usleep(unsigned long long timeout)
 {
   thread_suspend_self(timeout);
-}
-
-
-/* ------------------------------------------------ */
-static int FGP_inits = 0;
-static int numFGspawn = 0;
-static thread_t** Fprog_spawn_ret = NULL;
-FWraparg_t* FG_Wrapargs = NULL;
-
-FGP_Init_State_t FGP_init_state = FGP_PRE_INIT;
-
-void FG_Init(void)
-{
-    FGP_inits++;
-    /* Adding an FGP barrier */
-    while(FGP_inits < (numFGspawn+1))
-    {
-      runlist_init();  /* The number of times this is called is numfgps-1 */
-    }
-    return;
-}
-
-
-
-void FG_Finalize(void)
-{
-    int i;
-
-    /* co_main waits for all coroutines to finish before exiting. */
-    for(i=0; i<numFGspawn; i++)
-    {
-        thread_join(Fprog_spawn_ret[i], NULL);
-    }
-
-    if (progress_thread ) {
-        if (!is_progress_thread_running())
-        {
-            sched_start_progress_thread();
-        }
-        thread_join(progress_thread, NULL);
-    }
-
-    if (Fprog_spawn_ret)
-    {
-        free(Fprog_spawn_ret);
-    }
-    if (FG_Wrapargs) {
-        free(FG_Wrapargs);
-    }
-
-    return;
-}
-
-
-void FG_Spawn_threads(FG_WrapperProcessPtr_t WrapProcessPtr, FWraparg_t* FG_WrapArgs, int num_spawn, int *argc, char ***argv)
-{
-    int i;
-    FG_WrapperProcessPtr_t FG_wrapperFPtr = WrapProcessPtr;
-
-    numFGspawn = num_spawn;
-    MALLOC(Fprog_spawn_ret, numFGspawn, thread_t*, thread_t**);
-
-    /* creating coroutines of the function pointers */
-    /* IMPORTANT NOTE: DO NOT REUSE THE ARGUMENTS PASSED TO EACH thread_spawn.
-       EACH MUST HAVE ITS OWN SEPARATE ARGUMENTS ALLOCATED THOUGH MALLOC ABOVE. */
-    for (i=0; i<num_spawn; i++)
-    {
-	  Fprog_spawn_ret[i] = thread_spawn("FG_PROG", (FG_WrapperProcessPtr_t)(FG_wrapperFPtr), (void*)(&FG_WrapArgs[i]));
-
-    }
-
-    /* Adding an FGP barrier */
-    while(FGP_inits < numFGspawn)
-        {
-            runlist_init();
-        }
-    FGP_inits++; /* This is Main co */
-    FGP_init_state = FGP_ALL_POST_INIT;
-
-    sched_init_progress_thread();
-
-    return;
 }

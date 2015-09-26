@@ -12,6 +12,8 @@
 #include "hashlib.h"
 #include "hashmap.h"
 
+#define MAX_COLOCATED_YIELDS  2
+
 typedef void* OPAQUE;
 
 extern void * FG_MPIU_Malloc(size_t a, const char fcname[], int lineno);

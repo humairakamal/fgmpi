@@ -213,6 +213,53 @@ int MPIR_Allreduce_intra (
     nbytes = MPIR_CVAR_MAX_SMP_ALLREDUCE_MSG_SIZE ? type_size*count : 0;
     if (MPIR_Comm_is_node_aware(comm_ptr) && is_commutative &&
         nbytes <= MPIR_CVAR_MAX_SMP_ALLREDUCE_MSG_SIZE) {
+#if defined(FINEGRAIN_MPI)
+        /* In each os-process, do a reduce to the colocated leader */
+        if (comm_ptr->osproc_colocated_comm != NULL) {
+            /* take care of the MPI_IN_PLACE case. For reduce,
+               MPI_IN_PLACE is specified only on the root;
+               for allreduce it is specified on all processes. */
+
+            if ((sendbuf == MPI_IN_PLACE) && (comm_ptr->osproc_colocated_comm->rank != 0)) {
+                /* IN_PLACE and not root of reduce. Data supplied to this
+                   allreduce is in recvbuf. Pass that as the sendbuf to reduce. */
+
+                mpi_errno = MPIR_Reduce_impl(recvbuf, NULL, count, datatype, op, 0, comm_ptr->osproc_colocated_comm, errflag);
+                if (mpi_errno) {
+                    /* for communication errors, just record the error but continue */
+                    *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                    MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                }
+            } else {
+                mpi_errno = MPIR_Reduce_impl(sendbuf, recvbuf, count, datatype, op, 0, comm_ptr->osproc_colocated_comm, errflag);
+                if (mpi_errno) {
+                    /* for communication errors, just record the error but continue */
+                    *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                    MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                }
+            }
+        } else {
+            /* only one process inside the os-process. copy sendbuf to recvbuf */
+            if (sendbuf != MPI_IN_PLACE) {
+                mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, recvbuf, count, datatype);
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+            }
+        }
+
+        /* now do an IN_PLACE intranode allreduce */
+        if (comm_ptr->node_comm != NULL) {
+            mpi_errno = allreduce_intra_or_coll_fn(MPI_IN_PLACE, recvbuf, count, datatype, op, comm_ptr->node_comm, errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+
+#else /* matches #if defined(FINEGRAIN_MPI) */
         /* on each node, do a reduce to the local root */ 
         if (comm_ptr->node_comm != NULL) {
             /* take care of the MPI_IN_PLACE case. For reduce, 
@@ -246,6 +293,7 @@ int MPIR_Allreduce_intra (
                 if (mpi_errno) MPIU_ERR_POP(mpi_errno);
             }
         }
+#endif /* matches #if defined(FINEGRAIN_MPI) */
 
         /* now do an IN_PLACE allreduce among the local roots of all nodes */
         if (comm_ptr->node_roots_comm != NULL) {
@@ -269,6 +317,19 @@ int MPIR_Allreduce_intra (
                 MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
         }
+
+#if defined(FINEGRAIN_MPI)
+        /* now broadcast the result among colocated processes */
+        if (comm_ptr->osproc_colocated_comm != NULL) {
+            mpi_errno = MPIR_Bcast_impl(recvbuf, count, datatype, 0, comm_ptr->osproc_colocated_comm, errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+#endif
         goto fn_exit;
     }
     }
@@ -306,7 +367,11 @@ int MPIR_Allreduce_intra (
     {
         /* homogeneous */
 
+#if defined(FINEGRAIN_MPI)
+        comm_size = comm_ptr->totprocs;
+#else
         comm_size = comm_ptr->local_size;
+#endif
         rank = comm_ptr->rank;
 
         is_commutative = MPIR_Op_is_commutative(op);

@@ -148,30 +148,47 @@ int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
     if (!MPID_Request_is_complete(request_ptr))
     {
 #if defined(FINEGRAIN_MPI)
-      if ( (source != MPI_ANY_SOURCE) && Is_within_same_HWP(source, comm_ptr, NULL) )
-      {
-          /* FG SCHEDULER: For schedulers like RR, if we are expecting a message from
-             an MPI process that is co-located, then we will not enter
-             the progress engine and yield to another MPI process.
-             For schedulers like blocking receive, the progress-thread will
-             make progress e.g. in LMT, when a clear-to-send is sent and the
-             full message has not been received, then request_ptr->cc_ptr
-             will not be zero and the receiver will block again.
-          */
-          while(!MPID_Request_is_complete(request_ptr))
+        int num_of_colocated_yields = 0;
+        int is_colocated = (source != MPI_ANY_SOURCE) ? Is_within_same_HWP(source, comm_ptr, NULL) : 0;
+#endif
+        MPID_Progress_state progress_state;
+
+        MPID_Progress_start(&progress_state);
+
+        while(!MPID_Request_is_complete(request_ptr))
+        {
+#if defined(FINEGRAIN_MPI)
+          if ( is_colocated && (num_of_colocated_yields < MAX_COLOCATED_YIELDS) && (source != MPI_ANY_SOURCE) )
           {
+              /* FG SCHEDULER: For schedulers like RR, if we are expecting a message from
+                 an MPI process that is co-located, then we will not enter
+                 the progress engine and yield to another MPI process.
+                 For schedulers like blocking receive, the progress-thread will
+                 make progress e.g. in LMT, when a clear-to-send is sent and the
+                 full message has not been received, then request_ptr->cc_ptr
+                 will not be zero and the receiver will block again.
+              */
+              num_of_colocated_yields++;
               scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
               FG_Yield_on_event(tye);
           }
-      }
-      else {
-#endif
-	MPID_Progress_state progress_state;
-	    
-	MPID_Progress_start(&progress_state);
-        while (!MPID_Request_is_complete(request_ptr))
-	{
-	    /* MT: Progress_wait may release the SINGLE_CS while it
+          else {
+	    mpi_errno = MPID_Progress_wait(&progress_state);
+	    if (mpi_errno != MPI_SUCCESS)
+	    {
+		/* --BEGIN ERROR HANDLING-- */
+		MPID_Progress_end(&progress_state);
+		goto fn_fail;
+		/* --END ERROR HANDLING-- */
+	    }
+            if (!MPID_Request_is_complete(request_ptr))
+            {
+                scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
+                FG_Yield_on_event(tye);
+            }
+          }
+#else
+            /* MT: Progress_wait may release the SINGLE_CS while it
 	       waits */
 	    mpi_errno = MPID_Progress_wait(&progress_state);
 	    if (mpi_errno != MPI_SUCCESS)
@@ -181,15 +198,7 @@ int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
 		goto fn_fail;
 		/* --END ERROR HANDLING-- */
 	    }
-
-#if defined(FINEGRAIN_MPI)
-            if(!MPID_Request_is_complete(request_ptr))
-            {
-                scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
-                FG_Yield_on_event(tye);
-            }
 #endif
-
 
             if (unlikely(MPIR_CVAR_ENABLE_FT &&
                         !MPID_Request_is_complete(request_ptr) &&
@@ -203,12 +212,8 @@ int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
                 goto fn_fail;
                 /* --END ERROR HANDLING-- */
             }
-
-	}
+        }
 	MPID_Progress_end(&progress_state);
-#if defined(FINEGRAIN_MPI)
-      }
-#endif
     }
 
     mpi_errno = request_ptr->status.MPI_ERROR;

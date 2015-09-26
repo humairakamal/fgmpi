@@ -935,14 +935,30 @@ int MPIR_Comm_is_node_aware(MPID_Comm * comm)
 /* Returns true if the communicator is node-aware and processes in all the nodes
    are consecutive. For example, if node 0 contains "0, 1, 2, 3", node 1
    contains "4, 5, 6", and node 2 contains "7", we shall return true. */
-int MPIR_Comm_is_node_consecutive(MPID_Comm * comm) /* FG: TODO IMPORTANT*/
+int MPIR_Comm_is_node_consecutive(MPID_Comm * comm)
 {
     int i = 0, curr_nodeidx = 0;
+#if !defined(FINEGRAIN_MPI)
     int *internode_table = comm->internode_table;
+#endif
 
     if (!MPIR_Comm_is_node_aware(comm))
         return 0;
 
+#if defined(FINEGRAIN_MPI)
+    for (; i < comm->totprocs; i++)
+    {
+        Parent_to_Nested_comm_tables_coshared_hash_t *ptn_tables_hash_entry_stored = NULL;
+        MPIU_Assert(comm->co_shared_vars != NULL);
+        MPIU_Assert(comm->co_shared_vars->ptn_hash != NULL);
+        PTN_HASH_LOOKUP(comm->co_shared_vars->ptn_hash, i, ptn_tables_hash_entry_stored );
+        MPIU_Assert(ptn_tables_hash_entry_stored != NULL);
+        if (ptn_tables_hash_entry_stored->parent_to_nested.internode_comm_root == curr_nodeidx + 1)
+            curr_nodeidx++;
+        else if (ptn_tables_hash_entry_stored->parent_to_nested.internode_comm_root != curr_nodeidx)
+            return 0;
+    }
+#else
     for (; i < comm->local_size; i++)
     {
         if (internode_table[i] == curr_nodeidx + 1)
@@ -950,6 +966,7 @@ int MPIR_Comm_is_node_consecutive(MPID_Comm * comm) /* FG: TODO IMPORTANT*/
         else if (internode_table[i] != curr_nodeidx)
             return 0;
     }
+#endif
 
     return 1;
 }

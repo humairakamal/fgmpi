@@ -46,25 +46,11 @@ int MPIR_Test_impl(MPI_Request *request, int *flag, MPI_Status *status)
 
     MPID_Request_get_ptr( *request, request_ptr );
 
-#if defined(FINEGRAIN_MPI)
-    MPIDI_Rank_t dest = request_ptr->dev.match.parts.rank;
-    MPID_Comm *comm_ptr = request_ptr->comm;
-    if ( !MPID_Request_is_complete(request_ptr) ) {
-        if ( Is_within_same_HWP(dest, comm_ptr, NULL) )
-        {
-            FG_Yield();
-        } else {
-            mpi_errno = MPID_Progress_test();
-            if (mpi_errno != MPI_SUCCESS) goto fn_fail;
-        }
-    }
-#else
     /* If the request is already completed AND we want to avoid calling
      the progress engine, we could make the call to MPID_Progress_test
      conditional on the request not being completed. */
     mpi_errno = MPID_Progress_test();
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
-#endif
 
     if (request_ptr->kind == MPID_UREQUEST &&
         request_ptr->greq_fns != NULL &&

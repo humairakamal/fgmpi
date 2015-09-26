@@ -78,7 +78,11 @@ int MPIR_Alltoallv_intra(const void *sendbuf, const int *sendcounts, const int *
 
     MPIU_CHKLMEM_DECL(2);
 
+#if defined(FINEGRAIN_MPI)
+    comm_size = comm_ptr->totprocs;
+#else
     comm_size = comm_ptr->local_size;
+#endif
     rank = comm_ptr->rank;
 
     /* Get extent of recv type, but send type is only valid if (sendbuf!=MPI_IN_PLACE) */
@@ -471,7 +475,11 @@ int MPI_Alltoallv(const void *sendbuf, const int *sendcounts,
             if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
             if (comm_ptr->comm_kind == MPID_INTRACOMM) {
+#if defined(FINEGRAIN_MPI)
+                comm_size = comm_ptr->totprocs;
+#else
                 comm_size = comm_ptr->local_size;
+#endif
 
                 if (sendbuf != MPI_IN_PLACE && sendtype == recvtype && sendcounts == recvcounts)
                     MPIR_ERRTEST_ALIAS_COLL(sendbuf, recvbuf, mpi_errno);

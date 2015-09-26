@@ -76,9 +76,32 @@ static int barrier_smp_intra(MPID_Comm *comm_ptr, mpir_errflag_t *errflag)
                 MPIR_Comm_is_node_aware(comm_ptr));
 
 #if defined(FINEGRAIN_MPI)
+    int colocated_size = -1;
+    int colocated_sense = -1;
     /* do  barrier on osproc_colocated_comm */
     if (comm_ptr->osproc_colocated_comm != NULL)
     {
+        colocated_size = comm_ptr->osproc_colocated_comm->totprocs;
+        MPIU_Assert( (comm_ptr->osproc_colocated_comm->co_shared_vars != NULL) && (comm_ptr->osproc_colocated_comm->co_shared_vars->co_barrier_vars != NULL) );
+        MPIU_Assert(colocated_size > 1 );
+        colocated_sense = comm_ptr->osproc_colocated_comm->co_shared_vars->co_barrier_vars->coproclet_signal;
+
+        if( comm_ptr->osproc_colocated_comm->rank != 0 ) { /* non-leader */
+            (comm_ptr->osproc_colocated_comm->co_shared_vars->co_barrier_vars->coproclet_counter)++;
+            if (comm_ptr->osproc_colocated_comm->co_shared_vars->co_barrier_vars->coproclet_counter == (colocated_size-1)){ /* excluding the leader */
+                comm_ptr->osproc_colocated_comm->co_shared_vars->co_barrier_vars->leader_signal = 1;
+            }
+            while(comm_ptr->osproc_colocated_comm->co_shared_vars->co_barrier_vars->coproclet_signal == colocated_sense) {
+                FG_Yield();
+            }
+        }
+        else { /* leader */
+            while(comm_ptr->osproc_colocated_comm->co_shared_vars->co_barrier_vars->leader_signal == 0) {
+                FG_Yield();
+            }
+        }
+
+#if 0 /* Non-optimized version */
         mpi_errno = MPIR_Barrier_impl(comm_ptr->osproc_colocated_comm, errflag);
         if (mpi_errno) {
             /* for communication errors, just record the error but continue */
@@ -86,6 +109,7 @@ static int barrier_smp_intra(MPID_Comm *comm_ptr, mpir_errflag_t *errflag)
             MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
             MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
         }
+#endif
     }
 #endif
 
@@ -128,11 +152,18 @@ static int barrier_smp_intra(MPID_Comm *comm_ptr, mpir_errflag_t *errflag)
     }
 
 #if defined(FINEGRAIN_MPI)
-    /* release the colocated processes in each OS-process with a 1-byte
-       broadcast (0-byte broadcast just returns without doing
-       anything) */
     if (comm_ptr->osproc_colocated_comm != NULL)
     {
+        if (comm_ptr->osproc_colocated_comm->rank == 0) { /* leader */
+            comm_ptr->osproc_colocated_comm->co_shared_vars->co_barrier_vars->leader_signal = 0;
+            comm_ptr->osproc_colocated_comm->co_shared_vars->co_barrier_vars->coproclet_counter = 0;
+            comm_ptr->osproc_colocated_comm->co_shared_vars->co_barrier_vars->coproclet_signal = 1 - comm_ptr->osproc_colocated_comm->co_shared_vars->co_barrier_vars->coproclet_signal;
+        }
+
+#if 0 /* Non-optimized version */
+        /* release the colocated processes in each OS-process with a 1-byte
+           broadcast (0-byte broadcast just returns without doing
+           anything) */
         int i=0;
         mpi_errno = MPIR_Bcast_impl(&i, 1, MPI_BYTE, 0, comm_ptr->osproc_colocated_comm, errflag);
         if (mpi_errno) {
@@ -141,6 +172,7 @@ static int barrier_smp_intra(MPID_Comm *comm_ptr, mpir_errflag_t *errflag)
             MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
             MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
         }
+#endif
     }
 #endif
 

@@ -87,7 +87,11 @@ int MPIR_Scatter_intra(const void *sendbuf, int sendcount, MPI_Datatype sendtype
     int mpi_errno_ret = MPI_SUCCESS;
     MPIU_CHKLMEM_DECL(4);
 
+#if defined(FINEGRAIN_MPI)
+    comm_size = comm_ptr->totprocs;
+#else
     comm_size = comm_ptr->local_size;
+#endif
     rank = comm_ptr->rank;
 
     if ( ((rank == root) && (sendcount == 0)) ||

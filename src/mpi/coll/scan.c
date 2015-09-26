@@ -94,7 +94,11 @@ static int MPIR_Scan_generic (
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
 
+#if defined(FINEGRAIN_MPI)
+    comm_size = comm_ptr->totprocs;
+#else
     comm_size = comm_ptr->local_size;
+#endif
     rank = comm_ptr->rank;
 
     MPIU_THREADPRIV_GET;
@@ -217,6 +221,344 @@ static int MPIR_Scan_generic (
 /* MPIR_Scan performs an scan using point-to-point messages.  This is
    intended to be used by device-specific implementations of scan.  In
    all other cases MPIR_Scan_impl should be used. */
+#if defined(FINEGRAIN_MPI)
+#undef FUNCNAME
+#define FUNCNAME MPIR_Scan
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Scan(
+    const void *sendbuf,
+    void *recvbuf,
+    int count,
+    MPI_Datatype datatype,
+    MPI_Op op,
+    MPID_Comm *comm_ptr,
+    mpir_errflag_t *errflag )
+{
+    int mpi_errno = MPI_SUCCESS;
+    int mpi_errno_ret = MPI_SUCCESS;
+    MPIU_CHKLMEM_DECL(4);
+    MPIU_THREADPRIV_DECL;
+    int rank = comm_ptr->rank;
+    MPI_Status status;
+    void *tempbuf = NULL, *localfulldata = NULL, *prefulldata = NULL, *colocatedfulldata = NULL;
+    MPI_Aint  true_lb, true_extent, extent;
+    int noneed = 1; /* noneed=1 means no need to bcast tempbuf and
+                       reduce tempbuf & recvbuf */
+
+    /* In order to use the SMP-aware algorithm, the "op" can be
+       either commutative or non-commutative, but we require a
+       communicator in which all the nodes contain processes with
+       consecutive ranks. */
+
+    if (!MPIR_Comm_is_node_consecutive(comm_ptr)) {
+        /* We can't use the SMP-aware algorithm, use the generic one */
+        return MPIR_Scan_generic(sendbuf, recvbuf, count, datatype, op, comm_ptr, errflag);
+    }
+    MPIU_THREADPRIV_GET;
+    MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
+
+    MPID_Datatype_get_extent_macro(datatype, extent);
+
+    MPID_Ensure_Aint_fits_in_pointer(count * MPIR_MAX(extent, true_extent));
+
+    MPIU_CHKLMEM_MALLOC(tempbuf, void *, count*(MPIR_MAX(extent, true_extent)),
+                        mpi_errno, "temporary buffer");
+    tempbuf = (void *)((char*)tempbuf - true_lb);
+
+    /* Create prefulldata and localfulldata on local roots of all nodes */
+    if (comm_ptr->node_roots_comm != NULL) {
+        MPIU_CHKLMEM_MALLOC(prefulldata, void *, count*(MPIR_MAX(extent, true_extent)),
+                            mpi_errno, "prefulldata for scan");
+        prefulldata = (void *)((char*)prefulldata - true_lb);
+    }
+    if (comm_ptr->node_comm != NULL) {
+        MPIU_CHKLMEM_MALLOC(localfulldata, void *, count*(MPIR_MAX(extent, true_extent)),
+                            mpi_errno, "localfulldata for scan");
+        localfulldata = (void *)((char*)localfulldata - true_lb);
+    }
+    /* Create colocatedfulldata in colocated leaders */
+    if ( ((comm_ptr->node_comm != NULL) || (comm_ptr->node_roots_comm != NULL)) &&
+         (comm_ptr->osproc_colocated_comm != NULL) ) {
+        MPIU_Assert(0 == comm_ptr->osproc_colocated_comm->rank);
+        MPIU_CHKLMEM_MALLOC(colocatedfulldata, void *, count*(MPIR_MAX(extent, true_extent)),
+                            mpi_errno, "colocatedfulldata for scan");
+        colocatedfulldata = (void *)((char*)colocatedfulldata - true_lb);
+    }
+
+    /* perform intra_osproc scan to get temporary result in recvbuf. if there is only
+       one colocated process, just copy the raw data. */
+    if (comm_ptr->osproc_colocated_comm != NULL)
+    {
+        mpi_errno = MPIR_Scan_impl(sendbuf, recvbuf, count, datatype,
+                                   op, comm_ptr->osproc_colocated_comm, errflag);
+        if (mpi_errno) {
+            /* for communication errors, just record the error but continue */
+            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+            MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+            MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+        }
+    }
+    else if (sendbuf != MPI_IN_PLACE)
+    {
+        mpi_errno = MPIR_Localcopy(sendbuf, count, datatype,
+                                   recvbuf, count, datatype);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    }
+
+    MPIU_Assert(NULL != comm_ptr->co_shared_vars);
+    if ( (comm_ptr->co_shared_vars->nested_uniform_vars.local_size > 1) ||
+         (comm_ptr->co_shared_vars->nested_uniform_vars.external_size > 1) ) {
+        /* We have at least a 2-level hierarchy. The above
+           if-statement would be false if there is a single OS-process
+           with one or more colocated MPI processes. Get result from
+           os-process's last colocated process which contains the
+           reduce result of the whole os-process. Name it as
+           colocatedfulldata. */
+        if ( (comm_ptr->osproc_colocated_comm != NULL) &&
+             (0 == comm_ptr->osproc_colocated_comm->rank) )
+        {
+            mpi_errno = MPIC_Recv(colocatedfulldata, count, datatype,
+                                  comm_ptr->osproc_colocated_comm->totprocs - 1, MPIR_SCAN_TAG,
+                                  comm_ptr->osproc_colocated_comm, &status, errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+        else if (comm_ptr->osproc_colocated_comm != NULL &&
+                 MPIU_Get_intra_osproc_rank(comm_ptr, rank) == comm_ptr->osproc_colocated_comm->totprocs - 1)
+        {
+            mpi_errno = MPIC_Send(recvbuf, count, datatype,
+                                  0, MPIR_SCAN_TAG, comm_ptr->osproc_colocated_comm, errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+        else if ((comm_ptr->node_comm != NULL) || (comm_ptr->node_roots_comm != NULL))
+        {
+            /* There is only a single MPI process in the os-process and we
+               have at least a 2-level hierarchy */
+            colocatedfulldata = recvbuf;
+        }
+    }
+
+    /* perform intranode scan to get temporary result in localfulldata.*/
+    if (comm_ptr->node_comm != NULL)
+    {
+        mpi_errno = MPIR_Scan_impl(colocatedfulldata, localfulldata, count, datatype,
+                                   op, comm_ptr->node_comm, errflag);
+        if (mpi_errno) {
+            /* for communication errors, just record the error but continue */
+            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+            MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+            MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+        }
+
+        if (MPIU_Get_intranode_rank(comm_ptr, rank) != comm_ptr->node_comm->totprocs-1)
+        {
+            mpi_errno = MPIC_Send(localfulldata, count, datatype,
+                                  MPIU_Get_intranode_rank(comm_ptr, rank) + 1,
+                                  MPIR_SCAN_TAG, comm_ptr->node_comm, errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+        if (MPIU_Get_intranode_rank(comm_ptr, rank) != 0)
+        {
+            mpi_errno = MPIC_Recv(tempbuf, count, datatype,
+                                  MPIU_Get_intranode_rank(comm_ptr, rank) - 1,
+                                  MPIR_SCAN_TAG, comm_ptr->node_comm, &status, errflag);
+            noneed = 0;
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+    }
+    /* now tempbuf contains the data needed for intranode
+       scan result. Broadcast this result within the os-process, and
+       reduce it with recvbuf to get partial result if nessesary. */
+    if (comm_ptr->co_shared_vars->nested_uniform_vars.local_size > 1) {
+        if (comm_ptr->osproc_colocated_comm != NULL) {
+            mpi_errno = MPIR_Bcast_impl(&noneed, 1, MPI_INT, 0, comm_ptr->osproc_colocated_comm, errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+
+        if (noneed == 0) {
+            if (comm_ptr->osproc_colocated_comm != NULL) {
+                mpi_errno = MPIR_Bcast_impl(tempbuf, count, datatype, 0,
+                                            comm_ptr->osproc_colocated_comm, errflag);
+                if (mpi_errno) {
+                    /* for communication errors, just record the error but continue */
+                    *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                    MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                }
+            }
+
+            mpi_errno = MPIR_Reduce_local_impl( tempbuf, recvbuf,
+                                                count, datatype, op );
+        }
+    }
+    /* At this point all the nodes have their correct local intranode scan results */
+    noneed = 1; /* reset for next steps */
+
+    if (comm_ptr->co_shared_vars->nested_uniform_vars.external_size > 1) {
+        if (comm_ptr->node_roots_comm != NULL && comm_ptr->node_comm != NULL)
+        {
+            mpi_errno = MPIC_Recv(localfulldata, count, datatype,
+                                  comm_ptr->node_comm->totprocs - 1, MPIR_SCAN_TAG,
+                                  comm_ptr->node_comm, &status, errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+        else if (comm_ptr->node_roots_comm == NULL &&
+                 comm_ptr->node_comm != NULL &&
+                 MPIU_Get_intranode_rank(comm_ptr, rank) == comm_ptr->node_comm->totprocs - 1)
+        {
+            mpi_errno = MPIC_Send(localfulldata, count, datatype,
+                                  0, MPIR_SCAN_TAG, comm_ptr->node_comm, errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+        else if (comm_ptr->node_roots_comm != NULL &&
+                 comm_ptr->node_comm == NULL )
+        {
+            localfulldata = colocatedfulldata;
+        }
+    }
+
+    /* do scan on localfulldata to prefulldata.*/
+    if (comm_ptr->node_roots_comm != NULL)
+    {
+        mpi_errno = MPIR_Scan_impl(localfulldata, prefulldata, count, datatype,
+                                   op, comm_ptr->node_roots_comm, errflag);
+        if (mpi_errno) {
+            /* for communication errors, just record the error but continue */
+            *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+            MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+            MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+        }
+
+        if (MPIU_Get_internode_rank(comm_ptr, rank) !=
+            comm_ptr->node_roots_comm->totprocs-1)
+        {
+            mpi_errno = MPIC_Send(prefulldata, count, datatype,
+                                     MPIU_Get_internode_rank(comm_ptr, rank) + 1,
+                                     MPIR_SCAN_TAG, comm_ptr->node_roots_comm, errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+        if (MPIU_Get_internode_rank(comm_ptr, rank) != 0)
+        {
+            mpi_errno = MPIC_Recv(tempbuf, count, datatype,
+                                     MPIU_Get_internode_rank(comm_ptr, rank) - 1,
+                                     MPIR_SCAN_TAG, comm_ptr->node_roots_comm, &status, errflag);
+            noneed = 0;
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+    }
+
+    if (comm_ptr->co_shared_vars->nested_uniform_vars.external_size > 1) {
+        if (comm_ptr->node_comm != NULL) {
+            mpi_errno = MPIR_Bcast_impl(&noneed, 1, MPI_INT, 0, comm_ptr->node_comm, errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+
+        if (noneed == 0) {
+            if (comm_ptr->node_comm != NULL) {
+                mpi_errno = MPIR_Bcast_impl(tempbuf, count, datatype, 0,
+                                            comm_ptr->node_comm, errflag);
+                if (mpi_errno) {
+                    /* for communication errors, just record the error but continue */
+                    *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                    MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                }
+            }
+        }
+    }
+
+    if ( (comm_ptr->co_shared_vars->nested_uniform_vars.local_size > 1) ||
+         (comm_ptr->co_shared_vars->nested_uniform_vars.external_size > 1) ) {
+        if (comm_ptr->osproc_colocated_comm != NULL) {
+            mpi_errno = MPIR_Bcast_impl(&noneed, 1, MPI_INT, 0, comm_ptr->osproc_colocated_comm, errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+
+        if (noneed == 0) {
+            if (comm_ptr->osproc_colocated_comm != NULL) {
+                mpi_errno = MPIR_Bcast_impl(tempbuf, count, datatype, 0,
+                                            comm_ptr->osproc_colocated_comm, errflag);
+                if (mpi_errno) {
+                    /* for communication errors, just record the error but continue */
+                    *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
+                    MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
+                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                }
+            }
+            mpi_errno = MPIR_Reduce_local_impl( tempbuf, recvbuf,
+                                                count, datatype, op );
+        }
+    }
+
+  fn_exit:
+    MPIU_CHKLMEM_FREEALL();
+    if (mpi_errno_ret)
+        mpi_errno = mpi_errno_ret;
+    else if (*errflag != MPIR_ERR_NONE)
+        MPIU_ERR_SET(mpi_errno, *errflag, "**coll_fail");
+    return mpi_errno;
+
+  fn_fail:
+    goto fn_exit;
+}
+
+#else /* #else of #if defined(FINEGRAIN_MPI) */
+
 #undef FUNCNAME
 #define FUNCNAME MPIR_Scan
 #undef FCNAME
@@ -416,6 +758,7 @@ int MPIR_Scan(
   fn_fail:
     goto fn_exit;
 }
+#endif /* matches #else of #if defined(FINEGRAIN_MPI) */
 
 /* MPIR_Scan_impl should be called by any internal component that
    would otherwise call MPI_Scan.  This differs from MPIR_Scan in that

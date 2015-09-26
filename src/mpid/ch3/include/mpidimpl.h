@@ -322,7 +322,7 @@ extern MPID_Request ** FG_recvq_unexpected_tail;
    comm, buf, datatype, and count all be available with those names
    (they are not arguments to the routine)
 */
-#if defined(FINEGRAIN_MPI) /* FG: TODO IMPORTANT Double-check (sreq_)->dev.match.parts.rank = rank; */
+#if defined(FINEGRAIN_MPI) /* FG: TODO IMPORTANT Doublecheck (sreq_)->dev.match.parts.rank = rank; */
 #define MPIDI_Request_create_sreq(sreq_, mpi_errno_, FAIL_)	\
 {								\
     (sreq_) = MPID_Request_create();                            \

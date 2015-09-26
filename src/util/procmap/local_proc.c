@@ -319,7 +319,7 @@ int MPIU_Nested_maps_for_communicators(MPID_Comm *comm)
             parent_to_nested_entry.intranode_comm_local_rank = -1; /* this rank is not part of intranode comm */
         }
 
-        parent_to_nested_entry.intranode_comm_root = osprocs[pid]; /* leader of colocated processes inside my OS-process and -1 (as per initialization of osprocs[]) if this process is not colocated to me */
+        parent_to_nested_entry.intranode_comm_root = osprocs[pid]; /* leader of colocated processes inside my OS-process and -1 (as per initialization of osprocs[]) if this process is not on my node */
         PTN_HASH_INSERT( parent_to_nested_hash_p, parentcomm_rank, parent_to_nested_entry);
     }
 
@@ -337,7 +337,7 @@ int MPIU_Nested_maps_for_communicators(MPID_Comm *comm)
       for (i = 0; i < comm->totprocs; ++i)
       {
           Parent_to_Nested_comm_tables_coshared_hash_t *ptn_tables_hash_entry_stored = NULL;
-          PTN_HASH_LOOKUP( parent_to_nested_hash_p, &i, ptn_tables_hash_entry_stored );
+          PTN_HASH_LOOKUP( parent_to_nested_hash_p, i, ptn_tables_hash_entry_stored );
           MPIU_Assert( ptn_tables_hash_entry_stored != NULL);
 
           printf("my_fgrank=%d:parent_comm_rank=%d:\n\tfg_local_size=%d\n\tintra_osproc_fg_rank=%d\n", comm->rank, i, fg_local_size, ptn_tables_hash_entry_stored->parent_to_nested.intra_osproc_fg_rank);
@@ -417,6 +417,9 @@ int MPIU_Get_internode_rank(MPID_Comm *comm_ptr, int r)
 
     PTN_HASH_LOOKUP(comm_ptr->co_shared_vars->ptn_hash, r, ptn_tables_hash_entry_stored );
     MPIU_Assert(ptn_tables_hash_entry_stored != NULL);
+    /* Map rank r in comm_ptr to the rank of the leader for r's node
+       in comm_ptr->node_roots_comm.
+       Return value is never -1 if comm_ptr->node_roots_comm != NULL */
     return (ptn_tables_hash_entry_stored->parent_to_nested.internode_comm_root);
 
 #else
@@ -454,7 +457,10 @@ int MPIU_Get_intranode_rank(MPID_Comm *comm_ptr, int r)
 
     PTN_HASH_LOOKUP(comm_ptr->co_shared_vars->ptn_hash, r, ptn_tables_hash_entry_stored );
     MPIU_Assert(ptn_tables_hash_entry_stored != NULL);
-    return (ptn_tables_hash_entry_stored->parent_to_nested.intranode_comm_local_rank);
+    /* If process r is on the same node as the process calling this
+       function, then map rank r in comm_ptr to r's os-process's
+       leader's rank in comm_ptr->node_comm. Else return -1 */
+    return (ptn_tables_hash_entry_stored->parent_to_nested.intranode_comm_root);
 
 #else
     MPIU_Assert(comm_ptr->intranode_table != NULL);
@@ -465,3 +471,36 @@ int MPIU_Get_intranode_rank(MPID_Comm *comm_ptr, int r)
 #endif
 }
 
+
+#if defined(FINEGRAIN_MPI)
+/* If process r is colocated to the process calling this function,
+   then map rank r in comm_ptr to r's rank in comm_ptr->osproc_colocated_comm.
+   Else return -1.
+
+   This function does NOT use mpich error handling.
+ */
+#undef FUNCNAME
+#define FUNCNAME MPIU_Get_intra_osproc_rank
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIU_Get_intra_osproc_rank(MPID_Comm *comm_ptr, int r)
+{
+    int mpi_errno = MPI_SUCCESS;
+    MPID_Comm_valid_ptr( comm_ptr, mpi_errno, TRUE );
+    MPIU_Assert(mpi_errno == MPI_SUCCESS);
+#if defined(FINEGRAIN_MPI)
+    MPIU_Assert(r < comm_ptr->totprocs);
+#else
+    MPIU_Assert(r < comm_ptr->remote_size);
+#endif
+    MPIU_Assert(comm_ptr->comm_kind == MPID_INTRACOMM);
+
+    Parent_to_Nested_comm_tables_coshared_hash_t *ptn_tables_hash_entry_stored = NULL;
+    MPIU_Assert(comm_ptr->co_shared_vars != NULL);
+    MPIU_Assert(comm_ptr->co_shared_vars->ptn_hash != NULL);
+
+    PTN_HASH_LOOKUP(comm_ptr->co_shared_vars->ptn_hash, r, ptn_tables_hash_entry_stored );
+    MPIU_Assert(ptn_tables_hash_entry_stored != NULL);
+    return (ptn_tables_hash_entry_stored->parent_to_nested.intra_osproc_fg_rank);
+}
+#endif /* matches #if defined (FINEGRAIN_MPI) */
