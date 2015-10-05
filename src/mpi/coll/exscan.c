@@ -83,7 +83,7 @@ int MPI_Exscan(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
 #undef FUNCNAME
 #define FUNCNAME MPIR_Exscan
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Exscan ( 
     const void *sendbuf,
     void *recvbuf,
@@ -91,7 +91,7 @@ int MPIR_Exscan (
     MPI_Datatype datatype,
     MPI_Op op,
     MPID_Comm *comm_ptr,
-    mpir_errflag_t *errflag )
+    MPIR_Errflag_t *errflag )
 {
     MPI_Status status;
     int        rank, comm_size;
@@ -102,17 +102,17 @@ int MPIR_Exscan (
     void *partial_scan, *tmp_buf;
     MPID_Op *op_ptr;
     MPIU_CHKLMEM_DECL(2);
-    MPIU_THREADPRIV_DECL;
+    MPID_THREADPRIV_DECL;
     
     if (count == 0) return MPI_SUCCESS;
 
-    MPIU_THREADPRIV_GET;
+    MPID_THREADPRIV_GET;
 
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
     
     /* set op_errno to 0. stored in perthread structure */
-    MPIU_THREADPRIV_FIELD(op_errno) = 0;
+    MPID_THREADPRIV_FIELD(op_errno) = 0;
 
     if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
         is_commutative = 1;
@@ -141,7 +141,7 @@ int MPIR_Exscan (
 
     mpi_errno = MPIR_Localcopy((sendbuf == MPI_IN_PLACE ? (const void *)recvbuf : sendbuf), count, datatype,
                                partial_scan, count, datatype);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
@@ -160,14 +160,14 @@ int MPIR_Exscan (
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
                 *errflag = MPIR_ERR_GET_CLASS(mpi_errno);
-                MPIU_ERR_SET(mpi_errno, *errflag, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                MPIR_ERR_SET(mpi_errno, *errflag, "**fail");
+                MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
 
             if (rank > dst) {
 		mpi_errno = MPIR_Reduce_local_impl( tmp_buf, partial_scan,
 						    count, datatype, op );
-                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
                 /* On rank 0, recvbuf is not defined.  For sendbuf==MPI_IN_PLACE
                    recvbuf must not change (per MPI-2.2).
@@ -180,14 +180,14 @@ int MPIR_Exscan (
                         /* simply copy data recd from rank 0 into recvbuf */
                         mpi_errno = MPIR_Localcopy(tmp_buf, count, datatype,
                                                    recvbuf, count, datatype);
-                        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
                         flag = 1;
                     }
                     else {
 			mpi_errno = MPIR_Reduce_local_impl( tmp_buf,
 					    recvbuf, count, datatype, op );
-                        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                     }
                 }
             }
@@ -195,17 +195,17 @@ int MPIR_Exscan (
                 if (is_commutative) {
 		    mpi_errno = MPIR_Reduce_local_impl( tmp_buf, partial_scan,
 							count, datatype, op );
-                    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 		}
                 else {
 		    mpi_errno = MPIR_Reduce_local_impl( partial_scan,
 						tmp_buf, count, datatype, op );
-                    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
                     mpi_errno = MPIR_Localcopy(tmp_buf, count, datatype,
                                                partial_scan,
                                                count, datatype);
-                    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
                 }
             }
         }
@@ -215,15 +215,15 @@ int MPIR_Exscan (
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
 
-    if (MPIU_THREADPRIV_FIELD(op_errno)) 
-	mpi_errno = MPIU_THREADPRIV_FIELD(op_errno);
+    if (MPID_THREADPRIV_FIELD(op_errno)) 
+	mpi_errno = MPID_THREADPRIV_FIELD(op_errno);
 
 fn_exit:
     MPIU_CHKLMEM_FREEALL();
     if (mpi_errno_ret)
         mpi_errno = mpi_errno_ret;
     else if (*errflag != MPIR_ERR_NONE)
-        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+        MPIR_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
     return mpi_errno;
 fn_fail:
     goto fn_exit;
@@ -237,19 +237,19 @@ fn_fail:
 #undef FUNCNAME
 #define FUNCNAME MPIR_Exscan_impl
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Exscan_impl(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr, mpir_errflag_t *errflag)
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIR_Exscan_impl(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
 
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Exscan != NULL) {
 	/* --BEGIN USEREXTENSION-- */
 	mpi_errno = comm_ptr->coll_fns->Exscan(sendbuf, recvbuf, count, datatype, op, comm_ptr, errflag);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 	/* --END USEREXTENSION-- */
     } else {
 	mpi_errno = MPIR_Exscan(sendbuf, recvbuf, count, datatype, op, comm_ptr, errflag);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     }
 
         
@@ -265,7 +265,7 @@ int MPIR_Exscan_impl(const void *sendbuf, void *recvbuf, int count, MPI_Datatype
 #undef FUNCNAME
 #define FUNCNAME MPI_Exscan
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /*@
 
 MPI_Exscan - Computes the exclusive scan (partial reductions) of data on a 
@@ -305,12 +305,12 @@ int MPI_Exscan(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
-    mpir_errflag_t errflag = MPIR_ERR_NONE;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_EXSCAN);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
+    MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     MPID_MPI_COLL_FUNC_ENTER(MPID_STATE_MPI_EXSCAN);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -389,7 +389,7 @@ int MPI_Exscan(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
     
   fn_exit:    
     MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_EXSCAN);
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
+    MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     return mpi_errno;
 
   fn_fail:

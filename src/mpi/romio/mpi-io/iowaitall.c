@@ -31,9 +31,7 @@
 int MPIO_Waitall( int count, MPIO_Request requests[], MPI_Status statuses[] )
 {
     int notdone, i, flag, err; 
-    MPIU_THREADPRIV_DECL;
-
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
+    MPID_THREADPRIV_DECL;
 
     if (count == 1)  {
 	    err = MPIO_Wait(requests, statuses);
@@ -67,8 +65,6 @@ int MPIO_Waitall( int count, MPIO_Request requests[], MPI_Status statuses[] )
 
     err = MPI_SUCCESS;
 fn_exit:
-
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return err;
 }
 

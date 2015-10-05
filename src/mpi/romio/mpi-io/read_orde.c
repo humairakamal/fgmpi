@@ -45,8 +45,6 @@ int MPI_File_read_ordered_end(MPI_File fh, void *buf, MPI_Status *status)
 
     MPIU_UNREFERENCED_ARG(buf);
 
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
-
     adio_fh = MPIO_File_resolve(fh);
 
     /* --BEGIN ERROR HANDLING-- */
@@ -69,7 +67,5 @@ int MPI_File_read_ordered_end(MPI_File fh, void *buf, MPI_Status *status)
     adio_fh->split_coll_count = 0;
 
 fn_exit:
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
-
     return error_code;
 }

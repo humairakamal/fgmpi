@@ -92,7 +92,7 @@ int MPI_Waitany(int count, MPI_Request array_of_requests[], int *indx,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
+    MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     MPID_MPI_PT2PT_FUNC_ENTER(MPID_STATE_MPI_WAITANY);
 
     /* Check the arguments */
@@ -237,7 +237,7 @@ int MPI_Waitany(int count, MPI_Request array_of_requests[], int *indx,
          * as pending failure and break out. */
         if (unlikely(last_disabled_anysource != -1))
         {
-            MPIU_ERR_SET(mpi_errno, MPIX_ERR_PROC_FAILED_PENDING, "**failure_pending");
+            MPIR_ERR_SET(mpi_errno, MPIX_ERR_PROC_FAILED_PENDING, "**failure_pending");
             if (status != MPI_STATUS_IGNORE) status->MPI_ERROR = mpi_errno;
             goto fn_progress_end_fail;
         }
@@ -280,7 +280,7 @@ int MPI_Waitany(int count, MPI_Request array_of_requests[], int *indx,
     }
 
     MPID_MPI_PT2PT_FUNC_EXIT(MPID_STATE_MPI_WAITANY);
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
+    MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     return mpi_errno;
 
   fn_progress_end_fail:

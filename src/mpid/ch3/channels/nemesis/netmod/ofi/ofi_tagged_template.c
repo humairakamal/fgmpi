@@ -142,7 +142,7 @@ ADD_SUFFIX(do_isend)(struct MPIDI_VC *vc,
     send_buffer = (char *) buf + dt_true_lb;
     if (!dt_contig) {
         send_buffer = (char *) MPIU_Malloc(data_sz);
-        MPIU_ERR_CHKANDJUMP1(send_buffer == NULL, mpi_errno,
+        MPIR_ERR_CHKANDJUMP1(send_buffer == NULL, mpi_errno,
                              MPI_ERR_OTHER, "**nomem", "**nomem %s", "Send buffer alloc");
         MPIDI_CH3U_Buffer_copy(buf, count, datatype, &err0,
                                send_buffer, data_sz, MPI_BYTE, &data_sz, &err1);
@@ -276,7 +276,7 @@ int ADD_SUFFIX(MPID_nem_ofi_recv_posted)(struct MPIDI_VC *vc, struct MPID_Reques
     MPIDI_msg_sz_t data_sz;
     MPI_Aint dt_true_lb;
     MPID_Datatype *dt_ptr;
-    MPIR_Context_id_t context_id;
+    MPIU_Context_id_t context_id;
     char *recv_buffer;
     BEGIN_FUNC(FCNAME);
 
@@ -307,7 +307,7 @@ int ADD_SUFFIX(MPID_nem_ofi_recv_posted)(struct MPIDI_VC *vc, struct MPID_Reques
     }
     else {
         recv_buffer = (char *) MPIU_Malloc(data_sz);
-        MPIU_ERR_CHKANDJUMP1(recv_buffer == NULL, mpi_errno, MPI_ERR_OTHER,
+        MPIR_ERR_CHKANDJUMP1(recv_buffer == NULL, mpi_errno, MPI_ERR_OTHER,
                              "**nomem", "**nomem %s", "Recv Pack Buffer alloc");
         REQ_OFI(rreq)->pack_buffer = recv_buffer;
     }

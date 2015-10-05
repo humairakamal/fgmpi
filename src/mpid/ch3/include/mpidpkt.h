@@ -228,7 +228,7 @@ MPIDI_CH3_PKT_DEFS
             datatype_ = (pkt_).fop.datatype;                            \
             break;                                                      \
         default:                                                        \
-            MPIU_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
+            MPIR_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
         }                                                               \
     }
 
@@ -259,7 +259,7 @@ MPIDI_CH3_PKT_DEFS
             count_ = 1;                                                 \
             break;                                                      \
         default:                                                        \
-            MPIU_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
+            MPIR_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
         }                                                               \
     }
 
@@ -300,7 +300,7 @@ MPIDI_CH3_PKT_DEFS
             immed_data_ = &((pkt_).cas_resp.info.data);                 \
             break;                                                      \
         default:                                                        \
-            MPIU_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
+            MPIR_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
         }                                                               \
     }
 
@@ -363,7 +363,7 @@ MPIDI_CH3_PKT_DEFS
             flags_ = (pkt_).lock_op_ack.flags;                          \
             break;                                                      \
         default:                                                        \
-            MPIU_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
+            MPIR_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
         }                                                               \
     }
 
@@ -386,7 +386,7 @@ MPIDI_CH3_PKT_DEFS
             op_ = (pkt_).fop.op;                                        \
             break;                                                      \
         default:                                                        \
-            MPIU_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
+            MPIR_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
         }                                                               \
     }
 
@@ -449,7 +449,7 @@ MPIDI_CH3_PKT_DEFS
             (pkt_).lock_op_ack.flags = MPIDI_CH3_PKT_FLAG_NONE;         \
             break;                                                      \
         default:                                                        \
-            MPIU_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
+            MPIR_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
         }                                                               \
     }
 
@@ -489,7 +489,7 @@ MPIDI_CH3_PKT_DEFS
             win_hdl_ = (pkt_).ack.source_win_handle;                    \
             break;                                                      \
         default:                                                        \
-            MPIU_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
+            MPIR_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
         }                                                               \
     }
 
@@ -535,7 +535,7 @@ MPIDI_CH3_PKT_DEFS
             win_hdl_ = (pkt_).decr_at_cnt.target_win_handle;            \
             break;                                                      \
         default:                                                        \
-            MPIU_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
+            MPIR_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
         }                                                               \
     }
 
@@ -558,7 +558,7 @@ MPIDI_CH3_PKT_DEFS
             (pkt_).get_accum.info.dataloop_size = (dataloop_size_);     \
             break;                                                      \
         default:                                                        \
-            MPIU_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
+            MPIR_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
         }                                                               \
     }
 
@@ -605,7 +605,7 @@ MPIDI_CH3_PKT_DEFS
             request_hdl_ = (pkt_).lock_op_ack.request_handle;           \
             break;                                                      \
         default:                                                        \
-            MPIU_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
+            MPIR_ERR_SETANDJUMP1(err_, MPI_ERR_OTHER, "**invalidpkt", "**invalidpkt %d", (pkt_).type); \
         }                                                               \
     }
 
@@ -613,36 +613,21 @@ MPIDI_CH3_PKT_DEFS
 /* This macro judges if the RMA operation is a read operation,
  * which means, it will triffer the issuing of response data from
  * the target to the origin */
-#define MPIDI_CH3I_RMA_PKT_IS_READ_OP(pkt_, is_read_op_)                \
-    do {                                                                \
-        if ((pkt_).type == MPIDI_CH3_PKT_GET_ACCUM_IMMED ||             \
-            (pkt_).type == MPIDI_CH3_PKT_GET_ACCUM ||                   \
-            (pkt_).type == MPIDI_CH3_PKT_FOP_IMMED ||                   \
-            (pkt_).type == MPIDI_CH3_PKT_FOP ||                         \
-            (pkt_).type == MPIDI_CH3_PKT_CAS_IMMED ||                   \
-            (pkt_).type == MPIDI_CH3_PKT_GET) {                         \
-            is_read_op_ = TRUE;                                         \
-        }                                                               \
-        else {                                                          \
-            is_read_op_ = FALSE;                                        \
-        }                                                               \
-    } while (0)
-
+#define MPIDI_CH3I_RMA_PKT_IS_READ_OP(pkt_)                             \
+    ((pkt_).type == MPIDI_CH3_PKT_GET_ACCUM_IMMED ||                    \
+     (pkt_).type == MPIDI_CH3_PKT_GET_ACCUM ||                          \
+     (pkt_).type == MPIDI_CH3_PKT_FOP_IMMED ||                          \
+     (pkt_).type == MPIDI_CH3_PKT_FOP ||                                \
+     (pkt_).type == MPIDI_CH3_PKT_CAS_IMMED ||                          \
+     (pkt_).type == MPIDI_CH3_PKT_GET)
 
 /* This macro judges if the RMA operation is a immed operation */
-#define MPIDI_CH3I_RMA_PKT_IS_IMMED_OP(pkt_, is_immed_op_)              \
-    do {                                                                \
-        if ((pkt_).type == MPIDI_CH3_PKT_GET_ACCUM_IMMED ||             \
-            (pkt_).type == MPIDI_CH3_PKT_FOP_IMMED ||                   \
-            (pkt_).type == MPIDI_CH3_PKT_CAS_IMMED ||                   \
-            (pkt_).type == MPIDI_CH3_PKT_PUT_IMMED ||                   \
-            (pkt_).type == MPIDI_CH3_PKT_ACCUMULATE_IMMED) {            \
-            is_immed_op_ = TRUE;                                        \
-        }                                                               \
-        else {                                                          \
-            is_immed_op_ = FALSE;                                       \
-        }                                                               \
-    } while (0)
+#define MPIDI_CH3I_RMA_PKT_IS_IMMED_OP(pkt_)                            \
+    ((pkt_).type == MPIDI_CH3_PKT_GET_ACCUM_IMMED ||                    \
+     (pkt_).type == MPIDI_CH3_PKT_FOP_IMMED ||                          \
+     (pkt_).type == MPIDI_CH3_PKT_CAS_IMMED ||                          \
+     (pkt_).type == MPIDI_CH3_PKT_PUT_IMMED ||                          \
+     (pkt_).type == MPIDI_CH3_PKT_ACCUMULATE_IMMED)
 
 typedef struct MPIDI_CH3_Pkt_put {
     MPIDI_CH3_Pkt_type_t type;
@@ -857,7 +842,7 @@ typedef struct MPIDI_CH3_Pkt_close {
 
 typedef struct MPIDI_CH3_Pkt_revoke {
     MPIDI_CH3_Pkt_type_t type;
-    MPIR_Context_id_t revoked_comm;
+    MPIU_Context_id_t revoked_comm;
 } MPIDI_CH3_Pkt_revoke_t;
 
 typedef union MPIDI_CH3_Pkt {

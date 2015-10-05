@@ -33,9 +33,7 @@ int MPIO_Testsome(int count, MPIO_Request requests[], int *outcount,
 {
     int i, err; 
     int flag;
-    MPIU_THREADPRIV_DECL;
-
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
+    MPID_THREADPRIV_DECL;
 
     if (count == 1) {
 	err = MPIO_Test( requests, &flag, statuses );
@@ -80,7 +78,5 @@ int MPIO_Testsome(int count, MPIO_Request requests[], int *outcount,
     }
 
 fn_exit:
-
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return err;
 }

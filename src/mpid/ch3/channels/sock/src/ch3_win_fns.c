@@ -11,7 +11,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Win_fns_init
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_Win_fns_init(MPIDI_CH3U_Win_fns_t *win_fns)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -29,7 +29,7 @@ int MPIDI_CH3_Win_fns_init(MPIDI_CH3U_Win_fns_t *win_fns)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Win_hooks_init
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_Win_hooks_init(MPIDI_CH3U_Win_hooks_t *win_hooks)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -47,11 +47,10 @@ int MPIDI_CH3_Win_hooks_init(MPIDI_CH3U_Win_hooks_t *win_hooks)
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Win_pkt_orderings_init
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDI_CH3_Win_pkt_orderings_init(MPIDI_CH3U_Win_pkt_ordering_t * win_pkt_orderings)
 {
     int mpi_errno = MPI_SUCCESS;
-    int netmod_ordering = 0;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_WIN_PKT_ORDERINGS_INIT);
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_CH3_WIN_PKT_ORDERINGS_INIT);

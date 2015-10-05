@@ -5,11 +5,7 @@
  */
 
 /* Function prototypes for communicator helper functions */
-/* The MPIR_Get_contextid and void MPIR_Free_contextid routines are in
-   mpiimpl.h so that the device may use them */
-/* int MPIR_Get_contextid( MPID_Comm *, MPIR_Context_id_t * ); */
-int MPIR_Get_intercomm_contextid( MPID_Comm *, MPIR_Context_id_t *, MPIR_Context_id_t * );
-/* void MPIR_Free_contextid( MPIR_Context_id_t ); */
+int MPIR_Get_intercomm_contextid( MPID_Comm *, MPIU_Context_id_t *, MPIU_Context_id_t * );
 
 #if 0//defined(FINEGRAIN_MPI) /* FG: TODO TBR Move this to fgmpicomm.h?
                               and function definitions in fgcommutil.c

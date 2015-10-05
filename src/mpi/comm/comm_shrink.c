@@ -44,7 +44,7 @@ int MPIX_Comm_shrink(MPI_Comm comm, MPI_Comm *newcomm) __attribute__((weak,alias
 #undef FUNCNAME
 #define FUNCNAME MPIR_Comm_shrink
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /* comm shrink impl; assumes that standard error checking has already taken
  * place in the calling function */
 int MPIR_Comm_shrink(MPID_Comm *comm_ptr, MPID_Comm **newcomm_ptr)
@@ -52,7 +52,7 @@ int MPIR_Comm_shrink(MPID_Comm *comm_ptr, MPID_Comm **newcomm_ptr)
     int mpi_errno = MPI_SUCCESS;
     MPID_Group *global_failed, *comm_grp, *new_group_ptr;
     int attempts = 0;
-    mpir_errflag_t errflag = MPIR_ERR_NONE;
+    MPIR_Errflag_t errflag = MPIR_ERR_NONE;
 
     MPID_MPI_STATE_DECL(MPID_STATE_MPIR_COMM_SHRINK);
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_COMM_SHRINK);
@@ -68,7 +68,7 @@ int MPIR_Comm_shrink(MPID_Comm *comm_ptr, MPID_Comm **newcomm_ptr)
          * with failed procs */
 
         mpi_errno = MPIR_Group_difference_impl(comm_grp, global_failed, &new_group_ptr);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         if (MPID_Group_empty != global_failed) MPIR_Group_release(global_failed);
 
         mpi_errno = MPIR_Comm_create_group(comm_ptr, new_group_ptr, MPIR_SHRINK_TAG, newcomm_ptr);
@@ -112,7 +112,7 @@ int MPIR_Comm_shrink(MPID_Comm *comm_ptr, MPID_Comm **newcomm_ptr)
 #undef FUNCNAME
 #define FUNCNAME MPIX_Comm_shrink
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /*@
 MPIX_Comm_shrink - Creates a new communitor from an existing communicator while
                   excluding failed processes
@@ -140,7 +140,7 @@ int MPIX_Comm_shrink(MPI_Comm comm, MPI_Comm *newcomm)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
 
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
+    MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPIX_COMM_SHRINK);
 
     /* Validate parameters, and convert MPI object handles to object pointers */
@@ -170,17 +170,17 @@ int MPIX_Comm_shrink(MPI_Comm comm, MPI_Comm *newcomm)
 
     /* ... body of routine ... */
     mpi_errno = MPIR_Comm_shrink(comm_ptr, &newcomm_ptr);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     if (newcomm_ptr)
-        MPIU_OBJ_PUBLISH_HANDLE(*newcomm, newcomm_ptr->handle);
+        MPID_OBJ_PUBLISH_HANDLE(*newcomm, newcomm_ptr->handle);
     else
         *newcomm = MPI_COMM_NULL;
     /* ... end of body of routine ... */
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPIX_COMM_SHRINK);
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
+    MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     return mpi_errno;
 
   fn_fail:

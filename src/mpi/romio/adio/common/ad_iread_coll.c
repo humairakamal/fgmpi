@@ -589,7 +589,6 @@ static void ADIOI_Iread_and_exch(ADIOI_NBC_Request *nbc_req, int *error_code)
 
     int i, j;
     ADIO_Offset st_loc = -1, end_loc = -1;
-    ADIOI_Flatlist_node *flat_buf = NULL;
     int coll_bufsize;
 
     *error_code = MPI_SUCCESS;  /* changed below if error */
@@ -671,10 +670,7 @@ static void ADIOI_Iread_and_exch(ADIOI_NBC_Request *nbc_req, int *error_code)
 
     ADIOI_Datatype_iscontig(datatype, &vars->buftype_is_contig);
     if (!vars->buftype_is_contig) {
-        ADIOI_Flatten_datatype(datatype);
-        flat_buf = ADIOI_Flatlist;
-        while (flat_buf->type != datatype) flat_buf = flat_buf->next;
-        vars->flat_buf = flat_buf;
+	vars->flat_buf = ADIOI_Flatten_and_find(datatype);
     }
     MPI_Type_extent(datatype, &vars->buftype_extent);
 
@@ -793,7 +789,7 @@ static void ADIOI_Iread_and_exch_l1_begin(ADIOI_NBC_Request *nbc_req,
                 }
                 if (req_off < real_off + real_size) {
                     count[i]++;
-                    ADIOI_Assert((((ADIO_Offset)(MPIR_Upint)read_buf) + req_off - real_off) == (ADIO_Offset)(MPIR_Upint)(read_buf + req_off - real_off));
+                    ADIOI_Assert((((ADIO_Offset)(MPIU_Upint)read_buf) + req_off - real_off) == (ADIO_Offset)(MPIU_Upint)(read_buf + req_off - real_off));
                     MPI_Address(read_buf + req_off - real_off,
                                 &(others_req[i].mem_ptrs[j]));
                     ADIOI_Assert((real_off + real_size - req_off) == (int)(real_off + real_size - req_off));
@@ -889,7 +885,7 @@ static void ADIOI_Iread_and_exch_l1_end(ADIOI_NBC_Request *nbc_req,
 
     if (for_next_iter) {
         tmp_buf = (char *)ADIOI_Malloc(for_next_iter);
-        ADIOI_Assert((((ADIO_Offset)(MPIR_Upint)read_buf)+real_size-for_next_iter) == (ADIO_Offset)(MPIR_Upint)(read_buf+real_size-for_next_iter));
+        ADIOI_Assert((((ADIO_Offset)(MPIU_Upint)read_buf)+real_size-for_next_iter) == (ADIO_Offset)(MPIU_Upint)(read_buf+real_size-for_next_iter));
         ADIOI_Assert((for_next_iter+vars->coll_bufsize) == (size_t)(for_next_iter+vars->coll_bufsize));
         memcpy(tmp_buf, read_buf+real_size-for_next_iter, for_next_iter);
         ADIOI_Free(fd->io_buf);
@@ -1335,8 +1331,8 @@ static int ADIOI_GEN_irc_wait_fn(int count, void **array_of_states,
                 goto fn_exit;
 
             /* If the progress engine is blocked, we have to yield for another
-               thread to be able to unblock the progress engine. */
-            MPIU_THREAD_CS_YIELD(ALLFUNC,_if_progress_blocked);
+             * thread to be able to unblock the progress engine. */
+            MPIR_EXT_CS_YIELD_GLOBAL();
         }
     }
 

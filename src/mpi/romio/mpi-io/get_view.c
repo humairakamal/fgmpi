@@ -52,8 +52,6 @@ int MPI_File_get_view(MPI_File fh, MPI_Offset *disp, MPI_Datatype *etype,
     int i, j, k, combiner;
     MPI_Datatype copy_etype, copy_filetype;
 
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
-
     adio_fh = MPIO_File_resolve(fh);
 
     /* --BEGIN ERROR HANDLING-- */
@@ -96,7 +94,5 @@ int MPI_File_get_view(MPI_File fh, MPI_Offset *disp, MPI_Datatype *etype,
     }
 
 fn_exit:
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
-
     return MPI_SUCCESS;
 }

@@ -49,8 +49,6 @@ int MPI_File_seek(MPI_File fh, MPI_Offset offset, int whence)
     HPMP_IO_START(fl_xmpi, BLKMPIFILESEEK, TRDTBLOCK, adio_fh, MPI_DATATYPE_NULL, -1);
 #endif /* MPI_hpux */
 
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
-
     adio_fh = MPIO_File_resolve(fh);
 
     /* --BEGIN ERROR HANDLING-- */
@@ -134,6 +132,5 @@ int MPI_File_seek(MPI_File fh, MPI_Offset offset, int whence)
     error_code = MPI_SUCCESS;
 
 fn_exit:
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return error_code;
 }

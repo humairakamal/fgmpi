@@ -42,8 +42,6 @@ int MPI_File_get_info(MPI_File fh, MPI_Info *info_used)
     ADIO_File adio_fh;
     static char myname[] = "MPI_FILE_GET_INFO";
 
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
-
     adio_fh = MPIO_File_resolve(fh);
 
     /* --BEGIN ERROR HANDLING-- */
@@ -57,6 +55,5 @@ int MPI_File_get_info(MPI_File fh, MPI_Info *info_used)
     /* --END ERROR HANDLING-- */
 
 fn_exit:
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return  error_code;
 }

@@ -15,7 +15,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPIDI_Isend_self
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 #if defined(FINEGRAIN_MPI)
 int MPIDI_Isend_self(const void ** buf_handle, MPI_Aint count, MPI_Datatype datatype, int rank, int tag, MPID_Comm * comm, int context_offset,
 		     int type, MPID_Request ** request)
@@ -54,7 +54,8 @@ int MPIDI_Isend_self(const void * buf, MPI_Aint count, MPI_Datatype datatype, in
 #endif
     match.parts.tag = tag;
     match.parts.context_id = comm->context_id + context_offset;
-    MPIU_THREAD_CS_ENTER(MSGQUEUE,);
+
+    MPID_THREAD_CS_ENTER(POBJ, MPIR_THREAD_POBJ_MSGQ_MUTEX);
 
     rreq = MPIDI_CH3U_Recvq_FDP_or_AEU(&match, &found);
     /* --BEGIN ERROR HANDLING-- */
@@ -70,7 +71,7 @@ int MPIDI_Isend_self(const void * buf, MPI_Aint count, MPI_Datatype datatype, in
         MPID_Request_release(sreq);
         MPID_Request_release(sreq);
 	sreq = NULL;
-        MPIU_ERR_SET1(mpi_errno, MPI_ERR_OTHER, "**nomem", 
+        MPIR_ERR_SET1(mpi_errno, MPI_ERR_OTHER, "**nomem", 
 		      "**nomemuereq %d", MPIDI_CH3U_Recvq_count_unexp());
 	goto fn_exit;
     }
@@ -114,7 +115,7 @@ int MPIDI_Isend_self(const void * buf, MPI_Aint count, MPI_Datatype datatype, in
         /* FG: TODO Zerocopy */
 #endif
         /* we found a posted req, which we now own, so we can release the CS */
-        MPIU_THREAD_CS_EXIT(MSGQUEUE,);
+        MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_POBJ_MSGQ_MUTEX);
 
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,
 		     "found posted receive request; copying data");
@@ -124,12 +125,12 @@ int MPIDI_Isend_self(const void * buf, MPI_Aint count, MPI_Datatype datatype, in
 	MPIR_STATUS_SET_COUNT(rreq->status, data_sz);
         mpi_errno = MPID_Request_complete(rreq);
         if (mpi_errno != MPI_SUCCESS) {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
 
         mpi_errno = MPID_Request_complete(sreq);
         if (mpi_errno != MPI_SUCCESS) {
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
         }
     }
     else
@@ -168,7 +169,7 @@ int MPIDI_Isend_self(const void * buf, MPI_Aint count, MPI_Datatype datatype, in
 	    /* sreq has never been seen by the user or outside this thread, so it is safe to reset ref_count and cc */
             mpi_errno = MPID_Request_complete(sreq);
             if (mpi_errno != MPI_SUCCESS) {
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
             }
 	    /* --END ERROR HANDLING-- */
 	}
@@ -176,7 +177,7 @@ int MPIDI_Isend_self(const void * buf, MPI_Aint count, MPI_Datatype datatype, in
 	MPIDI_Request_set_msg_type(rreq, MPIDI_REQUEST_SELF_MSG);
 
         /* can release now that we've set fields in the unexpected request */
-        MPIU_THREAD_CS_EXIT(MSGQUEUE,);
+        MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_POBJ_MSGQ_MUTEX);
 
         /* kick the progress engine in case another thread that is performing a
            blocking recv or probe is waiting in the progress engine */

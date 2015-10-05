@@ -636,7 +636,6 @@ static void ADIOI_Iexch_and_write(ADIOI_NBC_Request *nbc_req, int *error_code)
 
     int i, j;
     ADIO_Offset st_loc = -1, end_loc = -1;
-    ADIOI_Flatlist_node *flat_buf = NULL;
     int info_flag, coll_bufsize;
     char *value;
 
@@ -719,10 +718,7 @@ static void ADIOI_Iexch_and_write(ADIOI_NBC_Request *nbc_req, int *error_code)
 
     ADIOI_Datatype_iscontig(datatype, &vars->buftype_is_contig);
     if (!vars->buftype_is_contig) {
-        ADIOI_Flatten_datatype(datatype);
-        flat_buf = ADIOI_Flatlist;
-        while (flat_buf->type != datatype) flat_buf = flat_buf->next;
-        vars->flat_buf = flat_buf;
+	vars->flat_buf = ADIOI_Flatten_and_find(datatype);
     }
     MPI_Type_extent(datatype, &vars->buftype_extent);
 
@@ -824,7 +820,7 @@ static void ADIOI_Iexch_and_write_l1_begin(ADIOI_NBC_Request *nbc_req,
                 }
                 if (req_off < off + size) {
                     count[i]++;
-                    ADIOI_Assert((((ADIO_Offset)(MPIR_Upint)write_buf)+req_off-off) == (ADIO_Offset)(MPIR_Upint)(write_buf+req_off-off));
+                    ADIOI_Assert((((ADIO_Offset)(MPIU_Upint)write_buf)+req_off-off) == (ADIO_Offset)(MPIU_Upint)(write_buf+req_off-off));
                     MPI_Address(write_buf + req_off - off,
                                 &(others_req[i].mem_ptrs[j]));
                     ADIOI_Assert((off + size - req_off) == (int)(off + size - req_off));
@@ -1560,8 +1556,8 @@ static int ADIOI_GEN_iwc_wait_fn(int count, void **array_of_states,
                 goto fn_exit;
 
             /* If the progress engine is blocked, we have to yield for another
-               thread to be able to unblock the progress engine. */
-            MPIU_THREAD_CS_YIELD(ALLFUNC,_if_progress_blocked);
+             * thread to be able to unblock the progress engine. */
+            MPIR_EXT_CS_YIELD_GLOBAL();
         }
     }
 

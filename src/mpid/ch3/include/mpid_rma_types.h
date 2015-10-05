@@ -61,13 +61,9 @@ typedef struct MPIDI_RMA_Op {
 
     MPID_Request *ureq;
 
-    int ref_cnt;
 } MPIDI_RMA_Op_t;
 
 typedef struct MPIDI_RMA_Target {
-    struct MPIDI_RMA_Op *issued_read_op_list_head;
-    struct MPIDI_RMA_Op *issued_write_op_list_head;
-    struct MPIDI_RMA_Op *issued_dt_op_list_head;
     struct MPIDI_RMA_Op *pending_net_ops_list_head;     /* pending operations that are waiting for network events */
     struct MPIDI_RMA_Op *pending_user_ops_list_head;    /* pending operations that are waiting for user events */
     struct MPIDI_RMA_Op *next_op_to_issue;
@@ -78,8 +74,6 @@ typedef struct MPIDI_RMA_Target {
     int lock_type;              /* NONE, SHARED, EXCLUSIVE */
     int lock_mode;              /* e.g., MODE_NO_CHECK */
     int win_complete_flag;
-    int put_acc_issued;         /* indicate if PUT/ACC is issued in this epoch
-                                 * after the previous synchronization calls. */
 
     /* The target structure is free to be cleaned up when all of the
      * following conditions hold true:
@@ -95,9 +89,13 @@ typedef struct MPIDI_RMA_Target {
         /* packets sent out that we are expecting an ack for */
         int outstanding_acks;
 
-        /* Marked when FLUSH_LOCAL is upgraded to FLUSH */
-        int upgrade_flush_local;
     } sync;
+
+    /* number of packets that are waiting for local completion */
+    int num_pkts_wait_for_local_completion;
+
+    /* number of operations that does not have a FLUSH issued afterwards */
+    int num_ops_flush_not_issued;
 
     MPIDI_RMA_Pool_type_t pool_type;
 } MPIDI_RMA_Target_t;

@@ -27,7 +27,7 @@ int MPI_Wait(MPI_Request *request, MPI_Status *status) __attribute__((weak,alias
 #undef FUNCNAME
 #define FUNCNAME MPIR_Wait_impl
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -87,7 +87,7 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
 		if (mpi_errno) {
 		    /* --BEGIN ERROR HANDLING-- */
 		    MPID_Progress_end(&progress_state);
-                    MPIU_ERR_POP(mpi_errno);
+                    MPIR_ERR_POP(mpi_errno);
                     /* --END ERROR HANDLING-- */
 		}
 #if defined(FINEGRAIN_MPI)
@@ -103,7 +103,7 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
 	    if (mpi_errno) {
 		/* --BEGIN ERROR HANDLING-- */
 		MPID_Progress_end(&progress_state);
-                MPIU_ERR_POP(mpi_errno);
+                MPIR_ERR_POP(mpi_errno);
 		/* --END ERROR HANDLING-- */
 	    }
 
@@ -113,7 +113,7 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
                         !MPID_Request_is_complete(request_ptr) &&
                         !MPID_Comm_AS_enabled(request_ptr->comm))) {
                 MPID_Progress_end(&progress_state);
-                MPIU_ERR_SET(mpi_errno, MPIX_ERR_PROC_FAILED_PENDING, "**failure_pending");
+                MPIR_ERR_SET(mpi_errno, MPIX_ERR_PROC_FAILED_PENDING, "**failure_pending");
                 if (status != MPI_STATUS_IGNORE) status->MPI_ERROR = mpi_errno;
                 goto fn_fail;
             }
@@ -137,7 +137,7 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
     /* FG:TODO Zerocopy MPIDI_CH3U_Buffer_free(request_ptr); */
 #endif
     mpi_errno = MPIR_Request_complete(request, request_ptr, status, &active_flag);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     
  fn_exit:
     return mpi_errno;
@@ -150,7 +150,7 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
 #undef FUNCNAME
 #define FUNCNAME MPI_Wait
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 /*@
     MPI_Wait - Waits for an MPI request to complete
 
@@ -182,7 +182,7 @@ int MPI_Wait(MPI_Request *request, MPI_Status *status)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
+    MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     MPID_MPI_PT2PT_FUNC_ENTER(MPID_STATE_MPI_WAIT);
 
     /* Check the arguments */
@@ -233,7 +233,7 @@ int MPI_Wait(MPI_Request *request, MPI_Status *status)
     
   fn_exit:
     MPID_MPI_PT2PT_FUNC_EXIT(MPID_STATE_MPI_WAIT);
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
+    MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     return mpi_errno;
 	
   fn_fail:

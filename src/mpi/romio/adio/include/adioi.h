@@ -351,6 +351,7 @@ void ADIOI_Flatten_datatype(MPI_Datatype type);
 void ADIOI_Flatten(MPI_Datatype type, ADIOI_Flatlist_node *flat,
 		  ADIO_Offset st_offset, MPI_Count *curr_index);
 void ADIOI_Delete_flattened(MPI_Datatype datatype);
+ADIOI_Flatlist_node * ADIOI_Flatten_and_find(MPI_Datatype);
 MPI_Count ADIOI_Count_contiguous_blocks(MPI_Datatype type, MPI_Count *curr_index);
 void ADIOI_Complete_async(int *error_code);
 void *ADIOI_Malloc_fn(size_t size, int lineno, const char *fname);
@@ -706,6 +707,7 @@ void ADIOI_OneSidedWriteAggregation(ADIO_File fd,
         int *error_code,
         ADIO_Offset *st_offsets,
         ADIO_Offset *end_offsets,
+        int numNonZeroDataOffsets,
         ADIO_Offset *fd_start,
         ADIO_Offset* fd_end,
         int *hole_found);
@@ -718,6 +720,7 @@ void ADIOI_OneSidedReadAggregation(ADIO_File fd,
         int *error_code,
         ADIO_Offset *st_offsets,
         ADIO_Offset *end_offsets,
+        int numNonZeroDataOffsets,
         ADIO_Offset *fd_start,
         ADIO_Offset* fd_end);
 ADIO_Offset ADIOI_GEN_SeekIndividual(ADIO_File fd, ADIO_Offset offset, 
@@ -1014,11 +1017,11 @@ int  ADIOI_MPE_iwrite_b;
    (no loss of (meaningful) high order bytes in 8 byte MPI_Aint 
       to (possible) 4 byte ptr cast)                              */
 /* Should work even on 64bit or old 32bit configs                 */
-  /* Use MPID_Ensure_Aint_fits_in_pointer from mpiutil.h and 
-         MPI_AINT_CAST_TO_VOID_PTR from configure (mpi.h) */
+  /* Use MPIU_Ensure_Aint_fits_in_pointer from mpiutil.h and 
+         MPIU_AINT_CAST_TO_VOID_PTR from configure (mpi.h) */
   #include "glue_romio.h"
 
-  #define ADIOI_AINT_CAST_TO_VOID_PTR (void*)(MPIR_Pint)
+  #define ADIOI_AINT_CAST_TO_VOID_PTR (void*)(MPIU_Pint)
   /* The next two casts are only used when you don't want sign extension
      when casting a (possible 4 byte) aint to a (8 byte) long long or offset */
   #define ADIOI_AINT_CAST_TO_LONG_LONG (long long)
@@ -1033,8 +1036,8 @@ int  ADIOI_MPE_iwrite_b;
   #define ADIOI_AINT_CAST_TO_OFFSET ADIOI_AINT_CAST_TO_LONG_LONG
   #define ADIOI_ENSURE_AINT_FITS_IN_PTR(aint_value) 
   #define ADIOI_Assert assert
-  #define MPIR_Upint unsigned long
-  #define MPIU_THREADPRIV_DECL
+  #define MPIU_Upint unsigned long
+  #define MPID_THREADPRIV_DECL
 #endif
 
 #ifdef USE_DBG_LOGGING    /*todo fix dependency on mpich?*/
@@ -1076,12 +1079,14 @@ void *ADIOI_IO_Thread_Func(void *vptr_args);
 #define PATH_MAX 65535
 #endif
 
-#endif
-
-
 #if (HAVE_DECL_PWRITE == 0)
 #include <sys/types.h>
 #include <unistd.h>
 ssize_t pread(int fd, void *buf, size_t count, off_t offset);
 ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset);
+
 #endif
+
+extern void *ADIO_THREAD_MUTEX;
+
+#endif  /* ADIOI_INCLUDE */

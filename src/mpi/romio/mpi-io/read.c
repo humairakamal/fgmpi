@@ -79,8 +79,6 @@ int MPIOI_File_read(MPI_File fh,
     ADIO_Offset off, bufsize;
     void *xbuf=NULL, *e32_buf=NULL;
 
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
-
     adio_fh = MPIO_File_resolve(fh);
 
     /* --BEGIN ERROR HANDLING-- */
@@ -180,8 +178,6 @@ int MPIOI_File_read(MPI_File fh,
     }
 
 fn_exit:
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
-
     return error_code;
 }
 #endif

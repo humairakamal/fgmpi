@@ -19,7 +19,7 @@
 #undef FUNCNAME
 #define FUNCNAME MPID_Aint_add
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 MPI_Aint MPID_Aint_add(MPI_Aint base, MPI_Aint disp)
 {
     MPI_Aint result;
@@ -27,7 +27,7 @@ MPI_Aint MPID_Aint_add(MPI_Aint base, MPI_Aint disp)
     MPIDI_STATE_DECL(MPID_STATE_MPID_AINT_ADD);
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_AINT_ADD);
 
-    result =  MPI_VOID_PTR_CAST_TO_MPI_AINT ((char*)MPI_AINT_CAST_TO_VOID_PTR(base) + disp);
+    result =  MPIU_VOID_PTR_CAST_TO_MPI_AINT ((char*)MPIU_AINT_CAST_TO_VOID_PTR(base) + disp);
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_AINT_ADD);
     return result;
@@ -46,7 +46,7 @@ MPI_Aint MPID_Aint_add(MPI_Aint base, MPI_Aint disp)
 #undef FUNCNAME
 #define FUNCNAME MPID_Aint_diff
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 MPI_Aint MPID_Aint_diff(MPI_Aint addr1, MPI_Aint addr2)
 {
     MPI_Aint result;
@@ -54,7 +54,7 @@ MPI_Aint MPID_Aint_diff(MPI_Aint addr1, MPI_Aint addr2)
     MPIDI_STATE_DECL(MPID_STATE_MPID_AINT_DIFF);
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_AINT_DIFF);
 
-    result =  MPI_PTR_DISP_CAST_TO_MPI_AINT ((char*)MPI_AINT_CAST_TO_VOID_PTR(addr1) - (char*)MPI_AINT_CAST_TO_VOID_PTR(addr2));
+    result =  MPIU_PTR_DISP_CAST_TO_MPI_AINT ((char*)MPIU_AINT_CAST_TO_VOID_PTR(addr1) - (char*)MPIU_AINT_CAST_TO_VOID_PTR(addr2));
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_AINT_DIFF);
     return result;

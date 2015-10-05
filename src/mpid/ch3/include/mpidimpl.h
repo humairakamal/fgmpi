@@ -32,9 +32,9 @@
 
 #include "mpid_sched.h"
 
-/* We need to match the size of MPIR_Pint to the relevant Format control
+/* We need to match the size of MPIU_Pint to the relevant Format control
  */
-#define MPIDI_MSG_SZ_FMT MPIR_PINT_FMT_DEC_SPEC
+#define MPIDI_MSG_SZ_FMT MPIU_PINT_FMT_DEC_SPEC
 
 #if !defined(MPIDI_IOV_DENSITY_MIN)
 #   define MPIDI_IOV_DENSITY_MIN (16 * 1024)
@@ -262,12 +262,12 @@ extern MPID_Request ** FG_recvq_unexpected_tail;
 #  define MPIDI_Request_tls_alloc(req) \
     do { \
         int i;                                                         \
-        MPIU_THREADPRIV_DECL;                                          \
-        MPIU_THREADPRIV_GET;                                           \
-        if (!MPIU_THREADPRIV_FIELD(request_handles)) {                 \
+        MPID_THREADPRIV_DECL;                                          \
+        MPID_THREADPRIV_GET;                                           \
+        if (!MPID_THREADPRIV_FIELD(request_handles)) {                 \
             MPID_Request *prev, *cur;                                  \
             /* batch allocate a linked list of requests */             \
-            MPIU_THREAD_CS_ENTER(HANDLEALLOC,);                        \
+            MPID_THREAD_CS_ENTER(POBJ, MPIR_THREAD_POBJ_HANDLE_MUTEX);                        \
             prev = MPIU_Handle_obj_alloc_unsafe(&MPID_Request_mem);    \
             prev->next = NULL;                                         \
             assert(prev);                                              \
@@ -277,13 +277,13 @@ extern MPID_Request ** FG_recvq_unexpected_tail;
                 cur->next = prev;                                      \
                 prev = cur;                                            \
             }                                                          \
-            MPIU_THREAD_CS_EXIT(HANDLEALLOC,);                         \
-            MPIU_THREADPRIV_FIELD(request_handles) = cur;              \
-            MPIU_THREADPRIV_FIELD(request_handle_count) += MPID_REQUEST_TLS_MAX;    \
+            MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_POBJ_HANDLE_MUTEX);                         \
+            MPID_THREADPRIV_FIELD(request_handles) = cur;              \
+            MPID_THREADPRIV_FIELD(request_handle_count) += MPID_REQUEST_TLS_MAX;    \
         }                                                              \
-        (req) = MPIU_THREADPRIV_FIELD(request_handles);                \
-        MPIU_THREADPRIV_FIELD(request_handles) = req->next;            \
-        MPIU_THREADPRIV_FIELD(request_handle_count) -= 1;              \
+        (req) = MPID_THREADPRIV_FIELD(request_handles);                \
+        MPID_THREADPRIV_FIELD(request_handles) = req->next;            \
+        MPID_THREADPRIV_FIELD(request_handle_count) -= 1;              \
     } while (0)
 #elif MPIU_HANDLE_ALLOCATION_METHOD == MPIU_HANDLE_ALLOCATION_MUTEX
 #  define MPIDI_Request_tls_alloc(req_) \
@@ -534,9 +534,9 @@ extern MPID_Request ** FG_recvq_unexpected_tail;
     int foundpid = -1, worldrank = -1;                                  \
     MPIDI_Comm_get_pid_worldrank(comm_, rank_, &foundpid, &worldrank);  \
     if ( foundpid < 0 ) {                                               \
-        MPIU_Internal_error_printf("Error: Negative pid. This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);                         \
+        MPL_internal_error_printf("Error: Negative pid. This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);                         \
         MPID_Abort(NULL, MPI_SUCCESS, -1, NULL);                        \
-        MPIU_Exit(-1);                                                  \
+        MPL_exit(-1);                                                  \
     }                                                                   \
     *(vcp_) = (comm_)->dev.vcrt->vcr_table[(foundpid)];                 \
 }
@@ -558,9 +558,9 @@ void MPIDI_DBG_PrintVCState(MPIDI_VC_t *vc);
 #if defined(FINEGRAIN_MPI)
 #define MPIDI_Comm_get_vc_set_active_direct(comm__, pid__, vcp__) do {  \
         if ( pid__ < 0 ) {                                              \
-            MPIU_Internal_error_printf("Error: Negative pid. This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);                      \
+            MPL_internal_error_printf("Error: Negative pid. This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);                      \
             MPID_Abort(NULL, MPI_SUCCESS, -1, NULL);                    \
-            MPIU_Exit(-1);                                              \
+            MPL_exit(-1);                                              \
         }                                                               \
         *(vcp__) = (comm__)->dev.vcrt->vcr_table[(pid__)];              \
         if ((*(vcp__))->state == MPIDI_VC_STATE_INACTIVE)               \
@@ -577,9 +577,9 @@ void MPIDI_DBG_PrintVCState(MPIDI_VC_t *vc);
         int foundpid = -1, worldrank = -1;                              \
         MPIDI_Comm_get_pid_worldrank(comm_, rank_, &foundpid, &worldrank); \
         if ( foundpid < 0 ) {                                           \
-            MPIU_Internal_error_printf("Error: Negative pid. This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);                      \
+            MPL_internal_error_printf("Error: Negative pid. This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);                      \
             MPID_Abort(NULL, MPI_SUCCESS, -1, NULL);                    \
-            MPIU_Exit(-1);                                              \
+            MPL_exit(-1);                                              \
         }                                                               \
         *(vcp_) = (comm_)->dev.vcrt->vcr_table[(foundpid)];             \
         if ((*(vcp_))->state == MPIDI_VC_STATE_INACTIVE)                \
@@ -1099,14 +1099,14 @@ extern char *MPIDI_DBG_parent_str;
     }
 #   define MPIDI_err_printf(func, fmt, ...)				\
     {									\
-        MPIU_Error_printf("[%d] ERROR - %s(): " fmt "\n", MPIR_Process.comm_world->rank, func, __VA_ARGS__);    \
+        MPL_error_printf("[%d] ERROR - %s(): " fmt "\n", MPIR_Process.comm_world->rank, func, __VA_ARGS__);    \
         fflush(stdout);							\
     }
 #endif
 
 /* This is used to quote a name in a definition (see FUNCNAME/FCNAME below) */
-#define MPIU_QUOTE(A) MPIU_QUOTE2(A)
-#define MPIU_QUOTE2(A) #A
+#define MPL_QUOTE(A) MPL_QUOTE2(A)
+#define MPL_QUOTE2(A) #A
 
 #ifdef MPICH_DBG_OUTPUT
     void MPIDI_DBG_Print_packet(MPIDI_CH3_Pkt_t *pkt);
@@ -1313,12 +1313,12 @@ int MPIDI_CH3I_Get_accumulate(const void *origin_addr, int origin_count,
 #ifndef MPIDI_CH3I_INCR_PROGRESS_COMPLETION_COUNT
 #define MPIDI_CH3I_INCR_PROGRESS_COMPLETION_COUNT                                \
     do {                                                                         \
-        MPIU_THREAD_CS_ENTER(COMPLETION,);                                       \
+        MPID_THREAD_CS_ENTER(POBJ, MPIR_THREAD_POBJ_COMPLETION_MUTEX);                                       \
         ++MPIDI_CH3I_progress_completion_count;                                  \
         MPIU_DBG_MSG_D(CH3_PROGRESS,VERBOSE,                                     \
                      "just incremented MPIDI_CH3I_progress_completion_count=%d", \
                      MPIDI_CH3I_progress_completion_count);                      \
-        MPIU_THREAD_CS_EXIT(COMPLETION,);                                        \
+        MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_POBJ_COMPLETION_MUTEX);                                        \
     } while (0)
 #endif
 
@@ -1451,7 +1451,7 @@ int MPIDI_CH3_iStartMsg(MPIDI_VC_t * vc, void * pkt, MPIDI_msg_sz_t pkt_sz,
   If the send completes immediately, the channel implementation should return 
   NULL.
 @*/
-int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int iov_n, 
+int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPL_IOV * iov, int iov_n, 
 			 MPID_Request **sreq_ptr);
 
 
@@ -1515,7 +1515,7 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void * pkt,
   If the send completes immediately, the channel implementation still must 
   call the OnDataAvail routine in the request, if any.
 @*/
-int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPID_IOV * iov, 
+int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPL_IOV * iov, 
 		     int iov_n);
 
 /*@
@@ -1555,7 +1555,7 @@ int MPIDI_CH3U_Clean_recvq(MPID_Comm *comm_ptr);
 
 
 int MPIDI_CH3U_Request_load_send_iov(MPID_Request * const sreq, 
-				     MPID_IOV * const iov, int * const iov_n);
+				     MPL_IOV * const iov, int * const iov_n);
 int MPIDI_CH3U_Request_load_recv_iov(MPID_Request * const rreq);
 int MPIDI_CH3U_Request_unpack_uebuf(MPID_Request * rreq);
 int MPIDI_CH3U_Request_unpack_srbuf(MPID_Request * rreq);
@@ -1574,7 +1574,7 @@ int MPIDI_CH3U_Receive_data_unexpected(MPID_Request * rreq, char *buf, MPIDI_msg
 int MPIDI_CH3I_Comm_init(void);
 
 int MPIDI_CH3I_Comm_handle_failed_procs(MPID_Group *new_failed_procs);
-void MPIDI_CH3I_Comm_find(MPIR_Context_id_t context_id, MPID_Comm **comm);
+void MPIDI_CH3I_Comm_find(MPIU_Context_id_t context_id, MPID_Comm **comm);
 
 /* The functions below allow channels to register functions to be
    called immediately after a communicator has been created, and
@@ -1967,60 +1967,6 @@ int MPIDI_CH3_ReqHandler_FOPSendComplete( MPIDI_VC_t *, MPID_Request *,
 /* RMA operation request handler */
 int MPIDI_CH3_Req_handler_rma_op_complete(MPID_Request *);
 
-/* Thread Support */
-#ifdef MPICH_IS_THREADED
-#if MPIU_THREAD_GRANULARITY == MPIU_THREAD_GRANULARITY_GLOBAL
-/* There is a single, global lock, held for the duration of an MPI call */
-#define MPIU_THREAD_CS_ENTER_CH3COMM(context_)
-#define MPIU_THREAD_CS_EXIT_CH3COMM(context_)
-
-#define MPIU_THREAD_CS_ENTER_LMT(_context)
-#define MPIU_THREAD_CS_EXIT_LMT(_context)
-
-#elif MPIU_THREAD_GRANULARITY == MPIU_THREAD_GRANULARITY_PER_OBJECT
-
-#define MPIU_THREAD_CS_ENTER_POBJ_MUTEX(mutex_p_)                                                           \
-    do {                                                                                                    \
-        MPIU_DBG_MSG_P(THREAD,VERBOSE,"attempting to ENTER per-object CS, mutex=%s", MPIU_QUOTE(mutex_p_)); \
-        /* FIXME do we need nest checking here? the existing macros won't work unmodified...*/              \
-        MPID_Thread_mutex_lock(mutex_p_);                                                                   \
-    } while (0)
-#define MPIU_THREAD_CS_EXIT_POBJ_MUTEX(mutex_p_)                                                            \
-    do {                                                                                                    \
-        MPIU_DBG_MSG_P(THREAD,VERBOSE,"attempting to EXIT per-object CS, mutex=%s", MPIU_QUOTE(mutex_p_));  \
-        /* FIXME do we need nest checking here? the existing macros won't work unmodified...*/              \
-        MPID_Thread_mutex_unlock(mutex_p_);                                                                 \
-    } while (0)
-
-/* There is a per object lock */
-#define MPIU_THREAD_CS_ENTER_CH3COMM(context_)                      \
-    do {                                                            \
-        if (MPIU_ISTHREADED)                                        \
-            MPIU_THREAD_CS_ENTER_POBJ_MUTEX(&context_->pobj_mutex); \
-    } while (0)
-#define MPIU_THREAD_CS_EXIT_CH3COMM(context_)                       \
-    do {                                                            \
-        if (MPIU_ISTHREADED)                                        \
-            MPIU_THREAD_CS_EXIT_POBJ_MUTEX(&context_->pobj_mutex);  \
-    } while (0)
-
-/* MT FIXME making LMT into MPIDCOMM for now because of overwhelming deadlock
- * issues */
-#define MPIU_THREAD_CS_ENTER_LMT(context_) MPIU_THREAD_CS_ENTER_MPIDCOMM(context_)
-#define MPIU_THREAD_CS_EXIT_LMT(context_)  MPIU_THREAD_CS_EXIT_MPIDCOMM(context_)
-
-#elif MPIU_THREAD_GRANULARITY == MPIU_THREAD_GRANULARITY_SINGLE
-/* No thread support, make all operations a no-op */
-/* FIXME incomplete? or already handled by the upper level? */
-/* FIXME does it make sense to have (MPICH_IS_THREADED && _GRANULARITY==_SINGLE) ? */
-
-#else
-#error Unrecognized thread granularity
-#endif
-#else
-
-#endif /* MPICH_IS_THREADED */
-
 #define MPIDI_CH3_GET_EAGER_THRESHOLD(eager_threshold_p, comm, vc)  \
     do {                                                            \
         if ((comm)->dev.eager_max_msg_sz != -1)                     \
@@ -2030,10 +1976,14 @@ int MPIDI_CH3_Req_handler_rma_op_complete(MPID_Request *);
     } while (0)
 
 
-int MPIDI_CH3I_Progress_register_hook(int (*progress_fn)(int*));
-int MPIDI_CH3I_Progress_deregister_hook(int (*progress_fn)(int*));
+int MPIDI_CH3I_Progress_register_hook(int (*progress_fn)(int*), int *id);
+int MPIDI_CH3I_Progress_deregister_hook(int id);
+int MPIDI_CH3I_Progress_activate_hook(int id);
+int MPIDI_CH3I_Progress_deactivate_hook(int id);
 
-#define MPID_Progress_register_hook(fn_) MPIDI_CH3I_Progress_register_hook(fn_)
-#define MPID_Progress_deregister_hook(fn_) MPIDI_CH3I_Progress_deregister_hook(fn_)
+#define MPID_Progress_register_hook(fn_, id_) MPIDI_CH3I_Progress_register_hook(fn_, id_)
+#define MPID_Progress_deregister_hook(id_) MPIDI_CH3I_Progress_deregister_hook(id_)
+#define MPID_Progress_activate_hook(id_) MPIDI_CH3I_Progress_activate_hook(id_)
+#define MPID_Progress_deactivate_hook(id_) MPIDI_CH3I_Progress_deactivate_hook(id_)
 
 #endif /* !defined(MPICH_MPIDIMPL_H_INCLUDED) */

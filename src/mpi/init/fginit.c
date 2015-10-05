@@ -243,9 +243,9 @@ static int is_Within(int rank, int start_fgrank, int numfgps)
     else if(rank < start_fgrank)
         return LESS;
     else {
-        MPIU_Internal_error_printf("Error: In is_Within(). This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);
+        MPL_internal_error_printf("Error: In is_Within(). This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);
         MPID_Abort(NULL, MPI_SUCCESS, -1, NULL);
-        MPIU_Exit(-1); /* HK: If for some reason MPID_Abort returns, exit here. */
+        MPL_exit(-1); /* HK: If for some reason MPID_Abort returns, exit here. */
     }
 }
 
@@ -290,9 +290,9 @@ int FGworldrank_to_pid(int FG_worldrank)
     reterr = _FGworldrank_to_pid(FG_worldrank, &pid);
     if(MPI_SUCCESS != reterr)
     {
-        MPIU_Internal_error_printf("Error: No pid found for worldrank=%d. This part of code should not be reached in file %s at line %d\n", FG_worldrank, __FILE__, __LINE__);
+        MPL_internal_error_printf("Error: No pid found for worldrank=%d. This part of code should not be reached in file %s at line %d\n", FG_worldrank, __FILE__, __LINE__);
         MPID_Abort(NULL, MPI_SUCCESS, -1, NULL);
-        MPIU_Exit(-1); /* HK: If for some reason MPID_Abort returns, exit here. */
+        MPL_exit(-1); /* HK: If for some reason MPID_Abort returns, exit here. */
     }
     return pid;
 }
@@ -300,9 +300,9 @@ int FGworldrank_to_pid(int FG_worldrank)
 
 inline int RTWPmapFind(RTWmap* rtw_map, int lrank, int *worldrank_ptr, int *pid_ptr){ /* IN,IN,OUT,OUT */
     if ( lrank < 0 ) {
-        MPIU_Internal_error_printf("Error: negative rank lookup. This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);
+        MPL_internal_error_printf("Error: negative rank lookup. This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);
         MPID_Abort(NULL, MPI_SUCCESS, -1, NULL);
-        MPIU_Exit(-1);
+        MPL_exit(-1);
     }
     if(rtw_map == worldcomm_rtw_map){
         *worldrank_ptr = lrank;

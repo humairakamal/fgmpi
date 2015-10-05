@@ -298,7 +298,7 @@ int _mpi_world_exiting_handler(int world_id)
 /*  struct worldExitReq *req = (struct worldExitReq *)cookie; */
   MPID_Comm *comm = MPIR_Process.comm_world;
 
-  MPIU_THREAD_CS_ENTER(ALLFUNC,);
+  MPID_THREAD_CS_ENTER(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
   ref_count = MPIDI_get_refcnt_of_world(world_id);
   TRACE_ERR("_mpi_world_exiting_handler: invoked for world %d exiting ref_count=%d my comm_word_size=%d\n", world_id, ref_count, world_size);
   if(ref_count == 0) {
@@ -322,9 +322,9 @@ int _mpi_world_exiting_handler(int world_id)
 
   TRACE_ERR("_mpi_world_exiting_handler: Out of _mpi_reduce_for_dyntask for exiting world %d reduce_state=%d\n",world_id, reduce_state);
 
-  MPIU_THREAD_CS_EXIT(ALLFUNC,);
+  MPID_THREAD_CS_EXIT(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
   if(comm->rank == 0) {
-    MPIU_Snprintf(world_id_str, sizeof(world_id_str), "%d", world_id);
+    MPL_snprintf(world_id_str, sizeof(world_id_str), "%d", world_id);
     PMI2_Abort(0, world_id_str);
     if((reduce_state != world_size)) {
       TRACE_ERR("root is exiting with error\n");
@@ -389,7 +389,7 @@ int _mpi_reduce_for_dyntask(int *sendbuf, int *recvbuf)
   int         numchildren, parent=0, i, result=0,tag, remaining_child_count;
   MPID_Comm   *comm_ptr;
   int         mpi_errno;
-  mpir_errflag_t errflag = MPIR_ERR_NONE;
+  MPIR_Errflag_t errflag = MPIR_ERR_NONE;
 
   int TASKS= world_size;
   children = MPIU_Malloc(TASKS*sizeof(int));

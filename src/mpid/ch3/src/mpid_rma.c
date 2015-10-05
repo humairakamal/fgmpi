@@ -38,10 +38,17 @@ cvars:
 === END_MPI_T_CVAR_INFO_BLOCK ===
 */
 
-
-MPIU_THREADSAFE_INIT_DECL(initRMAoptions);
+static volatile int initRMAoptions = 1;
 
 MPID_Win *MPIDI_RMA_Win_active_list_head = NULL, *MPIDI_RMA_Win_inactive_list_head = NULL;
+
+/* This variable keeps track of number of active RMA requests, i.e., total number of issued
+ * but incomplete RMA operations. We use this variable to control the resources used up by
+ * internal requests in RMA infrastructure. */
+int MPIDI_CH3I_RMA_Active_req_cnt = 0;
+
+/* This variable stores the index of RMA progress hook in progress hook array */
+int MPIDI_CH3I_RMA_Progress_hook_id = 0;
 
 static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, MPID_Info * info,
                     MPID_Comm * comm_ptr, MPID_Win ** win_ptr);
@@ -50,7 +57,7 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
 #undef FUNCNAME
 #define FUNCNAME MPID_Win_create
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_Win_create(void *base, MPI_Aint size, int disp_unit, MPID_Info * info,
                     MPID_Comm * comm_ptr, MPID_Win ** win_ptr)
 {
@@ -62,19 +69,19 @@ int MPID_Win_create(void *base, MPI_Aint size, int disp_unit, MPID_Info * info,
 
     /* Check to make sure the communicator hasn't already been revoked */
     if (comm_ptr->revoked) {
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPIX_ERR_REVOKED, "**revoked");
+        MPIR_ERR_SETANDJUMP(mpi_errno, MPIX_ERR_REVOKED, "**revoked");
     }
 
     mpi_errno =
         win_init(size, disp_unit, MPI_WIN_FLAVOR_CREATE, MPI_WIN_UNIFIED, info, comm_ptr, win_ptr);
     if (mpi_errno)
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
 
     (*win_ptr)->base = base;
 
     mpi_errno = MPIDI_CH3U_Win_fns.create(base, size, disp_unit, info, comm_ptr, win_ptr);
     if (mpi_errno)
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
 
   fn_fail:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_WIN_CREATE);
@@ -85,7 +92,7 @@ int MPID_Win_create(void *base, MPI_Aint size, int disp_unit, MPID_Info * info,
 #undef FUNCNAME
 #define FUNCNAME MPID_Win_allocate
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_Win_allocate(MPI_Aint size, int disp_unit, MPID_Info * info,
                       MPID_Comm * comm_ptr, void *baseptr, MPID_Win ** win_ptr)
 {
@@ -98,12 +105,12 @@ int MPID_Win_allocate(MPI_Aint size, int disp_unit, MPID_Info * info,
         win_init(size, disp_unit, MPI_WIN_FLAVOR_ALLOCATE, MPI_WIN_UNIFIED, info, comm_ptr,
                  win_ptr);
     if (mpi_errno != MPI_SUCCESS) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
     mpi_errno = MPIDI_CH3U_Win_fns.allocate(size, disp_unit, info, comm_ptr, baseptr, win_ptr);
     if (mpi_errno != MPI_SUCCESS) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
   fn_fail:
@@ -115,7 +122,7 @@ int MPID_Win_allocate(MPI_Aint size, int disp_unit, MPID_Info * info,
 #undef FUNCNAME
 #define FUNCNAME MPID_Win_create_dynamic
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_Win_create_dynamic(MPID_Info * info, MPID_Comm * comm_ptr, MPID_Win ** win_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -129,13 +136,13 @@ int MPID_Win_create_dynamic(MPID_Info * info, MPID_Comm * comm_ptr, MPID_Win ** 
                          MPI_WIN_FLAVOR_DYNAMIC, MPI_WIN_UNIFIED, info, comm_ptr, win_ptr);
 
     if (mpi_errno)
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
 
     (*win_ptr)->base = MPI_BOTTOM;
 
     mpi_errno = MPIDI_CH3U_Win_fns.create_dynamic(info, comm_ptr, win_ptr);
     if (mpi_errno != MPI_SUCCESS) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
   fn_fail:
@@ -148,7 +155,7 @@ int MPID_Win_create_dynamic(MPID_Info * info, MPID_Comm * comm_ptr, MPID_Win ** 
 #undef FUNCNAME
 #define FUNCNAME MPID_Alloc_mem
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void *MPID_Alloc_mem(size_t size, MPID_Info * info_ptr)
 {
     void *ap = NULL;
@@ -166,7 +173,7 @@ void *MPID_Alloc_mem(size_t size, MPID_Info * info_ptr)
 #undef FUNCNAME
 #define FUNCNAME MPID_Free_mem
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_Free_mem(void *ptr)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -185,7 +192,7 @@ int MPID_Free_mem(void *ptr)
 #undef FUNCNAME
 #define FUNCNAME MPID_Win_allocate_shared
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_Win_allocate_shared(MPI_Aint size, int disp_unit, MPID_Info * info, MPID_Comm * comm_ptr,
                              void *base_ptr, MPID_Win ** win_ptr)
 {
@@ -198,12 +205,12 @@ int MPID_Win_allocate_shared(MPI_Aint size, int disp_unit, MPID_Info * info, MPI
     mpi_errno =
         win_init(size, disp_unit, MPI_WIN_FLAVOR_SHARED, MPI_WIN_UNIFIED, info, comm_ptr, win_ptr);
     if (mpi_errno)
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
 
     mpi_errno =
         MPIDI_CH3U_Win_fns.allocate_shared(size, disp_unit, info, comm_ptr, base_ptr, win_ptr);
     if (mpi_errno != MPI_SUCCESS)
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
 
   fn_fail:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_WIN_ALLOCATE_SHARED);
@@ -213,7 +220,7 @@ int MPID_Win_allocate_shared(MPI_Aint size, int disp_unit, MPID_Info * info, MPI
 #undef FUNCNAME
 #define FUNCNAME MPID_Win_shared_query
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPID_Win_shared_query(MPID_Win * win, int rank, MPI_Aint * size, int *disp_unit, void *baseptr)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -224,7 +231,7 @@ int MPID_Win_shared_query(MPID_Win * win, int rank, MPI_Aint * size, int *disp_u
 
     mpi_errno = MPIDI_CH3U_Win_fns.shared_query(win, rank, size, disp_unit, baseptr);
     if (mpi_errno != MPI_SUCCESS) {
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
     }
 
   fn_exit:
@@ -237,7 +244,7 @@ int MPID_Win_shared_query(MPID_Win * win, int rank, MPI_Aint * size, int *disp_u
 #undef FUNCNAME
 #define FUNCNAME win_init
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, MPID_Info * info,
                     MPID_Comm * comm_ptr, MPID_Win ** win_ptr)
 {
@@ -250,23 +257,23 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
 
     MPIDI_FUNC_ENTER(MPID_STATE_WIN_INIT);
 
+    MPID_THREAD_CS_ENTER(POBJ, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
     if (initRMAoptions) {
-        MPIU_THREADSAFE_INIT_BLOCK_BEGIN(initRMAoptions);
 
         MPIDI_CH3_RMA_Init_sync_pvars();
         MPIDI_CH3_RMA_Init_pkthandler_pvars();
 
-        MPIU_THREADSAFE_INIT_CLEAR(initRMAoptions);
-        MPIU_THREADSAFE_INIT_BLOCK_END(initRMAoptions);
+        initRMAoptions = 0;
     }
+    MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 
     *win_ptr = (MPID_Win *) MPIU_Handle_obj_alloc(&MPID_Win_mem);
-    MPIU_ERR_CHKANDJUMP1(!(*win_ptr), mpi_errno, MPI_ERR_OTHER, "**nomem",
+    MPIR_ERR_CHKANDJUMP1(!(*win_ptr), mpi_errno, MPI_ERR_OTHER, "**nomem",
                          "**nomem %s", "MPID_Win_mem");
 
     mpi_errno = MPIR_Comm_dup_impl(comm_ptr, &win_comm_ptr);
     if (mpi_errno)
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
 
     MPIU_Object_set_ref(*win_ptr, 1);
 
@@ -289,7 +296,6 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
     (*win_ptr)->states.access_state = MPIDI_RMA_NONE;
     (*win_ptr)->states.exposure_state = MPIDI_RMA_NONE;
     (*win_ptr)->num_targets_with_pending_net_ops = 0;
-    (*win_ptr)->active_req_cnt = 0;
     (*win_ptr)->start_ranks_in_win_grp = NULL;
     (*win_ptr)->start_grp_size = 0;
     (*win_ptr)->lock_all_assert = 0;
@@ -313,7 +319,7 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
     /* Set info_args on window based on info provided by user */
     mpi_errno = MPID_Win_set_info((*win_ptr), info);
     if (mpi_errno != MPI_SUCCESS)
-        MPIU_ERR_POP(mpi_errno);
+        MPIR_ERR_POP(mpi_errno);
 
     MPIU_CHKPMEM_MALLOC((*win_ptr)->op_pool_start, MPIDI_RMA_Op_t *,
                         sizeof(MPIDI_RMA_Op_t) * MPIR_CVAR_CH3_RMA_OP_WIN_POOL_SIZE, mpi_errno,
@@ -353,6 +359,15 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
                       &((*win_ptr)->target_lock_entry_pool_start[i]));
     }
 
+    if (MPIDI_RMA_Win_inactive_list_head == NULL && MPIDI_RMA_Win_active_list_head == NULL) {
+        /* this is the first window, register RMA progress hook */
+        mpi_errno = MPID_Progress_register_hook(MPIDI_CH3I_RMA_Make_progress_global,
+                                                &MPIDI_CH3I_RMA_Progress_hook_id);
+        if (mpi_errno) {
+            MPIR_ERR_POP(mpi_errno);
+        }
+    }
+
     MPL_DL_APPEND(MPIDI_RMA_Win_inactive_list_head, (*win_ptr));
 
     if (MPIDI_CH3U_Win_hooks.win_init != NULL) {
@@ -360,7 +375,7 @@ static int win_init(MPI_Aint size, int disp_unit, int create_flavor, int model, 
             MPIDI_CH3U_Win_hooks.win_init(size, disp_unit, create_flavor, model, info, comm_ptr,
                                           win_ptr);
         if (mpi_errno != MPI_SUCCESS)
-            MPIU_ERR_POP(mpi_errno);
+            MPIR_ERR_POP(mpi_errno);
     }
 
   fn_exit:

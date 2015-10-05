@@ -45,8 +45,6 @@ int MPI_File_write_ordered_end(MPI_File fh, ROMIO_CONST void *buf, MPI_Status *s
 
     MPIU_UNREFERENCED_ARG(buf);
 
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
-
     adio_fh = MPIO_File_resolve(fh);
 
     /* --BEGIN ERROR HANDLING-- */
@@ -68,8 +66,6 @@ int MPI_File_write_ordered_end(MPI_File fh, ROMIO_CONST void *buf, MPI_Status *s
 #endif
     adio_fh->split_coll_count = 0;
 
-
 fn_exit:
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return MPI_SUCCESS;
 }

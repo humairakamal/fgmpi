@@ -43,14 +43,12 @@ MPIO_Request MPIO_Request_f2c(MPI_Fint request)
 {
     int error_code;
     static char myname[] = "MPIO_REQUEST_F2C";
-    MPIU_THREADPRIV_DECL;
+    MPID_THREADPRIV_DECL;
 
 #ifndef INT_LT_POINTER
     return (MPIO_Request) request;
 #else
 
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
-    
     if (!request) {
 	return MPIO_REQUEST_NULL;
     }
@@ -65,7 +63,6 @@ MPIO_Request MPIO_Request_f2c(MPI_Fint request)
     /* --END ERROR HANDLING-- */
 
 fn_exit:
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return ADIOI_Reqtable[request];
 #endif
 }

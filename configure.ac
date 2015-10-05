@@ -513,11 +513,11 @@ AC_ARG_ENABLE(refcount,
 	AC_HELP_STRING([--enable-refcount=type],
 			[Choose the method for ensuring atomic updates
                          to the reference counts for MPI objects.
-                         Values may be lock, lock-free, none.  The
+                         Values may be lock-free or none.  The
                          default depends on the thread-cs choice; for
                          global it is none (because none is required),
-                         for per-object it is lock, and for lock-free
-                         it is lock-free]),,enable_refcount=default)
+                         for per-object and lock-free, lock-free]),,
+                         enable_refcount=default)
 
 AC_ARG_ENABLE(mutex-timing,
 	AC_HELP_STRING([--enable-mutex-timing], [calculate the time spent waiting on mutexes]),
@@ -1398,6 +1398,10 @@ fi
 export MPICH_THREAD_LEVEL
 AC_DEFINE_UNQUOTED(MPICH_THREAD_LEVEL,$MPICH_THREAD_LEVEL,[Level of thread support selected at compile time])
 
+if test "$MPICH_THREAD_LEVEL" = "MPI_THREAD_MULTIPLE" ; then
+   AC_DEFINE([MPICH_IS_THREADED],[1],[MPICH is configured to require thread safety])
+fi
+
 # If not in MPI_THREAD_SINGLE, we need -D_REENTRANT to get thread-safe "errno".
 # Most POSIX systems provide this by default when using -lpthread, but we only use it in MPI_THREAD_MULTIPLE.
 # Some systems (Solaris) still require an explicit define in any case.
@@ -1406,23 +1410,20 @@ if test "$MPICH_THREAD_LEVEL" != "MPI_THREAD_SINGLE"; then
 fi
 
 # Check for value thread_cs choice; set the refcount default if necessary
-thread_granularity=MPIU_THREAD_GRANULARITY_SINGLE
+thread_granularity=MPICH_THREAD_GRANULARITY_SINGLE
 thread_refcount=MPIU_REFCOUNT_NONE
 if test "$enable_threads" = "multiple" ; then
     case $enable_thread_cs in 
     global)
-    thread_granularity=MPIU_THREAD_GRANULARITY_GLOBAL
+    thread_granularity=MPICH_THREAD_GRANULARITY_GLOBAL
     if test "$enable_refcount" = "default" ; then enable_refcount=none ; fi
     ;;
-    brief-global|brief_global)
-    AC_MSG_ERROR([--enable-thread-cs=brief-global is no longer supported, please select a different granularity])
-    ;;
     per-object|per_object)
-    thread_granularity=MPIU_THREAD_GRANULARITY_PER_OBJECT
-    if test "$enable_refcount" = "default" ; then enable_refcount=lock ; fi
+    thread_granularity=MPICH_THREAD_GRANULARITY_PER_OBJECT
+    if test "$enable_refcount" = "default" ; then enable_refcount=lock-free ; fi
     ;;
     lock-free|lock_free|lockfree)
-    thread_granularity=MPIU_THREAD_GRANULARITY_LOCK_FREE
+    thread_granularity=MPICH_THREAD_GRANULARITY_LOCK_FREE
     if test "$enable_refcount" = "default" ; then enable_refcount=lock-free ; fi
     if test "$enable_predefined_refcount" = "default" ; then enable_predefined_refcount=no ; fi
     AC_MSG_ERROR([--enable-thread-cs=lock-free is not supported yet, please select a different granularity])
@@ -1433,9 +1434,6 @@ if test "$enable_threads" = "multiple" ; then
     esac
 
     case $enable_refcount in
-    lock)
-    thread_refcount=MPIU_REFCOUNT_LOCK
-    ;;
     lock-free|lock_free|lockfree)
     thread_refcount=MPIU_REFCOUNT_LOCKFREE
     ;;
@@ -1447,7 +1445,7 @@ if test "$enable_threads" = "multiple" ; then
     ;;
     esac
 fi
-AC_DEFINE_UNQUOTED([MPIU_THREAD_GRANULARITY],$thread_granularity,[Method used to implement atomic updates and access])
+AC_DEFINE_UNQUOTED([MPICH_THREAD_GRANULARITY],$thread_granularity,[Method used to implement atomic updates and access])
 
 if test "$enable_predefined_refcount" = "no" ; then
     AC_DEFINE([MPIU_THREAD_SUPPRESS_PREDEFINED_REFCOUNTS],[1],[define to disable reference counting predefined objects like MPI_COMM_WORLD])
@@ -1560,9 +1558,6 @@ if test -n "$perform_memtracing" ; then
     if test -n "$perform_memarena" ; then
         AC_DEFINE(MPICH_DEBUG_MEMARENA,1,[Define if each function exit should confirm memory arena correctness])
     fi
-fi
-if test -n "$perform_mutexnesting" ; then 
-    AC_DEFINE(MPICH_DEBUG_MUTEXNESTING,1,[Define to check nesting in mutexes])
 fi
 USE_DBG_LOGGING=0
 if test -n "$perform_dbglog" ; then
@@ -2404,6 +2399,18 @@ if test "X$modincdir" = "X" ; then
 fi
 export modincdir
 AC_SUBST(modincdir)
+
+AC_LANG_PUSH([C])
+AC_MSG_CHECKING([whether TRUE has been defined])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM(,[return TRUE;])],
+                  [has_true_upper_case=yes],
+	          [has_true_upper_case=no])
+AC_MSG_RESULT($has_true_upper_case)
+if test "$has_true_upper_case" = "no" ; then
+   AC_DEFINE(TRUE,1,[Define TRUE])
+   AC_DEFINE(FALSE,0,[Define FALSE])
+fi
+AC_LANG_POP([C])
 
 # ----------------------------------------------------------------------------
 # We previously allowed "default" as a valid value for $enable_cxx.  Now we
@@ -4684,19 +4691,6 @@ fi
 
 PAC_C_MACRO_VA_ARGS
 
-dnl
-dnl If internationalization selected, try to find the needed functions
-dnl if test "$enable_internat" = "yes" ; then
-dnl     AC_CHECK_HEADERS(libintl.h)
-dnl     AC_CHECK_FUNCS(gettext dgettext)
-dnl     if test "$ac_cv_header_libintl" = "yes" -a \
-dnl 	    "$ac_cv_func_gettext" = "yes" -a \
-dnl 	    "$ac_cv_func_dgettext" = "yes" ; then
-dnl 	AC_DEFINE(USE_GETTEXT,1,[Define if messages should use gettext])
-dnl     else
-dnl         AC_MSG_WARN([Cannot use internationalization because necessary headers and functions are not available])
-dnl     fi
-dnl fi
 # Check for alloca function.  May set HAVE_ALLOCA_H and HAVE_ALLOCA
 AC_FUNC_ALLOCA
 # We don't use alloca unless USE_ALLOCA is also set.
@@ -4761,7 +4755,7 @@ fi
 # Support for timers.  The following code processes the 
 #  --enable-timer-type=name argument and selects the timer based on 
 # both that field and what configure is able to determine is available.
-# The file src/include/mpichtimer.h is also created.
+# The file src/include/mpiu_timer.h is also created.
 # Note that at least the handling of the "device" option must come *after* 
 # the setup_device script is loaded so that the device can set the appropriate
 # fields.  For now, we've split this so that there is an update to the timer
@@ -4770,8 +4764,8 @@ fi
 # FIXME DJG setup_device has been eliminated in favor of subconfigure.m4 files
 # ----------------------------------------------------------------------------
 # Default type for timer stamp.
-MPID_TIMER_TYPE=long
-AC_SUBST(MPID_TIMER_TYPE)
+MPICH_TIMER_TYPE=long
+AC_SUBST(MPICH_TIMER_TYPE)
 
 # If the device specified a timer type, use that by default.  Else,
 # try to detect a type that works on this system.
@@ -4858,7 +4852,7 @@ fi
 case "$timer_type" in
 
     gethrtime)
-    MPID_TIMER_TYPE=hrtime_t
+    MPICH_TIMER_TYPE=hrtime_t
     AC_CHECK_FUNC(gethrtime,,[
          AC_MSG_ERROR([Requested timer gethrtime is not available])
 ])
@@ -4868,7 +4862,7 @@ case "$timer_type" in
     missing_function=no
     AC_SEARCH_LIBS([clock_gettime],[rt],,AC_MSG_ERROR([clock_gettime is not available]))
     AC_SEARCH_LIBS([clock_getres],[rt],,AC_MSG_ERROR([clock_getres is not available]))
-    MPID_TIMER_TYPE="struct timespec"
+    MPICH_TIMER_TYPE="struct timespec"
     # AIX does not always define struct timespec (!)
     # Make sure that we can use struct timespec
     AC_CACHE_CHECK([whether struct timespec is defined in time.h],
@@ -4924,7 +4918,7 @@ pac_cv_posix_clock_realtime=no)
     ;;
 
     gettimeofday)
-    MPID_TIMER_TYPE="struct timeval"
+    MPICH_TIMER_TYPE="struct timeval"
     # We may have already tested for gettimeofday.  If we got a "yes",
     # we're good to go
     if test "$ac_cv_func_gettimeofday" != "yes" ; then
@@ -5028,7 +5022,7 @@ dnl platform.
     if test "$cpu_gcc_x86_cycle" = "no" ; then
         AC_MSG_ERROR([Linux86 cycle counter is not available on this system and or with the $CC compiler])
     fi
-    MPID_TIMER_TYPE="long long"
+    MPICH_TIMER_TYPE="long long"
     ;;
 
     gcc_ia64_cycle)
@@ -5046,7 +5040,7 @@ pac_cv_ia64_cycle,[
     if test "$pac_cv_gcc_ia64_cycle" != "yes" ; then
         AC_MSG_ERROR([IPF cycle counter is not available on this system and or with the $CC compiler])
      fi
-     MPID_TIMER_TYPE="long"
+     MPICH_TIMER_TYPE="long"
      ;;
 
     linuxalpha_cycle)
@@ -5056,14 +5050,14 @@ pac_cv_ia64_cycle,[
     mach_absolute_time)
     AC_CHECK_FUNC(mach_absolute_time,,[AC_MSG_ERROR([mach_absolute_time is not available])])
     AC_CHECK_FUNC(mach_timebase_info,,[AC_MSG_ERROR([mach_timebase_info is not available])])
-    MPID_TIMER_TYPE="uint64_t"
+    MPICH_TIMER_TYPE="uint64_t"
     ;;
 
     device)
     # The device selected should export the datatype for the timer
     # in MPID_DEVICE_TIMER_TYPE if something other than long is needed
     if test -n "$MPID_DEVICE_TIMER_TYPE" ; then
-       MPID_TIMER_TYPE=$MPID_DEVICE_TIMER_TYPE
+       MPICH_TIMER_TYPE=$MPID_DEVICE_TIMER_TYPE
     fi
     ;;
 
@@ -5074,7 +5068,7 @@ esac
 # Convert timer type to upper case
 timer_type=`echo $timer_type | \
     tr 'abcdefghijklmnopqrstuvwxyz' 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'`
-MPICH_TIMER_KIND=USE_$timer_type
+MPICH_TIMER_KIND=MPIU_$timer_type
 AC_SUBST(MPICH_TIMER_KIND)
 # ----------------------------------------------------------------------------
 # End of code for timer support (except for ac_ OUTPUT)
@@ -5155,41 +5149,41 @@ for type in int long long_long short ; do
     if test "$len" = "$ac_cv_sizeof_void_p" ; then
         case $type in
             int)
-                MPIR_PINT_FMT_DEC_SPEC="\"%d\""
-                MPIR_UPINT_FMT_DEC_SPEC="\"%u\""
+                MPIU_PINT_FMT_DEC_SPEC="\"%d\""
+                MPIU_UPINT_FMT_DEC_SPEC="\"%u\""
                 ;;
             long)
-                MPIR_PINT_FMT_DEC_SPEC="\"%ld\""
-                MPIR_UPINT_FMT_DEC_SPEC="\"%lu\""
+                MPIU_PINT_FMT_DEC_SPEC="\"%ld\""
+                MPIU_UPINT_FMT_DEC_SPEC="\"%lu\""
                 ;;
             long_long)
-                MPIR_PINT_FMT_DEC_SPEC="\"%lld\""
-                MPIR_UPINT_FMT_DEC_SPEC="\"%llu\""
+                MPIU_PINT_FMT_DEC_SPEC="\"%lld\""
+                MPIU_UPINT_FMT_DEC_SPEC="\"%llu\""
                 ;;
             short)
-                MPIR_PINT_FMT_DEC_SPEC="\"%hd\""
-                MPIR_UPINT_FMT_DEC_SPEC="\"%hu\""
+                MPIU_PINT_FMT_DEC_SPEC="\"%hd\""
+                MPIU_UPINT_FMT_DEC_SPEC="\"%hu\""
                 ;;
             *)
-                AC_MSG_WARN([unable to determine format specifiers for MPIR_Pint, defaulting to int])
-                MPIR_PINT_FMT_DEC_SPEC="\"%d\""
-                MPIR_UPINT_FMT_DEC_SPEC="\"%u\""
+                AC_MSG_WARN([unable to determine format specifiers for MPIU_Pint, defaulting to int])
+                MPIU_PINT_FMT_DEC_SPEC="\"%d\""
+                MPIU_UPINT_FMT_DEC_SPEC="\"%u\""
             ;;
         esac
-        MPIR_PINT=`echo $type | sed -e 's/_/ /'`
+        MPIU_PINT=`echo $type | sed -e 's/_/ /'`
         break
     fi
 done
-AC_DEFINE_UNQUOTED(MPIR_Pint,$MPIR_PINT,[MPIR_Pint is a pointer-sized integer])
-# allow @MPIR_PINT@ substitution in glue_romio.h
-AC_SUBST([MPIR_PINT])
+AC_DEFINE_UNQUOTED(MPIU_Pint,$MPIU_PINT,[MPIU_Pint is a pointer-sized integer])
+# allow @MPIU_PINT@ substitution in glue_romio.h
+AC_SUBST([MPIU_PINT])
 
-AC_DEFINE_UNQUOTED(MPIR_PINT_FMT_DEC_SPEC,
-    $MPIR_PINT_FMT_DEC_SPEC,[MPIR_PINT_FMT_DEC_SPEC is the format
+AC_DEFINE_UNQUOTED(MPIU_PINT_FMT_DEC_SPEC,
+    $MPIU_PINT_FMT_DEC_SPEC,[MPIU_PINT_FMT_DEC_SPEC is the format
     specifier for printing Pint as a decimal])
-AC_DEFINE_UNQUOTED(MPIR_Upint,unsigned $MPIR_PINT,[MPIR_Upint is an unsigned pointer-sized integer])
-AC_DEFINE_UNQUOTED(MPIR_UPINT_FMT_DEC_SPEC,
-    $MPIR_UPINT_FMT_DEC_SPEC,[MPIR_UPINT_FMT_DEC_SPEC is the format
+AC_DEFINE_UNQUOTED(MPIU_Upint,unsigned $MPIU_PINT,[MPIU_Upint is an unsigned pointer-sized integer])
+AC_DEFINE_UNQUOTED(MPIU_UPINT_FMT_DEC_SPEC,
+    $MPIU_UPINT_FMT_DEC_SPEC,[MPIU_UPINT_FMT_DEC_SPEC is the format
     specifier for printing Upint as a decimal])
 
 # ----------------------------------------------------------------------------
@@ -5217,7 +5211,7 @@ export MPI_F77_AINT
 # ----------------------------------------------------------------------------
 
 # define MPIU_Size_t - used to express the size of objects
-# This is used in src/include/mpitypedefs.h to define MPIU_SIZE_T, 
+# This is used in mpiu_type_defs.h to define MPIU_SIZE_T, 
 # and is used in various parts of ch3 and mpid/common/sock.  
 # This is used to handle the potential problem that a message is 
 # too long to fit with an int.  However, we may still need to make
@@ -5264,7 +5258,7 @@ if test "$timer_type" = "DEVICE" ; then
     # The device selected should export the datatype for the timer
     # in MPID_DEVICE_TIMER_TYPE if something other than long is needed
     if test -n "$MPID_DEVICE_TIMER_TYPE" ; then 
-       MPID_TIMER_TYPE=$MPID_DEVICE_TIMER_TYPE
+       MPICH_TIMER_TYPE=$MPID_DEVICE_TIMER_TYPE
     fi
 fi
 
@@ -5308,7 +5302,7 @@ if test "${thread_pkg_required}" = "yes" -a "${with_thread_package}" = "none" ; 
    AC_ERROR([if no thread package is available, use --enable-threads=single or funneled])
 fi
 
-MPIU_THREAD_PACKAGE_NAME=MPIU_THREAD_PACKAGE_INVALID
+MPICH_THREAD_PACKAGE_NAME=MPICH_THREAD_PACKAGE_INVALID
 case $with_thread_package in 
     posix|pthreads)
 	with_thread_package=posix
@@ -5354,25 +5348,6 @@ void f1(void *a) { return; }],
             fi
     
         fi
-	# Check for PTHREAD_MUTEX_RECURSIVE_NP and PTHREAD_MUTEX_RECURSIVE
-	AC_CACHE_CHECK([whether pthread.h defines PTHREAD_MUTEX_RECURSIVE_NP],
-	pac_cv_has_pthread_mutex_recursive_np,[
-        AC_TRY_COMPILE([#include <pthread.h>],
-                       [int a=PTHREAD_MUTEX_RECURSIVE_NP;],
-		       pac_cv_has_pthread_mutex_recursive_np=yes,
-		       pac_cv_has_pthread_mutex_recursive_np=no)])
-	AC_CACHE_CHECK([whether pthread.h defines PTHREAD_MUTEX_RECURSIVE],
-	pac_cv_has_pthread_mutex_recursive,[
-        AC_TRY_COMPILE([#include <pthread.h>],
-                       [int a=PTHREAD_MUTEX_RECURSIVE;],
-		       pac_cv_has_pthread_mutex_recursive=yes,
-		       pac_cv_has_pthread_mutex_recursive=no)])
-        if test "$pac_cv_has_pthread_mutex_recursive_np" = yes ; then
-	    AC_DEFINE(HAVE_PTHREAD_MUTEX_RECURSIVE_NP,1,[Define if PTHREAD_MUTEX_RECURSIVE_NP is available in pthread.h])
-	fi		       
-        if test "$pac_cv_has_pthread_mutex_recursive" = yes ; then
-	    AC_DEFINE(HAVE_PTHREAD_MUTEX_RECURSIVE,1,[Define if PTHREAD_MUTEX_RECURSIVE is available in pthread.h])
-	fi		       
 
         # Check for PTHREAD_MUTEX_ERRORCHECK_NP and PTHREAD_MUTEX_ERRORCHECK
         AC_CACHE_CHECK([whether pthread.h defines PTHREAD_MUTEX_ERRORCHECK_NP],
@@ -5389,16 +5364,16 @@ void f1(void *a) { return; }],
                        pac_cv_has_pthread_mutex_errorcheck=no)])
 
         if test "$pac_cv_has_pthread_mutex_errorcheck" = yes ; then
-            AC_DEFINE(PTHREAD_MUTEX_ERRORCHECK_VALUE,PTHREAD_MUTEX_ERRORCHECK,
+            AC_DEFINE(MPICH_PTHREAD_MUTEX_ERRORCHECK_VALUE,PTHREAD_MUTEX_ERRORCHECK,
                       [Define to an expression that will result in an error checking mutex type.])
         elif test "$pac_cv_has_pthread_mutex_errorcheck_np" = yes ; then
-            AC_DEFINE(PTHREAD_MUTEX_ERRORCHECK_VALUE,PTHREAD_MUTEX_ERRORCHECK_NP,
+            AC_DEFINE(MPICH_PTHREAD_MUTEX_ERRORCHECK_VALUE,PTHREAD_MUTEX_ERRORCHECK_NP,
                       [Define to an expression that will result in an error checking mutex type.])
         fi
 
 	PAC_FUNC_NEEDS_DECL([#include <pthread.h>],pthread_mutexattr_settype)
 
-        MPIU_THREAD_PACKAGE_NAME=MPIU_THREAD_PACKAGE_POSIX
+        MPICH_THREAD_PACKAGE_NAME=MPICH_THREAD_PACKAGE_POSIX
 	;;
     solaris)
 	AC_CHECK_HEADERS(thread.h)
@@ -5408,16 +5383,16 @@ void f1(void *a) { return; }],
 	   AC_MSG_ERROR([unable to find Solaris threads library])
 	fi
 	# FIXME: need to add -mt if using solaris compilers
-        MPIU_THREAD_PACKAGE_NAME=MPIU_THREAD_PACKAGE_SOLARIS
+        MPICH_THREAD_PACKAGE_NAME=MPICH_THREAD_PACKAGE_SOLARIS
 	;;
     win|windows)
         with_thread_package=win
-        MPIU_THREAD_PACKAGE_NAME=MPIU_THREAD_PACKAGE_WIN
+        MPICH_THREAD_PACKAGE_NAME=MPICH_THREAD_PACKAGE_WIN
         AC_MSG_ERROR([The 'win' thread package is not supported via autoconf builds at this time.])
         ;;
     no|none)
 	with_thread_package=none
-        MPIU_THREAD_PACKAGE_NAME=MPIU_THREAD_PACKAGE_NONE
+        MPICH_THREAD_PACKAGE_NAME=MPICH_THREAD_PACKAGE_NONE
 	;;
     *)
 	AC_MSG_ERROR([The specified thread package, $with_thread_package, is not supported.]) 
@@ -5426,9 +5401,9 @@ esac
 
 # Define and export the selected thread library so that other packages
 # know what's used in MPICH
-AC_DEFINE_UNQUOTED([MPIU_THREAD_PACKAGE_NAME],[$MPIU_THREAD_PACKAGE_NAME],[set to the name of the thread package])
+AC_DEFINE_UNQUOTED([MPICH_THREAD_PACKAGE_NAME],[$MPICH_THREAD_PACKAGE_NAME],[set to the name of the thread package])
 
-# check for compiler-support for thread-local storage (MPIU_TLS_SPECIFIER)
+# check for compiler-support for thread-local storage (MPICH_TLS_SPECIFIER)
 AX_TLS
 
 AC_CHECK_FUNCS(getpid)
@@ -6260,7 +6235,6 @@ AC_OUTPUT(Makefile \
           src/include/mpichinfo.h \
 	  mpich-doxygen \
           src/include/glue_romio.h \
-          src/include/mpichtimer.h \
           src/binding/cxx/mpicxx.h \
 	  src/binding/fortran/mpif_h/mpif.h \
 	  src/binding/fortran/mpif_h/setbotf.f \
@@ -6283,6 +6257,7 @@ AC_OUTPUT(Makefile \
 	  src/env/mpifort.bash \
           src/env/parkill \
 	  src/util/dbg/getfuncstack \
+	  src/util/timers/mpiu_timer.h \
           src/include/mpi.h \
           doc/design/Makefile \
           doc/installguide/Makefile \

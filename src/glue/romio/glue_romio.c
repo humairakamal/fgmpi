@@ -35,50 +35,78 @@ int MPIR_Ext_assert_fail(const char *cond, const char *file_name, int line_num)
     return MPIR_Assert_fail(cond, file_name, line_num);
 }
 
-/* These two routines export the ALLFUNC CS_ENTER/EXIT macros as functions so
+void MPIR_Ext_thread_mutex_create(void **mutex_p_p)
+{
+    int err;
+    MPID_Thread_mutex_t *m;
+
+    m = (MPID_Thread_mutex_t *) MPIU_Malloc(sizeof(MPID_Thread_mutex_t));
+    MPID_Thread_mutex_create(m, &err);
+    MPIU_Assert(err == 0);
+
+    *mutex_p_p = (void *) m;
+}
+
+void MPIR_Ext_thread_mutex_destroy(void *mutex_p)
+{
+    int err;
+    MPID_Thread_mutex_t *m = (MPID_Thread_mutex_t *) mutex_p;
+
+    MPID_Thread_mutex_destroy(m, &err);
+    MPIU_Assert(err == 0);
+
+    MPIU_Free(mutex_p);
+}
+
+/* These two routines export the GLOBAL CS_ENTER/EXIT macros as functions so
  * that ROMIO can use them.  These routines only support the GLOBAL granularity
  * of MPICH threading; other accommodations must be made for finer-grained
  * threading strategies. */
-void MPIR_Ext_cs_enter_allfunc(void)
+void MPIR_Ext_cs_enter(void *mutex_p)
 {
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
+    MPID_THREAD_CS_ENTER(GLOBAL, *((MPID_Thread_mutex_t *) mutex_p));
 }
 
-void MPIR_Ext_cs_exit_allfunc(void)
+void MPIR_Ext_cs_exit(void *mutex_p)
 {
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
+    MPID_THREAD_CS_EXIT(GLOBAL, *((MPID_Thread_mutex_t *) mutex_p));
+}
+
+void MPIR_Ext_cs_yield(void *mutex_p)
+{
+    MPID_THREAD_CS_YIELD(GLOBAL, *((MPID_Thread_mutex_t *) mutex_p));
 }
 
 /* This routine is for a thread to yield control when the thread is waiting for
  * the completion of communication inside a ROMIO routine but the progress
  * engine is blocked by another thread. */
-void MPIR_Ext_cs_yield_allfunc_if_progress_blocked(void)
+void MPIR_Ext_cs_yield_global(void)
 {
     /* TODO: check whether the progress engine is blocked */
-    MPIU_THREAD_CS_YIELD(ALLFUNC,);
+    MPID_THREAD_CS_YIELD(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
 }
 
 /* will consider MPI_DATATYPE_NULL to be an error */
 #undef FUNCNAME
 #define FUNCNAME MPIR_Ext_datatype_iscommitted
 #undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
+#define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Ext_datatype_iscommitted(MPI_Datatype datatype)
 {
     int mpi_errno = MPI_SUCCESS;
 
     MPIR_ERRTEST_DATATYPE(datatype, "datatype", mpi_errno);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     if (HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN) {
         MPID_Datatype *datatype_ptr = NULL;
         MPID_Datatype_get_ptr(datatype, datatype_ptr);
 
         MPID_Datatype_valid_ptr(datatype_ptr, mpi_errno);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
         MPID_Datatype_committed_ptr(datatype_ptr, mpi_errno);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     }
 
 fn_fail:

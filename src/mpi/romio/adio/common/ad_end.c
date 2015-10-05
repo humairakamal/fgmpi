@@ -61,6 +61,8 @@ void ADIO_End(int *error_code)
 int ADIOI_End_call(MPI_Comm comm, int keyval, void *attribute_val, void
 		  *extra_state)
 {
+    /* though we are touching global variables here, only one thread can call
+     * MPI_Finalize so we can be less carefuil w. r. t. critical sections */
     int error_code;
 
     ADIOI_UNREFERENCED_ARG(comm);
@@ -76,5 +78,8 @@ int ADIOI_End_call(MPI_Comm comm, int keyval, void *attribute_val, void
         MPI_Keyval_free(&ADIOI_cb_config_list_keyval);
 
     ADIO_End(&error_code);
+
+    MPIR_Ext_thread_mutex_destroy((void *) ADIO_THREAD_MUTEX);
+
     return error_code;
 }

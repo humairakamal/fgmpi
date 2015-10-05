@@ -175,12 +175,12 @@ int MPI_Init( int *argc, char ***argv )
                                        it has now been seen. */
                     return (mpi_errno);
                 } else if ((2 == IS_SPAWNER) || (0 == IS_SPAWNER)){
-                    MPIU_Internal_error_printf("WARNING! Application rank=%d is calling MPI_Init() again after initialization!\n", my_fgrank);
+                    MPL_internal_error_printf("WARNING! Application rank=%d is calling MPI_Init() again after initialization!\n", my_fgrank);
                     mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER,
 						  "**inittwice", NULL );
                 } else {
-                    MPIU_Internal_error_printf("%d: ERROR! This code should not be reached! Exiting....\n", my_fgrank);
-                    MPIU_Exit(-1);
+                    MPL_internal_error_printf("%d: ERROR! This code should not be reached! Exiting....\n", my_fgrank);
+                    MPL_exit(-1);
                 }
 #else
 
@@ -226,7 +226,7 @@ int MPI_Init( int *argc, char ***argv )
     else if (!strcmp(MPIR_CVAR_DEFAULT_THREAD_LEVEL, "MPI_THREAD_SINGLE"))
         threadLevel = MPI_THREAD_SINGLE;
     else {
-        MPIU_Error_printf("Unrecognized thread level %s\n", MPIR_CVAR_DEFAULT_THREAD_LEVEL);
+        MPL_error_printf("Unrecognized thread level %s\n", MPIR_CVAR_DEFAULT_THREAD_LEVEL);
         exit(1);
     }
 

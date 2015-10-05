@@ -45,7 +45,6 @@ int MPI_File_sync(MPI_File fh)
     HPMP_IO_START(fl_xmpi, BLKMPIFILESYNC, TRDTBLOCK, adio_fh,
 		  MPI_DATATYPE_NULL, -1);
 #endif /* MPI_hpux */
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
 
     adio_fh = MPIO_File_resolve(fh);
     /* --BEGIN ERROR HANDLING-- */
@@ -71,6 +70,5 @@ int MPI_File_sync(MPI_File fh)
 #endif /* MPI_hpux */
  
 fn_exit:
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return error_code;
 }

@@ -48,8 +48,6 @@ int MPI_File_preallocate(MPI_File fh, MPI_Offset size)
 		  adio_fh, MPI_DATATYPE_NULL, -1);
 #endif /* MPI_hpux */
 
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
-
     adio_fh = MPIO_File_resolve(fh);
 
     /* --BEGIN ERROR HANDLING-- */
@@ -99,8 +97,6 @@ int MPI_File_preallocate(MPI_File fh, MPI_Offset size)
 
 
 fn_exit:
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
-
     /* TODO: bcast result? */
     if (!mynod) return error_code;
     else return MPI_SUCCESS;

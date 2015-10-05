@@ -30,11 +30,11 @@ MTEST_THREAD_RETURN_TYPE test_comm_dup(void *arg)
     int rank;
     int i;
     MPI_Request req;
+    MPI_Comm comm, self_dup;
 
     MPI_Comm_rank(comms[*(int *) arg], &rank);
 
     for (i = 0; i < NUM_ITER; i++) {
-        MPI_Comm comm, self_dup;
 
         if (*(int *) arg == rank) {
             MTestSleep(1);
@@ -58,12 +58,10 @@ MTEST_THREAD_RETURN_TYPE test_comm_dup(void *arg)
         if (verbose)
             printf("\t%d: Thread %d - comm_idup %d finish\n", rank, *(int *) arg, i);
     }
-
     if (verbose)
         printf("%d: Thread %d - Done.\n", rank, *(int *) arg);
     return (MTEST_THREAD_RETURN_TYPE) 0;
 }
-
 
 int main(int argc, char **argv)
 {
@@ -87,7 +85,6 @@ int main(int argc, char **argv)
         thread_args[i] = i;
         MTest_Start_thread(test_comm_dup, (void *) &thread_args[i]);
     }
-
     MTest_Join_threads();
 
     for (i = 0; i < NUM_THREADS; i++) {
@@ -98,6 +95,5 @@ int main(int argc, char **argv)
         printf(" No Errors\n");
 
     MPI_Finalize();
-
     return 0;
 }

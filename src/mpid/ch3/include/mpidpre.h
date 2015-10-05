@@ -19,12 +19,18 @@ struct MPID_Request;
 
 /* The maximum message size is the size of a pointer; this allows MPI_Aint 
    to be larger than a pointer */
-typedef MPIR_Pint MPIDI_msg_sz_t;
+typedef MPIU_Pint MPIDI_msg_sz_t;
 
 #include "mpid_dataloop.h"
 
 /* FIXME: Include here? */
 #include "opa_primitives.h"
+
+#include "mpid_thread.h"
+
+/* We simply use the fallback timer functionality and do not define
+ * our own */
+#include "mpid_timers_fallback.h"
 
 union MPIDI_CH3_Pkt;
 struct MPIDI_VC;
@@ -91,7 +97,7 @@ typedef MPIDI_Rank_t MPID_Node_id_t;
    information, which is beneficial for slower communication
    links. Further, this allows the total structure size to be 64 bits
    and the search operations can be optimized on 64-bit platforms. We
-   use a union of the actual required structure with a MPIR_Upint, so
+   use a union of the actual required structure with a MPIU_Upint, so
    in this optimized case, the "whole" field can be used for
    comparisons.
 
@@ -110,14 +116,14 @@ typedef MPIDI_Rank_t MPID_Node_id_t;
 typedef struct MPIDI_Message_match_parts {
     int32_t tag;
     MPIDI_Rank_t rank;
-    MPIR_Context_id_t context_id;
+    MPIU_Context_id_t context_id;
 #if defined(FINEGRAIN_MPI)
     MPIDI_Rank_t dest_rank;
 #endif
 } MPIDI_Message_match_parts_t;
 typedef union {
     MPIDI_Message_match_parts_t parts;
-    MPIR_Upint whole;
+    MPIU_Upint whole;
 } MPIDI_Message_match;
 
 /* Provides MPIDI_CH3_Pkt_t.  Must come after MPIDI_Message_match definition. */
@@ -339,9 +345,6 @@ typedef struct MPIDI_Win_basic_info {
     int num_targets_with_pending_net_ops; /* keep track of number of     \
                                              targets that has non-empty  \
                                              net pending op list. */     \
-    int active_req_cnt; /* keep track of number of active requests in    \
-                           current epoch, i.e., number of issued but     \
-                           incomplete RMA operations. */                 \
     int *start_ranks_in_win_grp;                                         \
     int start_grp_size;                                                  \
     int lock_all_assert;                                                 \
@@ -360,6 +363,9 @@ typedef struct MPIDI_Win_basic_info {
     struct MPID_Win *next;                                              \
 
 extern struct MPID_Win *MPIDI_RMA_Win_active_list_head, *MPIDI_RMA_Win_inactive_list_head;
+
+extern int MPIDI_CH3I_RMA_Active_req_cnt;
+extern int MPIDI_CH3I_RMA_Progress_hook_id;
 
 #ifdef MPIDI_CH3_WIN_DECL
 #define MPID_DEV_WIN_DECL \
@@ -397,7 +403,7 @@ typedef struct MPIDI_Request {
 
     /* iov and iov_count define the data to be transferred/received.  
        iov_offset points to the current head element in the IOV */
-    MPID_IOV iov[MPID_IOV_LIMIT];
+    MPL_IOV iov[MPL_IOV_LIMIT];
     int iov_count;
     size_t iov_offset;
 
@@ -460,7 +466,7 @@ typedef struct MPIDI_Request {
                         * and freed when release request. */
     MPIDI_msg_sz_t ext_hdr_sz;
 
-    struct MPIDI_RMA_Op *rma_op_ptr;
+    struct MPIDI_RMA_Target *rma_target_ptr;
 
     MPIDI_REQUEST_SEQNUM
 
@@ -503,6 +509,8 @@ MPID_REQUEST_DECL
 #   define MPID_PROGRESS_STATE_DECL int foo;
 #endif
 #endif
+
+#define MPID_DEV_GPID_DECL int gpid[2];
 
 /* Tell initthread to prepare a private comm_world */
 #define MPID_NEEDS_ICOMM_WORLD
