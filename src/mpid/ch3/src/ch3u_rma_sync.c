@@ -356,8 +356,7 @@ static inline int flush_local_all(MPID_Win * win_ptr)
     if (mpi_errno != MPI_SUCCESS)
         MPIR_ERR_POP(mpi_errno);
 
-    /* wait for remote completion for those targets that disable flush_local,
-     * and wait for local completion for other targets */
+    /* Wait for local completion */
     do {
         MPIDI_CH3I_RMA_ops_win_local_completion(win_ptr, local_completed);
 
@@ -604,6 +603,13 @@ int MPID_Win_fence(int assert, MPID_Win * win_ptr)
     }
     else {
         mpi_errno = flush_all(win_ptr);
+        if (mpi_errno != MPI_SUCCESS)
+            MPIR_ERR_POP(mpi_errno);
+    }
+
+    /* waiting for all outstanding ACKs */
+    while (win_ptr->outstanding_acks > 0) {
+        mpi_errno = wait_progress_engine();
         if (mpi_errno != MPI_SUCCESS)
             MPIR_ERR_POP(mpi_errno);
     }
@@ -1006,6 +1012,13 @@ int MPID_Win_complete(MPID_Win * win_ptr)
     mpi_errno = flush_local_all(win_ptr);
     if (mpi_errno != MPI_SUCCESS)
         MPIR_ERR_POP(mpi_errno);
+
+    /* waiting for all outstanding ACKs */
+    while (win_ptr->outstanding_acks > 0) {
+        mpi_errno = wait_progress_engine();
+        if (mpi_errno != MPI_SUCCESS)
+            MPIR_ERR_POP(mpi_errno);
+    }
 
     /* Cleanup all targets on this window. */
     mpi_errno = MPIDI_CH3I_RMA_Cleanup_targets_win(win_ptr);

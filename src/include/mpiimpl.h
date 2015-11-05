@@ -2181,14 +2181,12 @@ typedef struct MPICH_PerProcess_t {
 #if defined(FINEGRAIN_MPI)
 #define MPIR_Process ((struct StateWrapper*)(CO_CURRENT->statevars))->MPIR_ProcessFG
 
-#define MPIR_MAXID (1 << 30)
 #define context_mask (((struct StateWrapper*)(CO_CURRENT->statevars))->context_maskFG)
 #define initialize_context_mask (((struct StateWrapper*)(CO_CURRENT->statevars))->initialize_context_maskFG)
 #define mask_in_use (((struct StateWrapper*)(CO_CURRENT->statevars))->mask_in_useFG)
-#define lowest_context_id (((struct StateWrapper*)(CO_CURRENT->statevars))->lowest_context_idFG)
-#define lowest_tag (((struct StateWrapper*)(CO_CURRENT->statevars))->lowest_tagFG)
 #define eager_nelem (((struct StateWrapper*)(CO_CURRENT->statevars))->eager_nelemFG)
 #define eager_in_use (((struct StateWrapper*)(CO_CURRENT->statevars))->eager_in_useFG)
+#define next_gcn (((struct StateWrapper*)(CO_CURRENT->statevars))->next_gcnFG)
 
 extern int FGP_finalizations;
 
@@ -2212,11 +2210,9 @@ struct StateWrapper {
     unsigned int *context_maskFG;
     int initialize_context_maskFG;
     volatile int mask_in_useFG;
-    volatile int lowest_context_idFG;
-    volatile int lowest_tagFG;
     volatile int eager_nelemFG;
     volatile int eager_in_useFG;
-
+    struct gcn_state *next_gcnFG;
 };
 extern struct MPIDI_VCRT * vcrt_world; /* virtual connecton reference table for MPI_COMM_WORLD */
 

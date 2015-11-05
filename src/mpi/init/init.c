@@ -200,10 +200,9 @@ int MPI_Init( int *argc, char ***argv )
     context_mask = NULL; /* FG: This is allocated in context_id_init */
     initialize_context_mask = 1;
     mask_in_use = 0;
-    lowest_context_id = MPIR_MAXID;
-    lowest_tag = -1;
     eager_nelem = -1;
     eager_in_use = 0;
+    next_gcn = NULL;
 #endif
 
 
