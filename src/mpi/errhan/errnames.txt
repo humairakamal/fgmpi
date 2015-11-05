@@ -1588,8 +1588,10 @@ is too big (> MPIU_SHMW_GHND_SZ)
 **mpi_status_set_elements_x: MPI_Status_set_elements_x failed
 **mpi_status_set_elements_x %p %D %c: MPI_Status_set_elements_x(status=%p, datatype=%D, count=%c)
 
-## FG-MPI
+## FINEGRAIN-MPI
 **hshinsertfail: Insertion in hash failed
+**mpix_comm_translate_ranks: MPIX_Comm__translate_ranks failed
+**mpix_comm_translate_ranks %C %d %p %C %p:MPIX_Comm_translate_ranks(%C, n=%d, ranks1=%p, %C, ranks2=%p) failed
 
 # Datarep conversion function not supported by ROMIO (Temproary until implemented)
 **drconvnotsupported:Read and Write datarep conversions are currently not supported by MPI-IO

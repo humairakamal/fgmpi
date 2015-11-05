@@ -46,6 +46,11 @@ int MPIR_Comm_group_impl(MPID_Comm *comm_ptr, MPID_Group **group_ptr)
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         
         (*group_ptr)->is_local_dense_monotonic = TRUE;
+#if defined(FINEGRAIN_MPI)
+        (*group_ptr)->rtw_grp_map = comm_ptr->co_shared_vars->rtw_map;
+        (*group_ptr)->fgsize = comm_ptr->totprocs;
+        (*group_ptr)->p_rank = comm_ptr->p_rank;
+#else
 	for (i=0; i<n; i++) {
 	    (void) MPID_Comm_get_lpid( comm_ptr, i, &lpid, FALSE );
 	    (*group_ptr)->lrank_to_lpid[i].lpid  = lpid;
@@ -55,7 +60,7 @@ int MPIR_Comm_group_impl(MPID_Comm *comm_ptr, MPID_Group **group_ptr)
                 (*group_ptr)->is_local_dense_monotonic = FALSE;
             }
 	}
-
+#endif
 	(*group_ptr)->size		 = n;
         (*group_ptr)->rank		 = comm_ptr->rank;
         (*group_ptr)->idx_of_first_lpid = -1;
@@ -70,6 +75,10 @@ int MPIR_Comm_group_impl(MPID_Comm *comm_ptr, MPID_Group **group_ptr)
        communicators */
 
     MPIR_Group_add_ref( comm_ptr->local_group );
+#if defined(FINEGRAIN_MPI)
+    comm_ptr->local_group->ref_acrossCommGroup_countptr = comm_ptr->co_shared_vars->ref_acrossComm_countptr;
+    MPIR_Comm_add_coshared_group_ref( comm_ptr->local_group );
+#endif
 
  fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_COMM_GROUP_IMPL);

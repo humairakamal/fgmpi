@@ -12,7 +12,7 @@
 #endif
 
 /* Preallocated group objects */
-MPID_Group MPID_Group_builtin[MPID_GROUP_N_BUILTIN] = { {0} }; /* FG: TODO Double-check if FG related fields need initialization */
+MPID_Group MPID_Group_builtin[MPID_GROUP_N_BUILTIN] = { {0} };
 MPID_Group MPID_Group_direct[MPID_GROUP_PREALLOC] = { {0} };
 MPIU_Object_alloc_t MPID_Group_mem = { 0, 0, 0, 0, MPID_GROUP, 
 				      sizeof(MPID_Group), MPID_Group_direct,
@@ -32,6 +32,12 @@ int MPIR_Group_init(void)
     MPID_Group_builtin[0].rank = MPI_UNDEFINED;
     MPID_Group_builtin[0].idx_of_first_lpid = -1;
     MPID_Group_builtin[0].lrank_to_lpid = NULL;
+#if defined(FINEGRAIN_MPI)
+    MPID_Group_builtin[0].ref_acrossCommGroup_countptr = NULL;
+    MPID_Group_builtin[0].rtw_grp_map = NULL;
+    MPID_Group_builtin[0].fgsize = 0;
+    MPID_Group_builtin[0].p_rank = MPI_UNDEFINED;
+#endif
 
     /* TODO hook for device here? */
     return mpi_errno;
@@ -46,7 +52,9 @@ int MPIR_Group_release(MPID_Group *group_ptr)
     MPIR_Group_release_ref(group_ptr, &inuse);
     if (!inuse) {
         /* Only if refcount is 0 do we actually free. */
+#if !defined(FINEGRAIN_MPI)
         MPIU_Free(group_ptr->lrank_to_lpid);
+#endif
         MPIU_Handle_obj_free( &MPID_Group_mem, group_ptr );
     }
     return mpi_errno;
@@ -70,6 +78,7 @@ int MPIR_Group_create( int nproc, MPID_Group **new_group_ptr )
     }
     /* --END ERROR HANDLING-- */
     MPIU_Object_set_ref( *new_group_ptr, 1 );
+#if !defined(FINEGRAIN_MPI)
     (*new_group_ptr)->lrank_to_lpid = 
 	(MPID_Group_pmap_t *)MPIU_Malloc( nproc * sizeof(MPID_Group_pmap_t) );
     /* --BEGIN ERROR HANDLING-- */
@@ -81,6 +90,13 @@ int MPIR_Group_create( int nproc, MPID_Group **new_group_ptr )
 	return mpi_errno;
     }
     /* --END ERROR HANDLING-- */
+#else
+    MPIR_Comm_init_coshared_group_ref(*new_group_ptr); /* initializing to NULL */
+    (*new_group_ptr)->rtw_grp_map = NULL;
+    (*new_group_ptr)->fgsize = -1;
+    (*new_group_ptr)->p_rank = -1;
+#endif
+
     (*new_group_ptr)->size = nproc;
     /* Make sure that there is no question that the list of ranks sorted
        by pids is marked as uninitialized */
@@ -241,6 +257,7 @@ int MPIR_Group_check_valid_ranks( MPID_Group *group_ptr, const int ranks[], int 
 {
     int mpi_errno = MPI_SUCCESS, i;
 
+#if !defined(FINEGRAIN_MPI)
     for (i=0; i<group_ptr->size; i++) {
 	group_ptr->lrank_to_lpid[i].flag = 0;
     }
@@ -261,6 +278,17 @@ int MPIR_Group_check_valid_ranks( MPID_Group *group_ptr, const int ranks[], int 
 	}
 	group_ptr->lrank_to_lpid[ranks[i]].flag = i+1;
     }
+#else
+    for (i=0; i<n; i++) {
+	if (ranks[i] < 0 ||
+	    ranks[i] >= group_ptr->fgsize) {
+	    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_RANK,
+				      "**rankarray", "**rankarray %d %d %d",
+				      i, ranks[i], group_ptr->fgsize-1 );
+	    break;
+	}
+    }
+#endif
 
     return mpi_errno;
 }

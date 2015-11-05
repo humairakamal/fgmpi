@@ -1619,6 +1619,9 @@ static int MPID_nem_tcp_recv_handler(sockconn_t *const sc)
         if (!reqFn)
         {
             MPIU_Assert(MPIDI_Request_get_type(rreq) != MPIDI_REQUEST_TYPE_GET_RESP);
+#if defined(FINEGRAIN_MPI)
+            FG_Notify_on_event(rreq->dev.match.parts.dest_rank, UNBLOCK);
+#endif
             mpi_errno = MPID_Request_complete(rreq);
             if (mpi_errno != MPI_SUCCESS) {
                 MPIR_ERR_POP(mpi_errno);

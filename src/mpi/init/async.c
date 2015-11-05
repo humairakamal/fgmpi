@@ -78,6 +78,9 @@ static void progress_fn(void * data)
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Init_async_thread(void)
 {
+#if defined(FINEGRAIN_MPI)
+    return (MPI_SUCCESS);
+#endif
 #if MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_self_ptr;

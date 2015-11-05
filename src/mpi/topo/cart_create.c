@@ -53,9 +53,15 @@ int MPIR_Cart_create( MPID_Comm *comm_ptr, int ndims, const int dims[],
 	newsize *= dims[i];
 
     /* Use ERR_ARG instead of ERR_TOPOLOGY because there is no topology yet */
+#if defined(FINEGRAIN_MPI)
+    MPIR_ERR_CHKANDJUMP2((newsize > comm_ptr->totprocs), mpi_errno,
+			 MPI_ERR_ARG, "**cartdim",
+			 "**cartdim %d %d", comm_ptr->totprocs, newsize);
+#else
     MPIR_ERR_CHKANDJUMP2((newsize > comm_ptr->remote_size), mpi_errno, 
 			 MPI_ERR_ARG, "**cartdim",
 			 "**cartdim %d %d", comm_ptr->remote_size, newsize);
+#endif
 
     if (ndims == 0) {
 	/* specified as a 0D Cartesian topology in MPI 2.1. 

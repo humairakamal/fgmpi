@@ -1,8 +1,10 @@
-/**
+/*
+ *  (C) 2008 Humaira Kamal, The University of British Columbia.
+ *      See COPYRIGHT in top-level directory.
  *
  *  Schedulers : Round Robin, Inverse Round Robin, and Blocking.
  *
- **/
+ */
 
 #include "threadlib_internal.h"
 #include "util.h"

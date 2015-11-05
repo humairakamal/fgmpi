@@ -276,7 +276,7 @@ int MPIDI_CH3_RecvFromSelf( MPID_Request *rreq, void *buf, MPI_Aint count,
 }
 
 #if defined(FINEGRAIN_MPI)
-/* FG: TODO FOLLOWING FUNCTIONS
+/* FG: TODO ZEROCOPY FOLLOWING FUNCTIONS
 void MPIDI_CH3U_Buffer_allocate(
     const void * const sbuf, int scount, MPI_Datatype sdt, int * smpi_errno,
     void ** rbuf_handle, int rcount, MPI_Datatype rdt, MPIDI_msg_sz_t * rsz,

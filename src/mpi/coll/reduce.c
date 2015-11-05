@@ -844,7 +844,9 @@ int MPIR_Reduce_intra (
                     MPIR_ERR_SET(mpi_errno, *errflag, "**fail");
                     MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
                 }
+#if defined(FINEGRAIN_MPI)
                 did_reduce = 1;
+#endif
             }
             else { /* I am on root's node. I have not participated in the earlier reduce. */
                 if (comm_ptr->rank != root) {
@@ -869,7 +871,9 @@ int MPIR_Reduce_intra (
                         MPIR_ERR_SET(mpi_errno, *errflag, "**fail");
                         MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
                     }
+#if defined(FINEGRAIN_MPI)
                     did_reduce = 1;
+#endif
                     /* point sendbuf at tmp_buf to make final intranode reduce easy */
                     sendbuf = tmp_buf;
                 }
@@ -884,7 +888,9 @@ int MPIR_Reduce_intra (
                         MPIR_ERR_SET(mpi_errno, *errflag, "**fail");
                         MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
                     }
+#if defined(FINEGRAIN_MPI)
                     did_reduce = 1;
+#endif
                     /* set sendbuf to MPI_IN_PLACE to make final intranode reduce easy. */
                     sendbuf = MPI_IN_PLACE;
                 }

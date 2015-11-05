@@ -68,9 +68,12 @@ int MPI_Initialized( int *flag )
 #   endif /* HAVE_ERROR_CHECKING */
 
     /* ... body of routine ...  */
-    
+
+#if defined(FINEGRAIN_MPI)
+    *flag = (FGP_init_state == FGP_ALL_POST_INIT);
+#else
     *flag = (OPA_load_int(&MPIR_Process.mpich_state) >= MPICH_POST_INIT);
-    
+#endif
     /* ... end of body of routine ... */
 
 #ifdef HAVE_ERROR_CHECKING

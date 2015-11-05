@@ -260,7 +260,7 @@ int MPIR_Scan(
 
     MPID_Datatype_get_extent_macro(datatype, extent);
 
-    MPIUEnsure_Aint_fits_in_pointer(count * MPIR_MAX(extent, true_extent));
+    MPIU_Ensure_Aint_fits_in_pointer(count * MPIR_MAX(extent, true_extent));
 
     MPIU_CHKLMEM_MALLOC(tempbuf, void *, count*(MPIR_MAX(extent, true_extent)),
                         mpi_errno, "temporary buffer");

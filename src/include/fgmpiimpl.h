@@ -44,12 +44,10 @@ extern void* FG_Scheduler_progress_loop(void* args);
 
 
 
-
-//#define MPID_NEM_USE_LOCK_FREE_QUEUES /* FG: TODO */
-
 #if !defined(COMP_MAP)
 #define ARRAY_MAP 1
 #endif
+
 
 #if defined(ARRAY_MAP)
  typedef int RTWmap;
@@ -58,11 +56,12 @@ extern void* FG_Scheduler_progress_loop(void* args);
  #define RTWmapInsert RTWarrayInsert
  #define RTWmapBlockInsert RTWarrayBlockInsert
  #define RTWmapFind RTWarrayFind
- /* HK: rtw_map_dptr  is a double ptr to RTWmap */
+ 
  #define RTWmapKill(_rtw_map_dptr) {                         \
             RTWarrayKill((RTWmap*)(*_rtw_map_dptr));         \
             *(_rtw_map_dptr) = NULL;                     }
- #define RTWmapFindLeader RTWarrayFindLeader /* TODO special case for MPI_WORLD_COMM  */
+
+#define RTWmapFindLeader(map,size) ((map == worldcomm_rtw_map) ? 0 : RTWarrayFindLeader(map, size))
 
 #elif defined(COMP_MAP)
 #include "compmap.h"
@@ -72,11 +71,11 @@ extern void* FG_Scheduler_progress_loop(void* args);
  #define RTWmapInsert
  #define RTWmapBlockInsert  RTWCompMapBlockInsert
  #define RTWmapFind         RTWCompMapFind
- /* HK: rtw_map_dptr  is a double ptr to RTWmap */
+
  #define RTWmapKill(_rtw_map_dptr) {                         \
             RTWCompMapKill((RTWmap*)(*_rtw_map_dptr));       \
             *(_rtw_map_dptr) = NULL;                     }
- #define RTWmapFindLeader   RTWCompMapFindLeader /* TODO special case for MPI_WORLD_COMM */
+ #define RTWmapFindLeader   RTWCompMapFindLeader /* FG: TODO special case for MPI_WORLD_COMM */
 
 #else
  /* Default is always HASHMAP. In case no other representation is defined,
@@ -88,15 +87,15 @@ extern void* FG_Scheduler_progress_loop(void* args);
  #define RTWmapInsert RTWhashInsert
  #define RTWmapBlockInsert RTWhashBlockInsert
  #define RTWmapFind RTWhashFind
- /* HK: rtw_map_dptr  is a double ptr to RTWmap*/
+
  #define RTWmapKill(_rtw_map_dptr) {                         \
             hshkill((RTWmap*)(*_rtw_map_dptr));              \
             *(_rtw_map_dptr) = NULL;                     }
- #define RTWmapFindLeader RTWhashFindLeader /* TODO special case for MPI_WORLD_COMM */
- #define RTWmapDuplicate RTWhashDuplicate  /* TODO special case for MPI_WORLD_COMM */
+ #define RTWmapFindLeader RTWhashFindLeader /* FG: TODO special case for MPI_WORLD_COMM */
+ #define RTWmapDuplicate RTWhashDuplicate  /* FG: TODO special case for MPI_WORLD_COMM */
 #endif
 
-
+extern RTWmap *worldcomm_rtw_map;
 
 extern int curr_fgrank;
 extern int PMI_totprocs;
@@ -115,12 +114,12 @@ typedef struct coproclet_barrier_vars {
 
 
 typedef struct Coproclet_shared_vars {
-    int *ref_withinComm_countptr; /* HK: This is for variables shared amongst collocated
-                          proclets but not shared across communicators through e.g., MPI_Comm_dup */
-    int *ref_acrossComm_countptr; /* HK: This is for variables shared amongst collocated
-                          proclets as well as shared across communicators through e.g., MPI_Comm_dup
+    int *ref_withinComm_countptr; /* This is for variables shared among colocated
+                          processes but not shared across communicators through e.g., MPI_Comm_dup */
+    int *ref_acrossComm_countptr; /* This is for variables shared among colocated
+                          processes as well as shared across communicators through e.g., MPI_Comm_dup
                           Making this a pointer so that it can be shared in MPIR_Comm_copy() */
-    RTWmap *rtw_map;      /* HK: This rtw_map provides mapping from local fgrank in this
+    RTWmap *rtw_map;      /* This rtw_map provides mapping from local fgrank in this
                              communicator to the MPI_COMM_WORLD rank (referred to as worldrank). */
     ptn_comm_tables_hash_t *ptn_hash;
 
@@ -185,15 +184,12 @@ typedef struct Coproclet_shared_vars {
         MPIR_Comm_release_coshared_acrossComm_ref( _coshared_vars, inuse_acrossComm_ptr ); }
 
 
-//void MPIR_Coshared_group_release(MPID_Group *group_ptr);  // FG: TODO
 
-
-/* HK: pid_to_fgps is a 1-many mapping from the HWP pid to the FG worldranks in MPI_COMM_WORLD. */
+/* pid_to_fgps is a 1-many mapping from the HWP pid to the FG worldranks in MPI_COMM_WORLD. */
 extern FGP_tuple_t *pid_to_fgps;
-extern RTWmap *worldcomm_rtw_map;
 extern hshtbl *contextLeader_hshtbl; /* This will remain a hashtable. */
 extern struct coproclet_barrier_vars *worldcomm_barrier_vars;
-extern hshtbl *cidLookup_hshtbl;          /* HK: This is the new cid lookup hashtable that will be used with
+extern hshtbl *cidLookup_hshtbl;          /* cid lookup hashtable that will be used with
                                              the new CID = <LID,LBI> algorithm. */
 extern Coproclet_shared_vars_t * world_co_shared_vars;
 

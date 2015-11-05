@@ -79,14 +79,7 @@ int MPI_Waitany(int count, MPI_Request array_of_requests[], int *indx,
     int found_nonnull_req;
     int last_disabled_anysource = -1;
     int mpi_errno = MPI_SUCCESS;
-#if defined(FINEGRAIN_MPI)
-    MPIDI_Rank_t reqrank = -1;
-    MPID_Comm *comm_ptr = NULL;
-    int atleast_one_is_colocated = 0;
-    int all_active_reqs_are_recv = 1;
-    int is_colocated = 0;
-    int num_of_colocated_yields = 0;
-#endif
+
     MPIU_CHKLMEM_DECL(1);
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_WAITANY);
 
@@ -153,25 +146,6 @@ int MPI_Waitany(int count, MPI_Request array_of_requests[], int *indx,
                         MPID_END_ERROR_CHECKS;
                     }
 #endif	    
-#if defined(FINEGRAIN_MPI)
-                    /* The persistent request check is to avoid the situation where
-                       a null request_ptr may be accessed. Note that the request_ptr
-                       can later be set to null if active_flag is FALSE */
-                    is_colocated = 0;
-                    if ( (request_ptrs[i]->kind != MPID_PREQUEST_SEND) &&
-                         (request_ptrs[i]->kind != MPID_PREQUEST_RECV) ) {
-                        comm_ptr = request_ptrs[i]->comm;
-                        MPIU_Assert(comm_ptr != NULL);
-                        reqrank = request_ptrs[i]->dev.match.parts.rank; /* FG:TODO IMPORTANT Doublecheck */
-                        is_colocated = (reqrank != MPI_ANY_SOURCE) ? Is_within_same_HWP(reqrank, comm_ptr, NULL) : 0;
-                        if ( !atleast_one_is_colocated && is_colocated ) {
-                            atleast_one_is_colocated = 1;
-                        }
-                    }
-                    if ( request_ptrs[i]->kind != MPID_REQUEST_RECV )  {
-                        all_active_reqs_are_recv = 0;
-                    }
-#endif
                 }
                 else
                 {
@@ -218,7 +192,7 @@ int MPI_Waitany(int count, MPI_Request array_of_requests[], int *indx,
 		}
             } else if (unlikely(MPIR_CVAR_ENABLE_FT &&
                         MPID_Request_is_anysource(request_ptrs[i]) &&
-                        !MPID_Comm_AS_enabled(request_ptrs[i]->comm))) { /* FG: TODO Double-check */
+                        !MPID_Comm_AS_enabled(request_ptrs[i]->comm))) {
                 last_disabled_anysource = i;
             }
 	}
@@ -242,31 +216,8 @@ int MPI_Waitany(int count, MPI_Request array_of_requests[], int *indx,
             goto fn_progress_end_fail;
         }
 
-#if defined(FINEGRAIN_MPI)
-        if ( atleast_one_is_colocated && all_active_reqs_are_recv &&
-             (num_of_colocated_yields < MAX_COLOCATED_YIELDS) ) {
-            num_of_colocated_yields++;
-            scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
-            FG_Yield_on_event(tye);
-        }
-        else if ( atleast_one_is_colocated && (num_of_colocated_yields < MAX_COLOCATED_YIELDS)) {
-            num_of_colocated_yields++;
-            FG_Yield();
-        } else {
-            if (all_active_reqs_are_recv) {
-                scheduler_event tye = {my_fgrank, RECV, BLOCK, NULL};
-                FG_Yield_on_event(tye);
-            } else {
-                FG_Yield();
-            }
-
-            mpi_errno = MPID_Progress_wait(&progress_state);
-            if (mpi_errno != MPI_SUCCESS) goto fn_progress_end_fail;
-        }
-#else
 	mpi_errno = MPID_Progress_wait(&progress_state);
 	if (mpi_errno != MPI_SUCCESS) goto fn_progress_end_fail;
-#endif
     }
   break_l1:
     MPID_Progress_end(&progress_state);

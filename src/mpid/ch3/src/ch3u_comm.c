@@ -328,13 +328,15 @@ int MPIDI_CH3I_Comm_destroy_hook(MPID_Comm *comm)
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_COMM_DESTROY_HOOK);
 
-    MPL_LL_FOREACH(destroy_hooks_head, elt) {
+    MPL_LL_FOREACH(destroy_hooks_head, elt) { /* FG: TODO Double-check */
         mpi_errno = elt->hook_fn(comm, elt->param);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     }
 
+#if !defined(FINEGRAIN_MPI)
     mpi_errno = MPIDI_VCRT_Release(comm->dev.vcrt, comm->dev.is_disconnected);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+#endif
 
     if (comm->comm_kind == MPID_INTERCOMM) {
         mpi_errno = MPIDI_VCRT_Release(comm->dev.local_vcrt, comm->dev.is_disconnected);
@@ -455,7 +457,7 @@ int comm_created(MPID_Comm *comm, void *param)
     /* Initialize the last acked failure to -1 */
     comm->dev.last_ack_rank = -1;
 
-#if !defined(FINEGRAIN_MPI) /* FG: TODO. This is temporary. Not
+#if !defined(FINEGRAIN_MPI) /* FG: TODO. This is temporary bypass COMM_ADD. Not
                                scalable. Need to add reference
                                counting? if that communicator has
                                already been added to the list */
@@ -480,7 +482,7 @@ int comm_destroyed(MPID_Comm *comm, void *param)
 
     MPIDI_FUNC_ENTER(MPID_STATE_COMM_DESTROYED);
 
-#if !defined(FINEGRAIN_MPI) /* FG: TODO. This is temporary. Need to subtract through
+#if !defined(FINEGRAIN_MPI) /* FG: TODO. This is temporary bypass COMM_DEL. Need to subtract through
                                reference counts corresponding to COMM_ADD() in comm_created() */
     COMM_DEL(comm);
 #endif
@@ -502,6 +504,9 @@ int comm_destroyed(MPID_Comm *comm, void *param)
 #define FCNAME MPL_QUOTE(FUNCNAME)
 static int nonempty_intersection(MPID_Comm *comm, MPID_Group *group, int *flag)
 {
+#if defined(FINEGRAIN_MPI)
+    return (MPI_SUCCESS);
+#endif
     int mpi_errno = MPI_SUCCESS;
     int i_g, i_c;
     MPIDI_VC_t *vc_g, *vc_c;
@@ -562,7 +567,7 @@ int MPIDI_CH3I_Comm_handle_failed_procs(MPID_Group *new_failed_procs)
         if (!comm->dev.anysource_enabled)
             continue;
 
-        mpi_errno = nonempty_intersection(comm, new_failed_procs, &flag); /* FG: TODO uses group->lrank_to_pid */
+        mpi_errno = nonempty_intersection(comm, new_failed_procs, &flag); /* FG: TODO Temporary bypass. Uses group->lrank_to_pid */
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
         if (flag) {
@@ -585,8 +590,7 @@ int MPIDI_CH3I_Comm_handle_failed_procs(MPID_Group *new_failed_procs)
 }
 
 /* FG: TODO MPIDI_CH3I_Comm_find() will not work with MPICH context_id
-since it is not unique among two disjoint colocated
-communicators. Check: Need leader_wid as well */
+since it is not unique among two disjoint colocated communicators */
 void MPIDI_CH3I_Comm_find(MPIU_Context_id_t context_id, MPID_Comm **comm)
 {
     MPIDI_STATE_DECL(MPIDI_STATE_MPIDI_CH3I_COMM_FIND);

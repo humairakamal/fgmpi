@@ -451,7 +451,10 @@ typedef struct MPIR_Comm_list {
 MPIR_Comm_list MPIR_All_communicators = { 0, 0 }; /* FG: TODO Make per FGP */
 
 void MPIR_CommL_remember( MPID_Comm *comm_ptr )
-{   
+{
+#if defined(FINEGRAIN_MPI) /* FG: TODO Temporary bypass */
+    return;
+#endif
     MPIU_DBG_MSG_P(COMM,VERBOSE,
 		   "Adding communicator %p to remember list",comm_ptr);
     MPIU_DBG_MSG_P(COMM,VERBOSE,
@@ -472,6 +475,10 @@ void MPIR_CommL_remember( MPID_Comm *comm_ptr )
 
 void MPIR_CommL_forget( MPID_Comm *comm_ptr )
 {
+#if defined(FINEGRAIN_MPI) /* FG: TODO Temporary bypass */
+    return;
+#endif
+
     MPID_Comm *p, *prev;
 
     MPIU_DBG_MSG_P(COMM,VERBOSE,

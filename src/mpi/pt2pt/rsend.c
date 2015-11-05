@@ -130,7 +130,7 @@ int MPI_Rsend(const void *buf, int count, MPI_Datatype datatype, int dest, int t
 
 #if defined(FINEGRAIN_MPI)
     mpi_errno = MPIR_Progress_wait_send_request(comm_ptr, dest, request_ptr);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 #else
     /* If a request was returned, then we need to block until the request 
        is complete */

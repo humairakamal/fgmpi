@@ -170,6 +170,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     
     /* FIXME: Why are pg_size and pg_rank handled differently? */
     pg_size = MPIDI_PG_Get_size(pg);
+
 #if defined(FINEGRAIN_MPI)
   if(FGP_WITHIN_INIT == FGP_init_state)
   {
@@ -187,7 +188,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     int totprocs;
     PMI_Get_totprocs(&totprocs);
 
-    world_co_shared_vars = (Coproclet_shared_vars_t *)MPIU_Malloc(sizeof(Coproclet_shared_vars_t));
+    world_co_shared_vars = (Coproclet_shared_vars_t *)MPIU_Calloc(1, sizeof(Coproclet_shared_vars_t));
     MPIR_Comm_init_coshared_all_ref(world_co_shared_vars);
 
     worldcomm_rtw_map = NULL;
@@ -204,6 +205,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     worldcomm_barrier_vars->coproclet_counter = 0;
     worldcomm_barrier_vars->leader_signal = 0;
     world_co_shared_vars->co_barrier_vars = worldcomm_barrier_vars;
+
 
     contextLeader_hshtbl = NULL;
     contextLeader_hshtbl = CL_LookupHashCreate(); /* FG: This is the hash type used for context_id leader
@@ -224,7 +226,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     MPIU_Assert(stored);
     stored = NULL;
     comm = MPIR_Process.comm_self;
-    CidLookupHashInsert(cidLookup_hshtbl, comm->context_id, world_co_shared_vars, &stored);
+    CidLookupHashInsert(cidLookup_hshtbl, comm->context_id, world_co_shared_vars, &stored); /* FG: TODO FIX MPI_COMM_SELF */
     MPIU_Assert(stored);
     stored = NULL;
     comm = MPIR_Process.icomm_world;
@@ -239,7 +241,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     cLstored = NULL;
     comm_leader_worldrank = 0;
     comm = MPIR_Process.comm_self;
-    CL_LookupHashInsert(contextLeader_hshtbl, comm->context_id, comm_leader_worldrank, world_co_shared_vars, &cLstored);
+    CL_LookupHashInsert(contextLeader_hshtbl, comm->context_id, comm_leader_worldrank, world_co_shared_vars, &cLstored); /* FG: TODO FIX MPI_COMM_SELF */
     MPIU_Assert(cLstored);
     cLstored = NULL;
     comm_leader_worldrank = 0;
@@ -280,6 +282,10 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     /* setup receive queue statistics */
     mpi_errno = MPIDI_CH3U_Recvq_init();
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+
+    /* Ask channel to expose Window packet ordering. */
+    MPIDI_CH3_Win_pkt_orderings_init(&MPIDI_CH3U_Win_pkt_orderings);
+
 #if defined(FINEGRAIN_MPI)
   }
   else {
@@ -287,8 +293,6 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
   }
 #endif
 
-    /* Ask channel to expose Window packet ordering. */
-    MPIDI_CH3_Win_pkt_orderings_init(&MPIDI_CH3U_Win_pkt_orderings);
 
     /*
      * Initialize the MPI_COMM_WORLD object
@@ -307,6 +311,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     comm->rank = my_fgrank;
     PMI_Get_totprocs(&(comm->totprocs));
     comm->co_shared_vars = world_co_shared_vars;
+    comm->leader_worldrank = 0;
 #endif
 
 #if defined(FINEGRAIN_MPI)
@@ -328,7 +333,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     MPIU_Assert( (vcrt_world != NULL) );
     comm->dev.vcrt = vcrt_world;
 
-    mpi_errno = MPIR_Comm_commit(comm); /*FG: TODO Check all places it is called in MPI_Init */
+    mpi_errno = MPIR_Comm_commit(comm);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
 #else
@@ -365,7 +370,8 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 #if defined(FINEGRAIN_MPI)
     comm->rank = 0;
     comm->totprocs = 1;
-    comm->co_shared_vars = NULL; /* FG: TODO FIX Double-check */
+    comm->co_shared_vars = world_co_shared_vars; /* FG: TODO FIX MPI_COMM_SELF */
+    comm->leader_worldrank = 0; /* FG: TODO FIX MPI_COMM_SELF should be my_fgrank */
 #endif
     
     mpi_errno = MPIDI_VCRT_Create(comm->remote_size, &comm->dev.vcrt);
@@ -377,8 +383,10 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     
     MPIDI_VCR_Dup(&pg->vct[pg_rank], &comm->dev.vcrt->vcr_table[0]);
 
-    //    mpi_errno = MPIR_Comm_commit(comm); /* FG:TODO IMPORTANT comm_self needs comm->co_shared_vars */
+#if !defined(FINEGRAIN_MPI)
+    mpi_errno = MPIR_Comm_commit(comm); /* FG: TODO FIX MPI_COMM_SELF */
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+#endif
 
     /* Currently, mpidpre.h always defines MPID_NEEDS_ICOMM_WORLD. */
 #ifdef MPID_NEEDS_ICOMM_WORLD
@@ -399,11 +407,16 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     comm->rank = my_fgrank;
     PMI_Get_totprocs(&(comm->totprocs));
     comm->co_shared_vars = world_co_shared_vars;
+    comm->leader_worldrank = 0;
 #endif
     MPIDI_VCRT_Add_ref( MPIR_Process.comm_world->dev.vcrt );
     comm->dev.vcrt = MPIR_Process.comm_world->dev.vcrt;
-    
-    //mpi_errno = MPIR_Comm_commit(comm); /* FG: TODO IMPORTANT */
+
+#if defined(FINEGRAIN_MPI)
+    mpi_errno = MPIR_Comm_share_commit(MPIR_Process.comm_world, comm);
+#else
+    mpi_errno = MPIR_Comm_commit(comm);
+#endif
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 #endif
 
@@ -411,15 +424,13 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 #if defined(FINEGRAIN_MPI)
     if(FGP_WITHIN_INIT == FGP_init_state)
     {
-
-        /* HK: Creating an array of pre-posted receive requests */
+        /* Creating an array of pre-posted receive requests */
         int numfgps;
         MPIX_Get_collocated_size(&numfgps);
         FG_recvq_posted_head = (MPID_Request **)MPIU_Calloc(numfgps, sizeof(MPID_Request *));
         FG_recvq_posted_tail = (MPID_Request **)MPIU_Calloc(numfgps, sizeof(MPID_Request *));
         FG_recvq_unexpected_head = (MPID_Request **)MPIU_Calloc(numfgps, sizeof(MPID_Request *));
         FG_recvq_unexpected_tail = (MPID_Request **)MPIU_Calloc(numfgps, sizeof(MPID_Request *));
-
     }
 #endif
 
@@ -497,7 +508,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
   }
 #endif
 
-#if !defined(FINEGRAIN_MPI) /* FG: TODO? */
+#if !defined(FINEGRAIN_MPI) /* FG: TODO? MPIDI_RMA_init() */
     mpi_errno = MPIDI_RMA_init();
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 #endif

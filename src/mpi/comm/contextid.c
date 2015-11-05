@@ -39,8 +39,10 @@ cvars:
  * Both the threaded and non-threaded routines use the same mask of
  * available context id values.
  */
+#if !defined(FINEGRAIN_MPI)
 static uint32_t context_mask[MPIR_MAX_CONTEXT_MASK];
 static int initialize_context_mask = 1;
+#endif
 const int ALL_OWN_MASK_FLAG = MPIR_MAX_CONTEXT_MASK;
 
 /* utility function to pretty print a context ID for debugging purposes, see
@@ -93,7 +95,7 @@ static void dump_context_id(MPIU_Context_id_t context_id, char *out_str, int len
  */
 static char *context_mask_to_str(void)
 {
-    static char bufstr[MPIR_MAX_CONTEXT_MASK * 8 + 1];
+    static char bufstr[MPIR_MAX_CONTEXT_MASK * 8 + 1]; /* FG: TODO */
     int i;
     int maxset = 0;
 
@@ -163,6 +165,12 @@ static void context_id_init(void)
 {
     int i;
 
+#if defined(FINEGRAIN_MPI)
+    MPIU_Assert (NULL == context_mask);
+    context_mask = (uint32_t *)MPIU_Malloc(MPIR_MAX_CONTEXT_MASK * sizeof(uint32_t));
+    MPIU_Assert (NULL != context_mask);
+#endif
+
     for (i = 1; i < MPIR_MAX_CONTEXT_MASK; i++) {
         context_mask[i] = 0xFFFFFFFF;
     }
@@ -179,7 +187,7 @@ static void context_id_init(void)
 #ifdef MPICH_DEBUG_HANDLEALLOC
     /* check for context ID leaks in MPI_Finalize.  Use (_PRIO-1) to make sure
      * that we run after MPID_Finalize. */
-    MPIR_Add_finalize(check_context_ids_on_finalize, context_mask, MPIR_FINALIZE_CALLBACK_PRIO - 1);
+    MPIR_Add_finalize(check_context_ids_on_finalize, context_mask, MPIR_FINALIZE_CALLBACK_PRIO - 1); /* FG: TODO IMPORTANT */
 #endif
 }
 
@@ -274,13 +282,16 @@ static int find_and_allocate_context_id(uint32_t local_mask[])
  * They are used to avoid deadlock in multi-threaded case. In single-threaded
  * case, they are not used.
  */
+#if !defined(FINEGRAIN_MPI)
 static volatile int eager_nelem = -1;
 static volatile int eager_in_use = 0;
+#endif
 
 /* In multi-threaded case, mask_in_use is used to maintain thread safety. In
  * single-threaded case, it is always 0. */
+#if !defined(FINEGRAIN_MPI)
 static volatile int mask_in_use = 0;
-
+#endif
 /* In multi-threaded case, lowest_context_id is used to prioritize access when
  * multiple threads are contending for the mask, lowest_tag is used to break
  * ties when MPI_Comm_create_group is invoked my multiple threads on the same
@@ -288,9 +299,11 @@ static volatile int mask_in_use = 0;
  * set to parent context id in sched_cb_gcn_copy_mask and lowest_tag is not
  * used.
  */
+#if !defined(FINEGRAIN_MPI)
 #define MPIR_MAXID (1 << 30)
 static volatile int lowest_context_id = MPIR_MAXID;
 static volatile int lowest_tag = -1;
+#endif
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Get_contextid_sparse
@@ -475,7 +488,7 @@ int MPIR_Get_contextid_sparse_group(MPID_Comm * comm_ptr, MPID_Group * group_ptr
                 /* FIXME: Do we need to do an GLOBAL yield here?
                  * When we do a collective operation, we anyway yield
                  * for other others */
-                MPID_THREAD_CS_YIELD(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX);
+                MPID_THREAD_CS_YIELD(GLOBAL, MPIR_THREAD_GLOBAL_ALLFUNC_MUTEX); /* FG: TODO Double-check */
                 MPID_THREAD_CS_YIELD(POBJ, MPIR_THREAD_POBJ_CTX_MUTEX);
             }
         }

@@ -245,22 +245,18 @@ static int is_Within(int rank, int start_fgrank, int numfgps)
     else {
         MPL_internal_error_printf("Error: In is_Within(). This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);
         MPID_Abort(NULL, MPI_SUCCESS, -1, NULL);
-        MPL_exit(-1); /* HK: If for some reason MPID_Abort returns, exit here. */
+        MPL_exit(-1); /* If for some reason MPID_Abort returns, exit here. */
     }
 }
 
 
-/* HK: For binary search the fg_startrank in pid_to_fgps array must sorted. TODO double-check
+/* For binary search the fg_startrank in pid_to_fgps array must sorted.
  */
 int _FGworldrank_to_pid(const int fgwrank, int *pid_ptr)
 {
     int low, high, mid;
     int pid_size;
-    PMI_Get_size(&pid_size); /* HK: Getting the number of HWPs.
-                                  TODO Should we have keep getter functions for the number of HWPs and
-                                  the totprocs etc, or access the global variables directly for efficiency?
-                                  Getter functions are better for encapsulation.
-                               */
+    PMI_Get_size(&pid_size); /* number of HWPs */
 
     low = 0;
     high = pid_size - 1;
@@ -275,7 +271,7 @@ int _FGworldrank_to_pid(const int fgwrank, int *pid_ptr)
         else
         {
               *pid_ptr = mid;
-              MPIU_Assert((*pid_ptr) >=0); /* HK: TODO Comment this out to avoid unnecessary overhead. */
+              MPIU_Assert((*pid_ptr) >=0);
               return MPI_SUCCESS;  /* found */
         }
     }
@@ -283,7 +279,7 @@ int _FGworldrank_to_pid(const int fgwrank, int *pid_ptr)
 
 }
 
-/* HK: Takes a FGworldrank as parameter returns its HWP rank (pid) for  MPI_COMM_WORLD only. */
+/* Takes a FGworldrank as parameter returns its HWP rank (pid) for  MPI_COMM_WORLD only. */
 int FGworldrank_to_pid(int FG_worldrank)
 {
     int pid, reterr;
@@ -292,7 +288,7 @@ int FGworldrank_to_pid(int FG_worldrank)
     {
         MPL_internal_error_printf("Error: No pid found for worldrank=%d. This part of code should not be reached in file %s at line %d\n", FG_worldrank, __FILE__, __LINE__);
         MPID_Abort(NULL, MPI_SUCCESS, -1, NULL);
-        MPL_exit(-1); /* HK: If for some reason MPID_Abort returns, exit here. */
+        MPL_exit(-1); /* If for some reason MPID_Abort returns, exit here. */
     }
     return pid;
 }

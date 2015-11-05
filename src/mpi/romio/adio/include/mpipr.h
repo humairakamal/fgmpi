@@ -329,6 +329,22 @@
 #undef MPI_Status_set_elements
 #define MPI_Status_set_elements PMPI_Status_set_elements
 
+#if defined(FINEGRAIN_MPI)
+/*
+#undef MPIX_Zsend
+#define MPIX_Zsend PMPIX_Zsend
+#undef MPIX_Izsend
+#define MPIX_Izsend PMPIX_Izsend
+
+#undef MPIX_Zrecv
+#define MPIX_Zrecv PMPIX_Zrecv
+#undef MPIX_Izrecv
+#define MPIX_Izrecv PMPIX_Izrecv
+*/
+#undef MPIX_Comm_translate_ranks
+#define MPIX_Comm_translate_ranks PMPIX_Comm_translate_ranks
+#endif
+
 #ifndef HAVE_MPI_INFO_SRC  /* everywhere except in info source directory */
 #undef MPI_Info_create
 #define MPI_Info_create PMPI_Info_create

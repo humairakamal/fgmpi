@@ -197,7 +197,13 @@ int MPI_Init( int *argc, char ***argv )
     /* ... body of routine ... */
 
 #if defined(FINEGRAIN_MPI)
-    /* FG: TODO IMPORTANT initialization of context-id related variables */
+    context_mask = NULL; /* FG: This is allocated in context_id_init */
+    initialize_context_mask = 1;
+    mask_in_use = 0;
+    lowest_context_id = MPIR_MAXID;
+    lowest_tag = -1;
+    eager_nelem = -1;
+    eager_in_use = 0;
 #endif
 
 
@@ -243,7 +249,7 @@ int MPI_Init( int *argc, char ***argv )
 #endif
     if (MPIR_CVAR_ASYNC_PROGRESS) {
         if (provided == MPI_THREAD_MULTIPLE) {
-            mpi_errno = MPIR_Init_async_thread(); /* FG: TODO duplicates COMM_SELF */
+            mpi_errno = MPIR_Init_async_thread(); /* FG: Temporary bypass inside */
             if (mpi_errno) goto fn_fail;
 
             MPIR_async_thread_initialized = 1;

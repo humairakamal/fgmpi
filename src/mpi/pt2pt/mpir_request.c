@@ -22,7 +22,7 @@ int FG_Yield_on_incomplete_request(MPID_Request *req)
     return (MPI_SUCCESS);
 }
 
-int MPIR_Progress_wait_send_request(MPID_Comm *comm_ptr, int dest, MPID_Request *request_ptr) /* FG: TODO Doublecheck all places it is called */
+int MPIR_Progress_wait_send_request(MPID_Comm *comm_ptr, int dest, MPID_Request *request_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
 
@@ -46,8 +46,6 @@ int MPIR_Progress_wait_send_request(MPID_Comm *comm_ptr, int dest, MPID_Request 
                     /* --END ERROR HANDLING-- */
                 }
 
-                /* FG: TODO Remove? The following is likely ineffective and is not
-                   being called because there is a FG_Yield() inside MPIDI_CH3I_Progress(). */
                 if ( !MPID_Request_is_complete(request_ptr) ) {
                     FG_Yield();
                 }

@@ -1,3 +1,10 @@
+/*
+ *  (C) 2008 Humaira Kamal, The University of British Columbia.
+ *      See COPYRIGHT in top-level directory.
+ *      Part of this code was derived from the Capriccio source
+ *      at http://capriccio.cs.berkeley.edu/
+ */
+
 #ifndef THREADLIB_INTERNAL_H
 #define THREADLIB_INTERNAL_H
 

@@ -74,7 +74,7 @@ static MPID_Request * recvq_unexpected_tail = 0;
  * access the message queues.
  */
 #ifdef HAVE_DEBUGGER_SUPPORT
-#if defined(FINEGRAIN_MPI) /* FG: TODO */
+#if defined(FINEGRAIN_MPI) /* FG: TODO MPID_Recvq_posted/unexpected_head_ptr */
 MPID_Request ** const MPID_Recvq_posted_head_ptr     = NULL;
 MPID_Request ** const MPID_Recvq_unexpected_head_ptr = NULL;
 #else
@@ -976,7 +976,7 @@ MPID_Request * MPIDI_CH3U_Recvq_FDP_or_AEU(MPIDI_Message_match * match,
 
             /* Give channel a chance to match the request */
             channel_matched = MPIDI_POSTED_RECV_DEQUEUE_HOOK(rreq);
-            if (!channel_matched) { /* FG: TODO Double-check */
+            if (!channel_matched) {
                 /* If the channel did not match the request, the match here is
                  * valid and we can stop searching for the request. */
                 found = TRUE;
@@ -998,11 +998,8 @@ MPID_Request * MPIDI_CH3U_Recvq_FDP_or_AEU(MPIDI_Message_match * match,
     }
     MPIR_T_PVAR_TIMER_END(RECVQ, time_failed_matching_postedq);
 
-#if !defined(FINEGRAIN_MPI) /* FG: TODO temporary
-                               bypass. MPIDI_CH3I_Comm_find uses
-                               comm->node_comm See comment in
-                               MPIDI_CH3I_Comm_find. Will not work
-                               with MPICH context-id since they are
+#if !defined(FINEGRAIN_MPI) /* FG: TODO temporary bypass. See comment in MPIDI_CH3I_Comm_find.
+                               Will not work with MPICH context-id since they are
                                not unique. */
     /* If we didn't match the request, look to see if the communicator is
      * revoked. If so, just throw this request away since it won't be used
@@ -1109,6 +1106,9 @@ static inline void dequeue_and_set_error(MPID_Request **req,  MPID_Request *prev
 
     /* set error and complete */
     (*req)->status.MPI_ERROR = *error;
+#if defined(FINEGRAIN_MPI)
+    FG_Notify_on_event((*req)->dev.match.parts.dest_rank, UNBLOCK);
+#endif
     MPID_Request_complete(*req);
     MPIU_DBG_MSG_FMT(CH3_OTHER, VERBOSE,
                      (MPIU_DBG_FDEST, "set error of req %p (%#08x) to %#x and completing.",

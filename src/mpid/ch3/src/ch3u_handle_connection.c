@@ -400,6 +400,10 @@ int MPIDI_CH3U_VC_WaitForClose( void )
 #define FCNAME MPL_QUOTE(FUNCNAME)
 static int terminate_failed_VCs(MPID_Group *new_failed_group)
 {
+#if defined(FINEGRAIN_MPI)
+    return (MPI_SUCCESS); /* FG: Temporary bypass. Uses MPI_Group */
+#endif
+
     int mpi_errno = MPI_SUCCESS;
     int i;
     MPIDI_STATE_DECL(MPID_STATE_TERMINATE_FAILED_VCS);
@@ -443,8 +447,12 @@ static int terminate_failed_VCs(MPID_Group *new_failed_group)
 #define FUNCNAME MPIDI_CH3U_Get_failed_group
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-int MPIDI_CH3U_Get_failed_group(int last_rank, MPID_Group **failed_group) /* FG: TODO bypass uses MPI_Group */
+int MPIDI_CH3U_Get_failed_group(int last_rank, MPID_Group **failed_group)
 {
+#if defined(FINEGRAIN_MPI)
+    return (MPI_SUCCESS); /* FG: Temporary bypass. Uses MPI_Group */
+#endif
+
     char *c;
     int i, mpi_errno = MPI_SUCCESS, rank;
     UT_array *failed_procs = NULL;
@@ -511,8 +519,12 @@ fn_fail:
 #define FUNCNAME MPIDI_CH3U_Check_for_failed_procs
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-int MPIDI_CH3U_Check_for_failed_procs(void) /* FG: TODO bypass uses MPI_Group */
+int MPIDI_CH3U_Check_for_failed_procs(void)
 {
+#if defined(FINEGRAIN_MPI)
+    return (MPI_SUCCESS); /* FG: Temporary bypass. Uses MPI_Group */
+#endif
+
     int mpi_errno = MPI_SUCCESS;
     int pmi_errno;
     int len;
@@ -521,7 +533,6 @@ int MPIDI_CH3U_Check_for_failed_procs(void) /* FG: TODO bypass uses MPI_Group */
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3U_CHECK_FOR_FAILED_PROCS);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_CHECK_FOR_FAILED_PROCS);
-
     /* FIXME: Currently this only handles failed processes in
        comm_world.  We need to fix hydra to include the pgid along
        with the rank, then we need to create the failed group from

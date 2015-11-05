@@ -20,6 +20,32 @@
    the memory? This was part of the design. */
 
 /* This macro initializes all of the fields in a persistent request */
+#if defined(FINEGRAIN_MPI)
+#define MPIDI_Request_create_psreq(sreq_, mpi_errno_, FAIL_)		\
+{									\
+    (sreq_) = MPID_Request_create();				\
+    if ((sreq_) == NULL)						\
+    {									\
+	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"send request allocation failed");\
+	(mpi_errno_) = MPIR_ERR_MEMALLOCFAILED;				\
+	FAIL_;								\
+    }									\
+									\
+    MPIU_Object_set_ref((sreq_), 1);					\
+    MPID_cc_set(&(sreq_)->cc, 0);                                       \
+    (sreq_)->kind = MPID_PREQUEST_SEND;					\
+    (sreq_)->comm = comm;						\
+    MPIR_Comm_add_ref(comm);						\
+    (sreq_)->dev.match.parts.rank = rank;				\
+    (sreq_)->dev.match.parts.dest_rank = destworldrank;			\
+    (sreq_)->dev.match.parts.tag = tag;					\
+    (sreq_)->dev.match.parts.context_id = comm->context_id + context_offset;	\
+    (sreq_)->dev.user_buf = (void *) buf;				\
+    (sreq_)->dev.user_count = count;					\
+    (sreq_)->dev.datatype = datatype;					\
+    (sreq_)->partner_request = NULL;					\
+}
+#else
 #define MPIDI_Request_create_psreq(sreq_, mpi_errno_, FAIL_)		\
 {									\
     (sreq_) = MPID_Request_create();				\
@@ -43,7 +69,7 @@
     (sreq_)->dev.datatype = datatype;					\
     (sreq_)->partner_request = NULL;					\
 }
-
+#endif
 	
 /*
  * MPID_Startall()
@@ -171,6 +197,11 @@ int MPID_Send_init(const void * buf, int count, MPI_Datatype datatype, int rank,
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_SEND_INIT);
 
+#if defined(FINEGRAIN_MPI)
+    int destpid=-1, destworldrank=-1;
+    MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
+#endif
+
     MPIDI_Request_create_psreq(sreq, mpi_errno, goto fn_exit);
     MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
     if (HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN)
@@ -200,6 +231,11 @@ int MPID_Ssend_init(const void * buf, int count, MPI_Datatype datatype, int rank
     MPIDI_STATE_DECL(MPID_STATE_MPID_SSEND_INIT);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_SSEND_INIT);
+
+#if defined(FINEGRAIN_MPI)
+    int destpid=-1, destworldrank=-1;
+    MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
+#endif
 
     MPIDI_Request_create_psreq(sreq, mpi_errno, goto fn_exit);
     MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SSEND);
@@ -231,6 +267,11 @@ int MPID_Rsend_init(const void * buf, int count, MPI_Datatype datatype, int rank
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_RSEND_INIT);
 
+#if defined(FINEGRAIN_MPI)
+    int destpid=-1, destworldrank=-1;
+    MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
+#endif
+
     MPIDI_Request_create_psreq(sreq, mpi_errno, goto fn_exit);
     MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_RSEND);
     if (HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN)
@@ -260,6 +301,11 @@ int MPID_Bsend_init(const void * buf, int count, MPI_Datatype datatype, int rank
     MPIDI_STATE_DECL(MPID_STATE_MPID_BSEND_INIT);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_BSEND_INIT);
+
+#if defined(FINEGRAIN_MPI)
+    int destpid=-1, destworldrank=-1;
+    MPIDI_Comm_get_pid_worldrank(comm, rank, &destpid, &destworldrank);
+#endif
 
     MPIDI_Request_create_psreq(sreq, mpi_errno, goto fn_exit);
     MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_BSEND);
@@ -314,6 +360,9 @@ int MPID_Recv_init(void * buf, int count, MPI_Datatype datatype, int rank, int t
     MPID_cc_set(&rreq->cc, 0);
     MPIR_Comm_add_ref(comm);
     rreq->dev.match.parts.rank = rank;
+#if defined(FINEGRAIN_MPI)
+    rreq->dev.match.parts.dest_rank = my_fgrank;
+#endif
     rreq->dev.match.parts.tag = tag;
     rreq->dev.match.parts.context_id = comm->recvcontext_id + context_offset;
     rreq->dev.user_buf = (void *) buf;

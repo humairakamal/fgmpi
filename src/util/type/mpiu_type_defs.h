@@ -91,7 +91,7 @@ typedef MPIU_SIZE_T MPIU_Size_t;
 #define MPIU_PTR_DISP_CAST_TO_MPI_AINT (MPI_Aint)(MPIU_Pint)
 
 #define MPIU_CONTEXT_ID_T_DATATYPE MPI_UINT16_T /* FG: TODO IMPORTANT context_id type*/
-#if defined(FINEGRAIN_MPI)
+#if 0 //defined(FINEGRAIN_MPI) /* FG: TODO IMPORTANT context_id type*/
 typedef uint32_t MPIU_Context_id_t;
 #else
 typedef uint16_t MPIU_Context_id_t;

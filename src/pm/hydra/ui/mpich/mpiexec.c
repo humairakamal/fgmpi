@@ -258,7 +258,9 @@ int main(int argc, char **argv)
     /* If the number of processes is not given, we allocate all the
      * available nodes to each executable */
     HYD_server_info.pg_list.pg_process_count = 0;
+#if defined(FINEGRAIN_MPI)
     HYD_server_info.pg_list.pg_totprocess_count = 0;
+#endif
     for (exec = HYD_uii_mpx_exec_list; exec; exec = exec->next) {
         if (exec->proc_count == -1) {
             global_core_count = 0;
@@ -267,7 +269,9 @@ int main(int argc, char **argv)
             exec->proc_count = global_core_count;
         }
         HYD_server_info.pg_list.pg_process_count += exec->proc_count;
+#if defined(FINEGRAIN_MPI)
         HYD_server_info.pg_list.pg_totprocess_count += exec->proc_count * exec->nfg;
+#endif
     }
 
     status = HYDU_list_inherited_env(&HYD_server_info.user_global.global_env.inherited);

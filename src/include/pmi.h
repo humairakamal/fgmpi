@@ -466,6 +466,17 @@ int PMI_Spawn_multiple(int count,
                        const PMI_keyval_t preput_keyval_vector[],
                        int errors[]);
 
+
+#if defined (FINEGRAIN_MPI)
+#include "fgmpi.h"
+int MPIX_Get_collocated_startrank(int * rank);
+int MPIX_Get_collocated_size(int * size);
+int MPIX_Get_n_size(int * size);
+void MPIX_Yield(void);
+void MPIX_Usleep(unsigned long long utime);
+#endif
+
+
 #if defined(__cplusplus)
 }
 #endif

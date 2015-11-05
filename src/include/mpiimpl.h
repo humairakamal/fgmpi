@@ -1026,6 +1026,18 @@ typedef struct MPID_Group {
     MPID_Group_pmap_t *lrank_to_lpid; /* Array mapping a local rank to local 
 					 process number */
     int          is_local_dense_monotonic; /* see NOTE-G1 */
+#if defined(FINEGRAIN_MPI)
+    int *ref_acrossCommGroup_countptr; /* This will be initialized in MPIR_Group_create() and will be
+                                        incremented in MPI_Comm_group() and MPI_Comm_create().
+                                        In MPIR_Group_release(), if its value is greater than one then the
+                                        rtwmap is not deleted, otherwise it will be. A value of greater than
+                                        one indicates that a communicator was created and that now shares that
+                                        rtw map. In that case, it is the responsibility of the MPI_Comm_free()
+                                        routine to properly release the shared rtw map */
+    RTWmap *rtw_grp_map;    /* local fine-grain ranks (relative to this group) to world_rank mapping. */
+    int          fgsize;    /* Size of a group representing the number of FGPs in it. */
+    int          p_rank;    /* HWP rank/pid of this process relative to this group _p_rank_ */
+#endif
 
     /* We may want some additional data for the RMA syncrhonization calls */
   /* Other, device-specific information */
@@ -1197,6 +1209,7 @@ typedef struct MPID_Comm {
     int           p_rank;        /* This is now value of HWP rank _p_rank_*/
     int           totprocs;      /* Total number of processes including all the FGPs. Value of MPI_Comm_size */
     struct Coproclet_shared_vars * co_shared_vars; /* This encapsulates pointers to rtw_map and co_barrier_vars among others */
+    int           leader_worldrank;
 #endif
     MPID_Attribute *attributes;  /* List of attributes */
     int           local_size;    /* Value of MPI_Comm_size for local group */
@@ -2167,10 +2180,20 @@ typedef struct MPICH_PerProcess_t {
 
 #if defined(FINEGRAIN_MPI)
 #define MPIR_Process ((struct StateWrapper*)(CO_CURRENT->statevars))->MPIR_ProcessFG
+
+#define MPIR_MAXID (1 << 30)
+#define context_mask (((struct StateWrapper*)(CO_CURRENT->statevars))->context_maskFG)
+#define initialize_context_mask (((struct StateWrapper*)(CO_CURRENT->statevars))->initialize_context_maskFG)
+#define mask_in_use (((struct StateWrapper*)(CO_CURRENT->statevars))->mask_in_useFG)
+#define lowest_context_id (((struct StateWrapper*)(CO_CURRENT->statevars))->lowest_context_idFG)
+#define lowest_tag (((struct StateWrapper*)(CO_CURRENT->statevars))->lowest_tagFG)
+#define eager_nelem (((struct StateWrapper*)(CO_CURRENT->statevars))->eager_nelemFG)
+#define eager_in_use (((struct StateWrapper*)(CO_CURRENT->statevars))->eager_in_useFG)
+
 extern int FGP_finalizations;
 
 struct StateWrapper {
-    int init_initialized; /* FG: This is to make sure that an FGP does not
+    int init_initialized; /* FG: To make sure that an FGP does not
                              call MPI_Init more than once. */
     int is_spawner;
     MPICH_PerProcess_t MPIR_ProcessFG;
@@ -2182,35 +2205,18 @@ struct StateWrapper {
     int fstack_spFG;
     int fstack_max_priorityFG;
 
-
-    /* Originally defined in src/mpi/comm/commutil.c. Extern'd in
-       src/include/mpiimpl.h
-       Initialization is now done in MPI_Init() in init.c
-       MPID_Comm_builtinFG would be zeroed.
-    */
     MPID_Comm MPID_Comm_builtinFG[MPID_COMM_N_BUILTIN];
 
-    /* Storing this coroutine's fgrank here */
     int fgrank;
 
-
-    /* Originally defined in src/mpi/comm/commutil.c as:
-       static unsigned int context_mask[MAX_CONTEXT_MASK];
-       static int initialize_context_mask = 1;
-       static volatile int mask_in_use = 0;
-       static volatile int lowestContextId = MPIR_MAXID;
-
-       Initialization is now done in MPI_Init() in init.c
-     */
     unsigned int *context_maskFG;
     int initialize_context_maskFG;
     volatile int mask_in_useFG;
-    volatile int lowestContextIdFG;
+    volatile int lowest_context_idFG;
+    volatile int lowest_tagFG;
+    volatile int eager_nelemFG;
+    volatile int eager_in_useFG;
 
-    /* The following variables are for the CID=<LID,LBI>
-       context generation algorithm. */
-    unsigned int *LBI_maskFG;
-    int initialize_LBI_maskFG;
 };
 extern struct MPIDI_VCRT * vcrt_world; /* virtual connecton reference table for MPI_COMM_WORLD */
 

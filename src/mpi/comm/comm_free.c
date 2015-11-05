@@ -32,6 +32,42 @@ int MPI_Comm_free(MPI_Comm *comm) __attribute__((weak,alias("PMPI_Comm_free")));
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIR_Comm_free_impl(MPID_Comm * comm_ptr)
 {
+#if defined(FINEGRAIN_MPI)
+    int coshared_inuse_withinComm = -1, coshared_inuse_acrossComm = -1;
+    MPIU_Assert(comm_ptr->co_shared_vars != NULL);
+    MPIR_Comm_release_coshared_all_ref(comm_ptr->co_shared_vars, &coshared_inuse_withinComm, &coshared_inuse_acrossComm);
+
+    if (((Coproclet_shared_vars_t *)(comm_ptr->co_shared_vars))->rtw_map ==  worldcomm_rtw_map) /* FG: TODO IMPORTANT in Finalize for COMM_WORLD */
+    {
+        MPIU_Assert(coshared_inuse_acrossComm >= 1);
+    }
+
+    MPIU_Assert((coshared_inuse_withinComm >=0) && (coshared_inuse_acrossComm >=0));
+    if (!coshared_inuse_acrossComm) {
+        MPIU_Assert(!coshared_inuse_withinComm);
+        MPIU_Free((comm_ptr->co_shared_vars)->ref_acrossComm_countptr);
+        RTWmapKill(&(comm_ptr->co_shared_vars->rtw_map));
+    }
+    if (!coshared_inuse_withinComm) {
+        MPIU_Free((comm_ptr->co_shared_vars)->ref_withinComm_countptr);
+        if ((comm_ptr->co_shared_vars)->co_barrier_vars) {
+            /* node_comm and node_roots_comm do not have co_barrier_vars */
+            MPIU_Free((comm_ptr->co_shared_vars)->co_barrier_vars);
+        }
+        MPIU_Free(comm_ptr->co_shared_vars);
+        comm_ptr->co_shared_vars = NULL;
+
+        cLitemptr stored = NULL, removed = NULL;
+        CL_LookupHashFind(contextLeader_hshtbl, comm_ptr->context_id, comm_ptr->leader_worldrank, &stored);
+        MPIU_Assert(stored != NULL);
+        CL_DeleteHashEntry(contextLeader_hshtbl, stored);
+        /* sanity check */
+        stored = NULL;
+        CL_LookupHashFind(contextLeader_hshtbl, comm_ptr->context_id, comm_ptr->leader_worldrank, &stored);
+        MPIU_Assert(stored == NULL);
+    }
+#endif
+
     return MPIR_Comm_release(comm_ptr);
 }
 #endif

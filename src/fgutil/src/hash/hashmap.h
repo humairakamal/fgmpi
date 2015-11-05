@@ -1,3 +1,8 @@
+/*
+ *  (C) 2008 Humaira Kamal, The University of British Columbia.
+ *      See COPYRIGHT in top-level directory.
+ */
+
 #ifndef HASHMAP_H
 #define HASHMAP_H
 

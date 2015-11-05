@@ -199,3 +199,164 @@ int MPI_Comm_compare(MPI_Comm comm1, MPI_Comm comm2, int *result)
     goto fn_exit;
     /* --END ERROR HANDLING-- */
 }
+
+
+#if defined(FINEGRAIN_MPI)
+#include "mpidimpl.h"
+
+/* -- Begin Profiling Symbol Block for routine MPIX_Comm_translate_ranks */
+#if defined(HAVE_PRAGMA_WEAK)
+#pragma weak MPIX_Comm_translate_ranks = PMPIX_Comm_translate_ranks
+#elif defined(HAVE_PRAGMA_HP_SEC_DEF)
+#pragma _HP_SECONDARY_DEF PMPIX_Comm_translate_ranks  MPIX_Comm_translate_ranks
+#elif defined(HAVE_PRAGMA_CRI_DUP)
+#pragma _CRI duplicate MPIX_Comm_translate_ranks as PMPIX_Comm_translate_ranks
+#endif
+/* -- End Profiling Symbol Block */
+
+/* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
+   the MPI routines */
+#ifndef MPICH_MPI_FROM_PMPI
+#undef MPIX_Comm_translate_ranks
+#define MPIX_Comm_translate_ranks PMPIX_Comm_translate_ranks
+#endif
+
+#undef FUNCNAME
+#define FUNCNAME MPIX_Comm_translate_ranks
+#undef FCNAME
+#define FCNAME "MPIX_Comm_translate_ranks"
+/*@
+ MPIX_Comm_translate_ranks - Translates the ranks of processes in one communicator to
+                             those in another communicator
+
+  Input Parameters:
++ comm1 - comm1 (handle)
+. n - number of ranks in  'ranks1' and 'ranks2'  arrays (integer)
+. ranks1 - array of zero or more valid ranks in 'comm1'
+- comm2 - comm2 (handle)
+
+  Output Parameter:
+. ranks2 - array of corresponding ranks in comm2,  'MPI_UNDEFINED'  when no
+  correspondence exists.
+
+  As a special case, if the input rank is
+  'MPI_PROC_NULL', 'MPI_PROC_NULL' is given as the output rank.
+
+.N Fortran
+
+.N Errors
+.N MPI_SUCCESS
+@*/
+int MPIX_Comm_translate_ranks(MPI_Comm comm1, int n, int *ranks1,
+			      MPI_Comm comm2, int *ranks2)
+{
+    int mpi_errno = MPI_SUCCESS;
+    MPID_Comm *comm_ptr1 = NULL;
+    MPID_Comm *comm_ptr2 = NULL;
+    int i, j;
+    int worldrank1, worldrank2;
+    MPID_MPI_STATE_DECL(MPID_STATE_MPIX_COMM_TRANSLATE_RANKS);
+
+    MPIR_ERRTEST_INITIALIZED_ORDIE();
+
+    MPID_MPI_FUNC_ENTER(MPID_STATE_MPIX_COMM_TRANSLATE_RANKS);
+
+    /* Validate parameters, especially handles needing to be converted */
+    #   ifdef HAVE_ERROR_CHECKING
+    {
+        MPID_BEGIN_ERROR_CHECKS;
+        {
+	    MPIR_ERRTEST_COMM(comm1, mpi_errno);
+	    MPIR_ERRTEST_COMM(comm2, mpi_errno);
+            if (mpi_errno) goto fn_fail;
+	}
+        MPID_END_ERROR_CHECKS;
+    }
+#   endif /* HAVE_ERROR_CHECKING */
+
+    /* Get handles to MPI objects. */
+    MPID_Comm_get_ptr( comm1, comm_ptr1 );
+    MPID_Comm_get_ptr( comm2, comm_ptr2 );
+
+    /* Validate parameters and objects (post conversion) */
+#   ifdef HAVE_ERROR_CHECKING
+    {
+        MPID_BEGIN_ERROR_CHECKS;
+        {
+            /* Validate comm_ptr */
+            MPID_Comm_valid_ptr( comm_ptr1, mpi_errno, TRUE );
+            MPID_Comm_valid_ptr( comm_ptr2, mpi_errno, TRUE );
+	    /* If comm_ptr1 or 2 is not valid, it will be reset to null */
+
+	    MPIR_ERRTEST_ARGNEG(n,"n",mpi_errno);
+	    if (comm_ptr1) {
+		/* Check that the rank entries are valid */
+		int size1 = comm_ptr1->totprocs;
+		for (i=0; i<n; i++) {
+		    if ( (ranks1[i] < 0 && ranks1[i] != MPI_PROC_NULL) ||
+                         ranks1[i] >= size1) {
+			mpi_errno = MPIR_Err_create_code( MPI_SUCCESS,
+                                                          MPIR_ERR_RECOVERABLE, FCNAME, __LINE__,
+							  MPI_ERR_RANK,
+                                                          "**rank", "**rank %d %d",
+                                                          ranks1[i], size1 );
+			break;
+		    }
+		}
+	    }
+            if (mpi_errno) goto fn_fail;
+        }
+        MPID_END_ERROR_CHECKS;
+    }
+#   endif /* HAVE_ERROR_CHECKING */
+
+    /* ... body of routine ...  */
+
+    /* Initialize the output ranks */
+    for (i=0; i<n; i++) {
+	ranks2[i] = MPI_UNDEFINED;
+    }
+
+    /* FG: TODO optimize for the special case of comm2 is
+       a dup of MPI_COMM_WORLD, or more generally, has lrank == worldrank
+       for everything within the size of comm2.  */
+    for (i=0; i<n; i++) {
+        if (ranks1[i] == MPI_PROC_NULL) {
+            ranks2[i] = MPI_PROC_NULL;
+            continue;
+        }
+        MPIDI_Comm_get_pid_worldrank(comm_ptr1, ranks1[i], NULL, &worldrank1);
+        for (j=0; j<(comm_ptr2->totprocs); j++) {
+            MPIDI_Comm_get_pid_worldrank(comm_ptr2, j, NULL, &worldrank2);
+            if (worldrank2 == worldrank1){
+                ranks2[i] = j;
+                break;
+            }
+        }
+    }
+
+    /* ... end of body of routine ... */
+
+#ifdef HAVE_ERROR_CHECKING
+  fn_exit:
+#endif
+    MPID_MPI_FUNC_EXIT(MPID_STATE_MPIX_COMM_TRANSLATE_RANKS);
+    return mpi_errno;
+
+    /* --BEGIN ERROR HANDLING-- */
+#   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
+    {
+	mpi_errno = MPIR_Err_create_code(
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER,
+	    "**mpix_comm_translate_ranks",
+	    "**mpix_comm_translate_ranks %C %d %p %C %p",
+	    comm1, n, ranks1, comm2, ranks2);
+    }
+    mpi_errno = MPIR_Err_return_comm( NULL, FCNAME, mpi_errno );
+    goto fn_exit;
+#   endif
+    /* --END ERROR HANDLING-- */
+}
+
+#endif /* matches #if defined(FINEGRAIN_MPI) */

@@ -1315,6 +1315,7 @@ if test -e "${use_top_srcdir}/src/fgutil" ; then
 
         PAC_CONFIG_SUBDIR_ARGS([src/fgutil],[],[],[AC_ERROR([FGutil configure failed])])
         PAC_APPEND_FLAG([-lfgmpi],[WRAPPER_LIBS])
+        PAC_APPEND_FLAG([-DFINEGRAIN_MPI],[CPPFLAGS])
 fi
 
 # ----------------------------------------------------------------------------

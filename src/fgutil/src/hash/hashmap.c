@@ -1,3 +1,8 @@
+/*
+ *  (C) 2008 Humaira Kamal, The University of British Columbia.
+ *      See COPYRIGHT in top-level directory.
+ */
+
 #include "hashmap.h"
 #include "assert.h"
 #include <string.h>
@@ -229,20 +234,20 @@ inline int RTWarrayBlockInsert(int *rtw_arraymap, int size, int *blockarray) /*(
     return (0);
 }
 
-inline int RTWarrayFindLeader(int *rtw_arraymap, int numentries_map){
+
+inline int RTWarrayFindLeader(int *rtw_arraymap, int numentries_map) {
     int i = 0;
     int leaderWorldRank = -1;
     int stored_worldrank;
-    for (i=0; i<numentries_map; i++)
-    {
+
+    for (i=0; i<numentries_map; i++) {
         stored_worldrank = rtw_arraymap[i];
-        if ((-1 == leaderWorldRank) || (leaderWorldRank > stored_worldrank)){
+        if ((-1 == leaderWorldRank) || (leaderWorldRank > stored_worldrank)) {
             leaderWorldRank = stored_worldrank;
         }
     }
     assert(leaderWorldRank >= 0);
     return (leaderWorldRank);
-
 }
 
 inline void RTWarrayKill(int *rtw_arraymap){
@@ -470,6 +475,14 @@ inline int CL_LookupHashInsert(hshtbl *CL_hshtbl, int context_id, int LeaderWorl
     return (0);
 }
 
+inline int CL_DeleteHashEntry(hshtbl *CL_hshtbl, cLitemptr stored)
+{
+    cLitemptr removed = NULL;
+    removed = hshdelete(CL_hshtbl, stored);
+    assert(removed != NULL);
+    free(removed); /* Need to call free(removed) here as hshdelete does not free user data */
+    return (0);
+}
 
 /*****************Context_id Lookup Hashtable*************************/
 
@@ -660,3 +673,4 @@ inline int hshtblFree(hshtbl **hash_dptr) /*(IN)*/
     hshkill(*hash_dptr);
     *hash_dptr = NULL;
 }
+

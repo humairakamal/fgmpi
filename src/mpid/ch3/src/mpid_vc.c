@@ -275,7 +275,7 @@ int MPIDI_VCR_Dup(MPIDI_VCR orig_vcr, MPIDI_VCR * new_vcr)
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_VCR_DUP);
 
 #if defined (FINEGRAIN_MPI)
-  if(FGP_WITHIN_INIT == FGP_init_state) /* FG: TODO double-check */
+  if(FGP_WITHIN_INIT == FGP_init_state) /* FG: TODO Double-check. Won't work for MPI_COMM_SELF */
   {
 #endif
     /* We are allowed to create a vc that belongs to no process group 

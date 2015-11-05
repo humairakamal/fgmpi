@@ -90,8 +90,12 @@ int MPI_Group_size(MPI_Group group, int *size)
 #   endif /* HAVE_ERROR_CHECKING */
 
     /* ... body of routine ...  */
-    
+
+#if defined(FINEGRAIN_MPI)
+    *size = group_ptr->fgsize;
+#else
     *size = group_ptr->size;
+#endif
     
     /* ... end of body of routine ... */
 

@@ -216,12 +216,13 @@ int MPIR_Comm_create_intra(MPID_Comm *comm_ptr, MPID_Group *group_ptr,
     MPIU_Assert(new_context_id != 0);
 
     if (group_ptr->rank != MPI_UNDEFINED) {
+#if !defined(FINEGRAIN_MPI)
         MPID_Comm *mapping_comm = NULL;
 
         mpi_errno = MPIR_Comm_create_calculate_mapping(group_ptr, comm_ptr,
                                                        &mapping, &mapping_comm);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
-
+#endif
         /* Get the new communicator structure and context id */
 
         mpi_errno = MPIR_Comm_create( newcomm_ptr );
@@ -241,6 +242,47 @@ int MPIR_Comm_create_intra(MPID_Comm *comm_ptr, MPID_Group *group_ptr,
         (*newcomm_ptr)->context_id     = (*newcomm_ptr)->recvcontext_id;
         (*newcomm_ptr)->remote_size    = (*newcomm_ptr)->local_size = n;
 
+#if defined(FINEGRAIN_MPI)
+        MPIR_Comm_set_sizevars(comm_ptr, group_ptr->fgsize, (*newcomm_ptr));
+        int leader_wid = RTWmapFindLeader(group_ptr->rtw_grp_map, (*newcomm_ptr)->totprocs);
+        (*newcomm_ptr)->leader_worldrank = leader_wid;
+        cLitemptr stored = NULL;
+        CL_LookupHashFind(contextLeader_hshtbl, (*newcomm_ptr)->context_id, leader_wid, &stored);
+        if (stored) {
+            MPIR_Comm_add_coshared_all_ref(stored->coproclet_shared_vars);
+            (*newcomm_ptr)->co_shared_vars = ((Coproclet_shared_vars_t *)(stored->coproclet_shared_vars));
+            MPIR_Coshared_group_release(group_ptr);
+            group_ptr->rtw_grp_map = (*newcomm_ptr)->co_shared_vars->rtw_map;
+            group_ptr->ref_acrossCommGroup_countptr = (*newcomm_ptr)->co_shared_vars->ref_acrossComm_countptr;
+            MPIR_Comm_add_coshared_group_ref( group_ptr );
+        }
+        else {
+            (*newcomm_ptr)->co_shared_vars = (Coproclet_shared_vars_t *)MPIU_Calloc(1, sizeof(Coproclet_shared_vars_t));
+            MPIR_ERR_CHKANDJUMP(!((*newcomm_ptr)->co_shared_vars), mpi_errno, MPI_ERR_OTHER, "**nomem");
+            (*newcomm_ptr)->co_shared_vars->rtw_map = group_ptr->rtw_grp_map;
+            (*newcomm_ptr)->co_shared_vars->co_barrier_vars =  (struct coproclet_barrier_vars *)MPIU_Malloc(sizeof(struct coproclet_barrier_vars));
+            MPIR_ERR_CHKANDJUMP(!((*newcomm_ptr)->co_shared_vars->co_barrier_vars), mpi_errno, MPI_ERR_OTHER, "**nomem");
+            (*newcomm_ptr)->co_shared_vars->co_barrier_vars->coproclet_signal = 0;
+            (*newcomm_ptr)->co_shared_vars->co_barrier_vars->coproclet_counter = 0;
+            (*newcomm_ptr)->co_shared_vars->co_barrier_vars->leader_signal = 0;
+            (*newcomm_ptr)->co_shared_vars->ptn_hash = NULL;
+            /* Notify the device of this new communicator */
+            MPID_Dev_comm_create_hook( (*newcomm_ptr) );
+
+            if ( group_ptr->ref_acrossCommGroup_countptr ) {
+                MPIR_Comm_init_coshared_withinComm_ref((*newcomm_ptr)->co_shared_vars);
+                (*newcomm_ptr)->co_shared_vars->ref_acrossComm_countptr = group_ptr->ref_acrossCommGroup_countptr;
+                MPIR_Comm_add_coshared_acrossComm_ref((*newcomm_ptr)->co_shared_vars);
+            } else {
+                MPIR_Comm_init_coshared_all_ref((*newcomm_ptr)->co_shared_vars);
+                group_ptr->ref_acrossCommGroup_countptr = (*newcomm_ptr)->co_shared_vars->ref_acrossComm_countptr;
+                MPIR_Comm_add_coshared_group_ref(group_ptr);
+            }
+            stored = NULL;
+            CL_LookupHashInsert(contextLeader_hshtbl, (*newcomm_ptr)->context_id, leader_wid, (*newcomm_ptr)->co_shared_vars, &stored);
+            MPIR_ERR_CHKANDJUMP(!stored, mpi_errno, MPI_ERR_OTHER, "**hshinsertfail" );
+        }
+#else
         /* Setup the communicator's network address mapping.  This is for the remote group,
            which is the same as the local group for intracommunicators */
         mpi_errno = MPIR_Comm_create_map(n, 0,
@@ -249,6 +291,7 @@ int MPIR_Comm_create_intra(MPID_Comm *comm_ptr, MPID_Group *group_ptr,
                                          mapping_comm,
                                          *newcomm_ptr);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
+#endif
 
         mpi_errno = MPIR_Comm_commit(*newcomm_ptr);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);

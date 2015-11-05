@@ -203,7 +203,7 @@ int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
             if (unlikely(MPIR_CVAR_ENABLE_FT &&
                         !MPID_Request_is_complete(request_ptr) &&
                         MPID_Request_is_anysource(request_ptr) &&
-                        !MPID_Comm_AS_enabled(request_ptr->comm))) { /* FG: TODO */
+                        !MPID_Comm_AS_enabled(request_ptr->comm))) {
                 /* --BEGIN ERROR HANDLING-- */
                 MPID_Cancel_recv(request_ptr);
                 MPIR_STATUS_SET_CANCEL_BIT(request_ptr->status, FALSE);

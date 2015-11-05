@@ -204,7 +204,7 @@ int PMI_Init( int *spawned )
 	else
 	    PMI_fg_startrank = 0;
 
-        curr_fgrank =  PMI_fg_startrank; /* HK: fgranks to be assigned to FGPs */
+        curr_fgrank =  PMI_fg_startrank; /* fgranks to be assigned to FGPs */
 
 #endif
 	/* Leave unchanged otherwise, which indicates that no value

@@ -85,12 +85,6 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
     const int ignoring_statuses = (array_of_statuses == MPI_STATUSES_IGNORE);
     int optimize = ignoring_statuses; /* see NOTE-O1 */
     MPIU_CHKLMEM_DECL(1);
-#if defined(FINEGRAIN_MPI)
-    MPIDI_Rank_t reqrank  = -1;
-    MPID_Comm *comm_ptr = NULL;
-    int is_colocated = 0;
-    int num_of_colocated_yields = 0;
-#endif
 
     /* Convert MPI request handles to a request object pointers */
     if (count > MPID_REQUEST_PTR_ARRAY_SIZE)
@@ -166,21 +160,7 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
     if (optimize) {
         MPID_Progress_start(&progress_state);
         for (i = 0; i < count; ++i) {
-#if defined(FINEGRAIN_MPI)
-            comm_ptr = request_ptrs[i]->comm;
-            MPIU_Assert( NULL != comm_ptr );
-            reqrank = request_ptrs[i]->dev.match.parts.rank; /* FG:TODO IMPORTANT Doublecheck */
-            is_colocated = (reqrank != MPI_ANY_SOURCE) ? Is_within_same_HWP(reqrank, comm_ptr, NULL) : 0;
-            num_of_colocated_yields = 0;
-#endif
             while (!MPID_Request_is_complete(request_ptrs[i])) {
-#if defined(FINEGRAIN_MPI)
-               if ( is_colocated && (num_of_colocated_yields < MAX_COLOCATED_YIELDS) )
-               {
-                   num_of_colocated_yields++;
-                   FG_Yield_on_incomplete_request(request_ptrs[i]);
-               } else {
-#endif
                 mpi_errno = MPID_Progress_wait(&progress_state);
                 /* must check and handle the error, can't guard with HAVE_ERROR_CHECKING, but it's
                  * OK for the error case to be slower */
@@ -200,7 +180,6 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
                 if (!MPID_Request_is_complete(request_ptrs[i])) {
                     FG_Yield_on_incomplete_request(request_ptrs[i]);
                  }
-               }
 #endif
             }
 
@@ -240,27 +219,12 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
             continue;
         }
 
-#if defined(FINEGRAIN_MPI)
-        comm_ptr = request_ptrs[i]->comm;
-        MPIU_Assert( NULL != comm_ptr );
-        reqrank = request_ptrs[i]->dev.match.parts.rank;  /* FG:TODO IMPORTANT Doublecheck */
-        is_colocated = (reqrank != MPI_ANY_SOURCE) ? Is_within_same_HWP(reqrank, comm_ptr, NULL) : 0;
-        num_of_colocated_yields = 0;
-#endif
-
         /* wait for ith request to complete */
         while (!MPID_Request_is_complete(request_ptrs[i]))
         {
             /* generalized requests should already be finished */
             MPIU_Assert(request_ptrs[i]->kind != MPID_UREQUEST);
 
-#if defined(FINEGRAIN_MPI)
-           if ( is_colocated && (num_of_colocated_yields < MAX_COLOCATED_YIELDS) )
-           {
-               num_of_colocated_yields++;
-               FG_Yield_on_incomplete_request(request_ptrs[i]);
-           } else {
-#endif
             mpi_errno = MPID_Progress_wait(&progress_state);
             if (mpi_errno != MPI_SUCCESS) {
                 /* --BEGIN ERROR HANDLING-- */
@@ -283,7 +247,6 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
              if (!MPID_Request_is_complete(request_ptrs[i])) {
                  FG_Yield_on_incomplete_request(request_ptrs[i]);
              }
-           }
 #endif
         }
 

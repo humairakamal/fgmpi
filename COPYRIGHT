@@ -1,3 +1,59 @@
+                         COPYRIGHT
+
+Copyright (c) 2008 Humaira Kamal, The University of British
+Columbia. All rights reserved.
+
+Fine-Grain MPI (FG-MPI) extends the execution model of the
+Message Passing Interface (MPI) to expose large-scale,
+fine-grain concurrency. FG-MPI is integrated into the MPICH
+middleware was developed by Humaira Kamal under the supervision
+of Prof. Alan Wagner at the University of British Columbia (UBC).
+
+Webpage: http://www.cs.ubc.ca/~humaira/fgmpi.html
+
+Contact:
+Humaira Kamal - Tel:(604)-827-3997, E-mail: kamal@cs.ubc.ca
+Alan Wagner - Tel:(604)-822-6450, Email: wagner@cs.ubc.ca
+Department of Computer Science
+The University of British Columbia
+201-2366 Main Mall
+Vancouver, BC - V6T 1Z4
+Canada.
+Fax: (604)-822-5485
+
+
+
+FG-MPI is distributed under a BSD license.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+(1) Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+
+(2) Redistributions in binary form must reproduce the above copyright
+notice, this list of conditions and the following disclaimer in the
+documentation and/or other materials provided with the distribution.
+
+(3) Neither the name of The University of British Columbia nor the names of
+their contributors may be used to endorse or promote products derived
+from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+-----------------------------------------------------------------------------
 
 				  COPYRIGHT
 

@@ -445,7 +445,7 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
     /* Call any and all MPID_Init type functions */
         MPIR_Err_init();
         MPIR_Datatype_init();
-        MPIR_Group_init(); /* FG: TODO IMPORTANT */
+        MPIR_Group_init();
 
 
     /* MPIU_Timer_pre_init(); */

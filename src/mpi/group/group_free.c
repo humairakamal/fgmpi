@@ -35,6 +35,9 @@ int MPIR_Group_free_impl(MPID_Group *group_ptr)
         
     /* Do not free MPI_GROUP_EMPTY */
     if (group_ptr->handle != MPI_GROUP_EMPTY) {
+#if defined(FINEGRAIN_MPI)
+        MPIR_Coshared_group_release(group_ptr);
+#endif
         mpi_errno = MPIR_Group_release(group_ptr);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
     }

@@ -322,7 +322,7 @@ extern MPID_Request ** FG_recvq_unexpected_tail;
    comm, buf, datatype, and count all be available with those names
    (they are not arguments to the routine)
 */
-#if defined(FINEGRAIN_MPI) /* FG: TODO IMPORTANT Doublecheck (sreq_)->dev.match.parts.rank = rank; */
+#if defined(FINEGRAIN_MPI)
 #define MPIDI_Request_create_sreq(sreq_, mpi_errno_, FAIL_)	\
 {								\
     (sreq_) = MPID_Request_create();                            \
@@ -361,7 +361,7 @@ extern MPID_Request ** FG_recvq_unexpected_tail;
 }
 #endif
 
-/* FG: TODO? MPIDI_Request_create_rreq */
+
 /* This is the receive request version of MPIDI_Request_create_sreq */
 #define MPIDI_Request_create_rreq(rreq_, mpi_errno_, FAIL_)	\
 {								\
@@ -1327,7 +1327,7 @@ int MPIDI_CH3I_Get_accumulate(const void *origin_addr, int origin_count,
    resource shared among threads - it needs to be managed more 
    explicitly as such as shared resource */
 #ifndef MPICH_IS_THREADED
-#   define MPIDI_CH3_Progress_signal_completion()	\ /* FG: TODO? */
+#   define MPIDI_CH3_Progress_signal_completion()	\
     {							\
        MPIDI_CH3I_INCR_PROGRESS_COMPLETION_COUNT;		\
     }

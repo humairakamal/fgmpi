@@ -140,9 +140,16 @@ int MPIR_Comm_split_impl(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **ne
     MPIR_Errflag_t errflag = MPIR_ERR_NONE;
     MPIR_Comm_map_t *mapper;
     MPIU_CHKLMEM_DECL(4);
+#if defined(FINEGRAIN_MPI)
+    int leader_wid = -1;
+#endif
 
     rank        = comm_ptr->rank;
+#if defined(FINEGRAIN_MPI)
+    size        = comm_ptr->totprocs;
+#else
     size        = comm_ptr->local_size;
+#endif
     remote_size = comm_ptr->remote_size;
 	
     /* Step 1: Find out what color and keys all of the processes have */
@@ -182,6 +189,14 @@ int MPIR_Comm_split_impl(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **ne
 		new_size++;
 		*last_ptr = i;
 		last_ptr  = &table[i].color;
+#if defined(FINEGRAIN_MPI)
+                int worldrank = -1, key;
+                key = i;
+                RTWPmapFind(comm_ptr->co_shared_vars->rtw_map, key, &worldrank, NULL);
+                if( (leader_wid == -1) || (leader_wid > worldrank) ){
+                    leader_wid = worldrank;
+                }
+#endif
 	    }
 	}
     }
@@ -280,7 +295,9 @@ int MPIR_Comm_split_impl(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **ne
 	if (mpi_errno) goto fn_fail;
 
 	(*newcomm_ptr)->recvcontext_id = new_context_id;
+#if !defined(FINEGRAIN_MPI)
 	(*newcomm_ptr)->local_size	    = new_size;
+#endif
 	(*newcomm_ptr)->comm_kind	    = comm_ptr->comm_kind;
 	/* Other fields depend on whether this is an intercomm or intracomm */
 
@@ -356,14 +373,21 @@ int MPIR_Comm_split_impl(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **ne
 	else {
 	    /* INTRA Communicator */
 	    (*newcomm_ptr)->context_id     = (*newcomm_ptr)->recvcontext_id;
+#if defined(FINEGRAIN_MPI)
+            MPIR_Comm_set_sizevars(comm_ptr, new_size, (*newcomm_ptr));
+            (*newcomm_ptr)->leader_worldrank = leader_wid;
+#else
 	    (*newcomm_ptr)->remote_size    = new_size;
+#endif
 
             MPIR_Comm_map_irregular(*newcomm_ptr, comm_ptr, NULL,
                                     new_size, MPIR_COMM_MAP_DIR_L2L,
                                     &mapper);
 
             for (i = 0; i < new_size; i++) {
+#if !defined(FINEGRAIN_MPI)
                 mapper->src_mapping[i] = keytable[i].color;
+#endif
 		if (keytable[i].color == comm_ptr->rank)
 		    (*newcomm_ptr)->rank = i;
             }
@@ -376,6 +400,58 @@ int MPIR_Comm_split_impl(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **ne
 	    MPIR_Errhandler_add_ref( comm_ptr->errhandler );
 	}
         MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_POBJ_COMM_MUTEX(comm_ptr));
+
+#if defined(FINEGRAIN_MPI)
+        /* Looking up pointer to shared rtw map in contextLeader_hshtbl.
+           If it does not exist then create it. */
+        cLitemptr stored = NULL;
+        CL_LookupHashFind(contextLeader_hshtbl, (*newcomm_ptr)->context_id, leader_wid, &stored);
+        if (stored) {
+            MPIR_Comm_add_coshared_all_ref(stored->coproclet_shared_vars);
+            (*newcomm_ptr)->co_shared_vars = ((Coproclet_shared_vars_t *)(stored->coproclet_shared_vars));
+        }
+        else {
+            (*newcomm_ptr)->co_shared_vars = (Coproclet_shared_vars_t *)MPIU_Calloc(1, sizeof(Coproclet_shared_vars_t));
+            MPIR_ERR_CHKANDJUMP(!((*newcomm_ptr)->co_shared_vars), mpi_errno, MPI_ERR_OTHER, "**nomem");
+
+            (*newcomm_ptr)->co_shared_vars->rtw_map = (RTWmap *)RTWmapCreate(new_size);
+            MPIU_Assert( (*newcomm_ptr)->co_shared_vars->rtw_map != NULL );
+            int *rtw_blockinsert = (int*) MPIU_Malloc(sizeof(int) * new_size);
+            MPIR_ERR_CHKANDJUMP(!rtw_blockinsert, mpi_errno, MPI_ERR_OTHER, "**nomem");
+            for (i=0; i<new_size; i++) {
+                /* Initializing worldrank to -1 */
+                int worldrank = -1, key;
+                key = keytable[i].color;
+                RTWPmapFind(comm_ptr->co_shared_vars->rtw_map, key, &worldrank, NULL);
+                key = i; /* This is the local fgrank relative to this new group */
+                /* Store item in newcomm rtw map which has i as
+                   the local fgrank relative to the new communicator
+                   (keytable[i].color was the local fgrank in the
+                   outer communicator.)  The corresponding worldrank
+                   in outer communicator is determined and saved
+                   against fgrank=i in the newcomm rtw map.
+                */
+                rtw_blockinsert[key] = worldrank;
+            }
+
+            RTWmapBlockInsert((*newcomm_ptr)->co_shared_vars->rtw_map, new_size, rtw_blockinsert);
+            MPIU_Free(rtw_blockinsert);
+
+            MPIR_Comm_init_coshared_all_ref((*newcomm_ptr)->co_shared_vars);
+
+            (*newcomm_ptr)->co_shared_vars->co_barrier_vars =  (struct coproclet_barrier_vars *)MPIU_Malloc(sizeof(struct coproclet_barrier_vars));
+            MPIR_ERR_CHKANDJUMP(!((*newcomm_ptr)->co_shared_vars->co_barrier_vars), mpi_errno, MPI_ERR_OTHER, "**nomem");
+            (*newcomm_ptr)->co_shared_vars->co_barrier_vars->coproclet_signal = 0;
+            (*newcomm_ptr)->co_shared_vars->co_barrier_vars->coproclet_counter = 0;
+            (*newcomm_ptr)->co_shared_vars->co_barrier_vars->leader_signal = 0;
+
+            (*newcomm_ptr)->co_shared_vars->ptn_hash = NULL;
+
+            stored = NULL;
+            CL_LookupHashInsert(contextLeader_hshtbl, (*newcomm_ptr)->context_id, leader_wid, (*newcomm_ptr)->co_shared_vars, &stored);
+            MPIR_ERR_CHKANDJUMP(!stored, mpi_errno, MPI_ERR_OTHER, "**hshinsertfail" );
+        }
+#endif
 
         mpi_errno = MPIR_Comm_commit(*newcomm_ptr);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);

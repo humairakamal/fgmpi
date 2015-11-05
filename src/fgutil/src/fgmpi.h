@@ -1,3 +1,9 @@
+/*
+ *  (C) 2008 Humaira Kamal, The University of British Columbia.
+ *      See COPYRIGHT in top-level directory.
+ */
+
+
 #ifndef FGMPI_H
 #define FGMPI_H
 
@@ -16,6 +22,13 @@ typedef FG_ProcessPtr_t (*FG_MapPtr_t)(int argc, char** argv, int);
 typedef FG_MapPtr_t (*LookupMapPtr_t)(int argc, char** argv, char* str);
 
 extern int FGmpiexec( int *argc, char ***argv, LookupMapPtr_t lookupFuncPtr );
+
+int MPIX_Get_collocated_startrank(int * rank);
+int MPIX_Get_collocated_size(int * size);
+int MPIX_Get_n_size(int * size);
+void MPIX_Yield(void);
+void MPIX_Usleep(unsigned long long utime);
+
 
 #ifdef  __cplusplus
 }

@@ -473,8 +473,7 @@ int MPIDI_CH3I_Progress (MPID_Progress_state *progress_state, int is_blocking)
         MPIU_Assert(progress_state != NULL);
     }
 
-#if !defined(FINEGRAIN_MPI) /* FG: TODO Temporary bypass.
-                               MPIDI_CH3U_Check_for_failed_procs calls MPI_Group routines */
+#if !defined(FINEGRAIN_MPI) /* FG: TODO Temporary bypass. MPIDI_CH3U_Check_for_failed_procs calls MPI_Group routines */
     if (sigusr1_count > my_sigusr1_count) {
         my_sigusr1_count = sigusr1_count;
         mpi_errno = MPIDI_CH3U_Check_for_failed_procs();
@@ -1359,7 +1358,7 @@ void MPIDI_CH3I_Posted_recv_enqueued(MPID_Request *rreq)
     /* MT FIXME acquiring MPIDCOMM here violates lock ordering rules,
      * easily causes deadlock */
 
-    if ((rreq)->dev.match.parts.rank == MPI_ANY_SOURCE) /* FG: TODO? */
+    if ((rreq)->dev.match.parts.rank == MPI_ANY_SOURCE) /* FG: TODO? anysource_posted */
         /* call anysource handler */
 	anysource_posted(rreq);
     else
@@ -1393,7 +1392,7 @@ void MPIDI_CH3I_Posted_recv_enqueued(MPID_Request *rreq)
         MPIU_Assert(rreq->comm != NULL);
 #if defined(FINEGRAIN_MPI)
         if ( (rreq->dev.match.parts.rank == rreq->comm->rank) ||
-             (rreq->comm->p_rank == vc->pg_rank) ) /* FG: Double-check */
+             (rreq->comm->p_rank == vc->pg_rank) ) /* FG: TODO Double-check */
 #else
         if (rreq->dev.match.parts.rank == rreq->comm->rank)
 #endif
@@ -1445,7 +1444,7 @@ int MPIDI_CH3I_Posted_recv_dequeued(MPID_Request *rreq)
         MPIDI_Comm_get_vc(rreq->comm, rreq->dev.match.parts.rank, &vc);
         MPIU_Assert(vc != NULL);
         if ( (rreq->dev.match.parts.rank == rreq->comm->rank) ||
-             (rreq->comm->p_rank == vc->pg_rank) ) /* FG: Double-check */
+             (rreq->comm->p_rank == vc->pg_rank) ) /* FG: TODO Double-check */
             goto fn_exit;
 #else
         if (rreq->dev.match.parts.rank == rreq->comm->rank)

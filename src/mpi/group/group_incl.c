@@ -48,12 +48,36 @@ int MPIR_Group_incl_impl(MPID_Group *group_ptr, int n, const int ranks[], MPID_G
     if (mpi_errno) goto fn_fail;
     
     (*new_group_ptr)->rank = MPI_UNDEFINED;
+#if defined(FINEGRAIN_MPI)
+    (*new_group_ptr)->p_rank = MPI_UNDEFINED;
+    (*new_group_ptr)->rtw_grp_map = RTWmapCreate(n);
+    MPIU_Assert( ((*new_group_ptr)->rtw_grp_map != NULL) && (group_ptr->rtw_grp_map != NULL) );
+    int *rtw_blockinsert = (int *)MPIU_Malloc(sizeof(int) * n);
+    MPIU_Assert(rtw_blockinsert != 0);
+    for (i=0; i<n; i++) {
+        int worldrank = -1, key;
+        key = ranks[i];
+        RTWPmapFind(group_ptr->rtw_grp_map, key, &worldrank, NULL);
+        key = i; /* local fgrank relative to this new group */
+        rtw_blockinsert[key] = worldrank;
+
+        if (ranks[i] == group_ptr->rank){ /* i.e. calling process */
+            (*new_group_ptr)->rank = i;
+            (*new_group_ptr)->p_rank = group_ptr->p_rank;
+        }
+    }
+    RTWmapBlockInsert((*new_group_ptr)->rtw_grp_map, n, rtw_blockinsert);
+    MPIU_Free(rtw_blockinsert);
+    (*new_group_ptr)->fgsize = n;
+    (*new_group_ptr)->size = group_ptr->size;
+#else
     for (i = 0; i < n; i++) {
         (*new_group_ptr)->lrank_to_lpid[i].lpid = group_ptr->lrank_to_lpid[ranks[i]].lpid;
         if (ranks[i] == group_ptr->rank)
             (*new_group_ptr)->rank = i;
     }
     (*new_group_ptr)->size = n;
+#endif
     (*new_group_ptr)->idx_of_first_lpid = -1;
     /* TODO calculate is_local_dense_monotonic */
 

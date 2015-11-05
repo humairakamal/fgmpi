@@ -33,12 +33,6 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
     int mpi_errno = MPI_SUCCESS;
     int active_flag;
     MPID_Request *request_ptr = NULL;
-#if defined(FINEGRAIN_MPI)
-    MPID_Comm *comm_ptr = NULL;
-    MPIDI_Rank_t reqrank = -1;
-    int is_colocated = 0;
-    int num_of_colocated_yields = 0;
-#endif
 
     /* If this is a null request handle, then return an empty status */
     if (*request == MPI_REQUEST_NULL)
@@ -48,13 +42,6 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
     }
 
     MPID_Request_get_ptr(*request, request_ptr);
-
-#if defined(FINEGRAIN_MPI)
-    comm_ptr = request_ptr->comm;
-    MPIU_Assert(comm_ptr != NULL);
-    reqrank = request_ptr->dev.match.parts.rank; /* FG:TODO IMPORTANT Doublecheck */
-    is_colocated = (reqrank != MPI_ANY_SOURCE) ? Is_within_same_HWP(reqrank, comm_ptr, NULL) : 0;
-#endif
 
     if (!MPID_Request_is_complete(request_ptr))
     {
@@ -73,13 +60,6 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
 	MPID_Progress_start(&progress_state);
         while (!MPID_Request_is_complete(request_ptr))
 	{
-#if defined(FINEGRAIN_MPI)
-         if ( is_colocated && (num_of_colocated_yields < MAX_COLOCATED_YIELDS) )
-         {
-             num_of_colocated_yields++;
-             mpi_errno = FG_Yield_on_incomplete_request(request_ptr);
-         } else {
-#endif
 	    mpi_errno = MPIR_Grequest_progress_poke(1, &request_ptr, status); /* FG: TODO? */
 	    if (request_ptr->kind == MPID_UREQUEST &&
                 request_ptr->greq_fns->wait_fn != NULL)
@@ -121,20 +101,19 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
             if (!MPID_Request_is_complete(request_ptr)) {
                 FG_Yield_on_incomplete_request(request_ptr);
             }
-         }
 #endif
         }
 	MPID_Progress_end(&progress_state);
     }
 
 #if defined(FINEGRAIN_MPI)
-    /* HK: Note for zerocopy:
+    /* Note for zerocopy:
      * MPIDI_CH3U_Buffer_free(request_ptr);
      * MPIX_Izend sender buffer will be freed if the receiver is Non-Collocated.
      * The freeing of buffer in the collocated case where the match is not with
      * MPI_Zrecv or MPI_Izrecv is handled in  MPIDI_Isend_self() and MPIDI_CH3_RecvFromSelf().
      */
-    /* FG:TODO Zerocopy MPIDI_CH3U_Buffer_free(request_ptr); */
+    /* FG: TODO Zerocopy MPIDI_CH3U_Buffer_free(request_ptr); */
 #endif
     mpi_errno = MPIR_Request_complete(request, request_ptr, status, &active_flag);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);

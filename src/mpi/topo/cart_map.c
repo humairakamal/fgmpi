@@ -45,7 +45,12 @@ int MPIR_Cart_map( const MPID_Comm *comm_ptr, int ndims, const int dims[],
 	for ( i=1; i<ndims; i++ )
 	    nranks *= dims[i];
     }
+
+#if defined(FINEGRAIN_MPI)
+    size = comm_ptr->totprocs;
+#else
     size = comm_ptr->remote_size;
+#endif
     
     /* Test that the communicator is large enough */
     MPIR_ERR_CHKANDJUMP2(size < nranks, mpi_errno, MPI_ERR_DIMS, "**topotoolarge",
