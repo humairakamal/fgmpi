@@ -996,7 +996,7 @@ MPID_Request * MPIDI_CH3U_Recvq_FDP_or_AEU(MPIDI_Message_match * match,
                     /* Allocate buffer for MPIX_Zrecv/Izrecv */
                     MPIU_Assert(NULL == rreq->dev.user_buf);
                     MPIDI_Datatype_get_info(rreq->dev.user_count, rreq->dev.datatype, rdt_contig, rdata_sz, rdt_ptr, rdt_true_lb);
-                    *(rreq->dev.user_buf_handle) = (void *)malloc(rdata_sz);
+                    *(rreq->dev.user_buf_handle) = (void *)MPIU_Malloc(rdata_sz);
                     MPIU_Assert(*(rreq->dev.user_buf_handle));
                     rreq->dev.user_buf = *(rreq->dev.user_buf_handle);
                 }

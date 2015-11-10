@@ -368,7 +368,7 @@ void MPIDI_CH3U_Buffer_allocate(
 
     if (sdt_contig && rdt_contig)
     {
-	*rbuf_handle = (void *)malloc(sdata_sz);
+	*rbuf_handle = (void *)MPIU_Malloc(sdata_sz);
         MPIU_Assert(*rbuf_handle);
 	*rsz = sdata_sz;
     }
