@@ -1592,6 +1592,16 @@ is too big (> MPIU_SHMW_GHND_SZ)
 **hshinsertfail: Insertion in hash failed
 **mpix_comm_translate_ranks: MPIX_Comm__translate_ranks failed
 **mpix_comm_translate_ranks %C %d %p %C %p:MPIX_Comm_translate_ranks(%C, n=%d, ranks1=%p, %C, ranks2=%p) failed
+**mpix_zsend:MPIX_Zsend failed
+**mpix_zsend %p %d %D %i %t %C:MPIX_Zsend(buf=%p, count=%d, %D, dest=%i, tag=%t, %C) failed
+**mpix_izsend:MPIX_Izsend failed
+**mpix_izsend %p %d %D %i %t %C %p:MPIX_Izsend(buf=%p, count=%d, %D, dest=%i, tag=%t, %C, request=%p) failed
+**mpix_zrecv:MPIX_Zrecv failed
+**mpix_zrecv %p %d %D %i %t %C %p:MPIX_Zrecv(buf=%p, count=%d, %D, src=%i, tag=%t, %C, status=%p) failed
+**mpix_izrecv:MPIX_Izrecv failed
+**mpix_izrecv %p %d %D %i %t %C %p:MPIX_Izrecv(buf=%p, count=%d, %D, src=%i, tag=%t, %C, request=%p) failed
+**zcopybufalloc:MPIDI_CH3U_Buffer_allocate failed
+**zcopybufalloc %d %d:scount=%d rcount=%d
 
 # Datarep conversion function not supported by ROMIO (Temproary until implemented)
 **drconvnotsupported:Read and Write datarep conversions are currently not supported by MPI-IO

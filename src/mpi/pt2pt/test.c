@@ -62,7 +62,8 @@ int MPIR_Test_impl(MPI_Request *request, int *flag, MPI_Status *status)
 
     if (MPID_Request_is_complete(request_ptr)) {
 #if defined(FINEGRAIN_MPI)
-        /* FG: TODO Zerocopy MPIDI_CH3U_Buffer_free(request_ptr); */
+        /* FG: Zerocopy*/
+        MPIDI_CH3U_Buffer_free(request_ptr);
 #endif
 	mpi_errno = MPIR_Request_complete(request, request_ptr, status,
 					  &active_flag);

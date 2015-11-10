@@ -184,8 +184,8 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
             }
 
 #if defined(FINEGRAIN_MPI)
-            /* FG: TODO Zerocopy
-               MPIDI_CH3U_Buffer_free(request_ptrs[i]); */
+            /* FG: Zerocopy */
+            MPIDI_CH3U_Buffer_free(request_ptrs[i]);
 #endif
             mpi_errno = request_complete_fastpath(&array_of_requests[i], request_ptrs[i]);
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -254,8 +254,8 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
             /* complete the request and check the status */
             status_ptr = (ignoring_statuses) ? MPI_STATUS_IGNORE : &array_of_statuses[i];
 #if defined(FINEGRAIN_MPI)
-            /* FG: TODO Zerocopy
-               MPIDI_CH3U_Buffer_free(request_ptrs[i]); */
+            /* FG: Zerocopy */
+            MPIDI_CH3U_Buffer_free(request_ptrs[i]);
 #endif
             rc = MPIR_Request_complete(&array_of_requests[i], request_ptrs[i], status_ptr, &active_flag);
         }

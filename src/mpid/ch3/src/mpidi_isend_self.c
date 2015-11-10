@@ -46,7 +46,12 @@ int MPIDI_Isend_self(const void * buf, MPI_Aint count, MPI_Datatype datatype, in
     MPIDI_Request_set_msg_type(sreq, MPIDI_REQUEST_SELF_MSG);
 
 #if defined(FINEGRAIN_MPI)
-    /* FG: TODO Zerocopy */
+    /* FG: Zerocopy */
+    if ( MPIDI_REQUEST_TYPE_ZSEND == type ){
+        MPIDI_Request_set_self_zerocopy_flag(sreq, TRUE);
+        sreq->dev.user_buf_handle  = (void **)buf_handle;
+        sreq->dev.user_buf = NULL;
+    }
     match.parts.dest_rank = destworldrank;
     match.parts.rank = comm->rank;
 #else
@@ -62,7 +67,11 @@ int MPIDI_Isend_self(const void * buf, MPI_Aint count, MPI_Datatype datatype, in
     if (rreq == NULL)
     {
 #if defined(FINEGRAIN_MPI)
-        /* FG: TODO Zerocopy */
+        /* FG: Zerocopy */
+        if ( MPIDI_Request_get_self_zerocopy_flag(sreq) ){
+            /* Free the MPIX_Zsend/Izsend sender's buffer */
+            MPIU_Free(buf);
+        }
 #endif
         /* We release the send request twice, once to release the
          * progress engine reference and the second to release the
@@ -112,16 +121,56 @@ int MPIDI_Isend_self(const void * buf, MPI_Aint count, MPI_Datatype datatype, in
 	MPIDI_msg_sz_t data_sz;
 
 #if defined(FINEGRAIN_MPI)
-        /* FG: TODO Zerocopy */
-#endif
+        /* FG: Zerocopy
+          Pre-posted receive request found. Checking for different sender-receiver
+          match pairing scenarios.
+        */
+        if ( MPIDI_Request_get_self_zerocopy_flag(sreq) && MPIDI_Request_get_self_zerocopy_flag(rreq) )
+        {
+            int sdt_contig;
+            MPI_Aint sdt_true_lb;
+            MPID_Datatype * sdt_ptr;
+
+            /* Preposted Recv-Collocated MPIX_Zsend/Izsend - MPIX_Zrecv/Izrecv pairing */
+            MPIU_Assert(NULL == rreq->dev.user_buf);
+            *(rreq->dev.user_buf_handle) = (void*) (*buf_handle);
+
+            MPIDI_Datatype_get_info(count, datatype, sdt_contig, data_sz, sdt_ptr, sdt_true_lb);
+
+            /* MPIX_Zsend buf_handle can't be set to NULL as we don't have
+               a ptr to void**. */
+        }
+        else if( MPIDI_Request_get_self_zerocopy_flag(sreq) && !MPIDI_Request_get_self_zerocopy_flag(rreq) ){
+            /* Preposted Recv-Collocated MPIX_Zsend/Izsend - MPI_Recv/Irecv pairing. Freeing Sender's buffer */
+            MPIDI_CH3U_Buffer_copy(buf, count, datatype, &sreq->status.MPI_ERROR,
+                                   rreq->dev.user_buf, rreq->dev.user_count, rreq->dev.datatype, &data_sz, &rreq->status.MPI_ERROR);
+            /* Free the sender's buffer */
+            MPIU_Free(buf);
+        }
+        else if( !MPIDI_Request_get_self_zerocopy_flag(sreq) && MPIDI_Request_get_self_zerocopy_flag(rreq) ){
+            /* Preposted Recv-Collocated MPI_Send/Isend - MPIX_Zrecv/Izrecv pairing. Allocating receiver's buffer. */
+            MPIU_Assert(NULL == rreq->dev.user_buf);
+            /* Added checks for buffer count size as is done in MPIDI_CH3U_Buffer_copy() */
+            MPIDI_CH3U_Buffer_allocate(buf, count, datatype, &sreq->status.MPI_ERROR,
+                                       rreq->dev.user_buf_handle, rreq->dev.user_count, rreq->dev.datatype, &data_sz, &rreq->status.MPI_ERROR);
+            MPIDI_CH3U_Buffer_copy(buf, count, datatype, &sreq->status.MPI_ERROR,
+                                   *(rreq->dev.user_buf_handle), rreq->dev.user_count, rreq->dev.datatype, &data_sz, &rreq->status.MPI_ERROR);
+        } else {
+            /* Preposted Recv-Collocated MPI_Send/Isend - MPI_Recv/Irecv pairing */
+#endif /* matches #if defined(FINEGRAIN_MPI) */
+
         /* we found a posted req, which we now own, so we can release the CS */
         MPID_THREAD_CS_EXIT(POBJ, MPIR_THREAD_POBJ_MSGQ_MUTEX);
 
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,
 		     "found posted receive request; copying data");
-	    
+
 	MPIDI_CH3U_Buffer_copy(buf, count, datatype, &sreq->status.MPI_ERROR,
 			       rreq->dev.user_buf, rreq->dev.user_count, rreq->dev.datatype, &data_sz, &rreq->status.MPI_ERROR);
+#if defined(FINEGRAIN_MPI)
+        }
+#endif
+
 	MPIR_STATUS_SET_COUNT(rreq->status, data_sz);
         mpi_errno = MPID_Request_complete(rreq);
         if (mpi_errno != MPI_SUCCESS) {

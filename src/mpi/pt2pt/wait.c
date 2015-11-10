@@ -107,13 +107,8 @@ int MPIR_Wait_impl(MPI_Request *request, MPI_Status *status)
     }
 
 #if defined(FINEGRAIN_MPI)
-    /* Note for zerocopy:
-     * MPIDI_CH3U_Buffer_free(request_ptr);
-     * MPIX_Izend sender buffer will be freed if the receiver is Non-Collocated.
-     * The freeing of buffer in the collocated case where the match is not with
-     * MPI_Zrecv or MPI_Izrecv is handled in  MPIDI_Isend_self() and MPIDI_CH3_RecvFromSelf().
-     */
-    /* FG: TODO Zerocopy MPIDI_CH3U_Buffer_free(request_ptr); */
+    /* FG: Zerocopy */
+    MPIDI_CH3U_Buffer_free(request_ptr);
 #endif
     mpi_errno = MPIR_Request_complete(request, request_ptr, status, &active_flag);
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);

@@ -460,6 +460,31 @@ extern MPID_Request ** FG_recvq_unexpected_tail;
     (req_)->dev.state |= ((type_) << MPIDI_REQUEST_TYPE_SHIFT) & MPIDI_REQUEST_TYPE_MASK;\
 }
 
+#if defined(FINEGRAIN_MPI)
+/* FG: Zerocopy */
+#define MPIDI_REQUEST_TYPE_ZSEND 13 /* FG: TODO IMPORTANT **FIX THIS**. No space left in 4 bits used to encode request types. Currently overrides another type used for RMA. */
+
+#define MPIDI_REQUEST_SELF_ZEROCOPY_MASK (0x1 << MPIDI_REQUEST_SELF_ZEROCOPY_SHIFT)
+#define MPIDI_REQUEST_SELF_ZEROCOPY_SHIFT 9
+
+#define MPIDI_Request_get_self_zerocopy_flag(req_)                      \
+    (((req_)->dev.state & MPIDI_REQUEST_SELF_ZEROCOPY_MASK) >> MPIDI_REQUEST_SELF_ZEROCOPY_SHIFT)
+
+#define MPIDI_Request_set_self_zerocopy_flag(req_, flag_)               \
+    {									\
+        (req_)->dev.state &= ~MPIDI_REQUEST_SELF_ZEROCOPY_MASK;         \
+        (req_)->dev.state |= ((flag_) << MPIDI_REQUEST_SELF_ZEROCOPY_SHIFT) & MPIDI_REQUEST_SELF_ZEROCOPY_MASK; \
+    }
+
+
+void MPIDI_CH3U_Buffer_allocate(const void * const sbuf, MPI_Aint scount, MPI_Datatype sdt, int * smpi_errno, void ** rbuf_handle, MPI_Aint rcount, MPI_Datatype rdt, MPIDI_msg_sz_t * rsz, int * rmpi_errno);
+
+void MPIDI_CH3U_Buffer_free( MPID_Request * request_ptr );
+
+#endif
+
+
+
 /* NOTE: Request updates may require atomic ops (critical sections) if
    a fine-grain thread-sync model is used. */
 #define MPIDI_Request_cancel_pending(req_, flag_)	\

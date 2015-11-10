@@ -240,15 +240,59 @@ int MPIDI_CH3_RecvFromSelf( MPID_Request *rreq, void *buf, MPI_Aint count,
     if (sreq != NULL)
     {
 	MPIDI_msg_sz_t data_sz;
+
 #if defined(FINEGRAIN_MPI)
+        /* FG: Zerocopy */
         void * buf = (void *) (*buf_handle);
-        /* FG: TODO ZEROCOPY */
-#endif
-	
+        if ( MPIDI_Request_get_self_zerocopy_flag(sreq) && MPIDI_Request_get_self_zerocopy_flag(rreq) )
+        {
+            int rdt_contig;
+            MPI_Aint rdt_true_lb;
+            MPID_Datatype * rdt_ptr;
+
+            /* Unexpected Send-Collocated MPIX_Zsend/Izsend - MPIX_Zrecv/Izrecv pairing */
+            MPIU_Assert(NULL == rreq->dev.user_buf);
+            *(rreq->dev.user_buf_handle) = (void*) (*(sreq->dev.user_buf_handle));
+
+            MPIDI_Datatype_get_info(count, datatype, rdt_contig, data_sz, rdt_ptr, rdt_true_lb);
+
+            /* MPIX_Zsend buf_handle can't be set to NULL as we don't have
+               a ptr to void **.  */
+        }
+        else if( MPIDI_Request_get_self_zerocopy_flag(sreq) && !MPIDI_Request_get_self_zerocopy_flag(rreq) ){
+            /* Unexpected Send-Collocated MPIX_Zsend/Izsend<=>MPI_Recv/Irecv pairing. Freeing sender buffer */
+            MPIDI_CH3U_Buffer_copy(*(sreq->dev.user_buf_handle), sreq->dev.user_count,
+                                   sreq->dev.datatype, &sreq->status.MPI_ERROR,
+                                   buf, count, datatype, &data_sz,
+                                   &rreq->status.MPI_ERROR);
+
+            /* Free the sender's buffer */
+            MPIU_Free(*(sreq->dev.user_buf_handle));
+        }
+        else if( !MPIDI_Request_get_self_zerocopy_flag(sreq) && MPIDI_Request_get_self_zerocopy_flag(rreq) ){
+            /* Unexpected Send-Collocated MPI_Send/Isend - MPIX_Zrecv/Izrecv pairing. Allocating receiver's buffer. */
+            MPIU_Assert(NULL == rreq->dev.user_buf);
+            /* Added checks for buffer count size as is done in MPIDI_CH3U_Buffer_copy() */
+            MPIDI_CH3U_Buffer_allocate(sreq->dev.user_buf, sreq->dev.user_count,
+                                       sreq->dev.datatype, &sreq->status.MPI_ERROR,
+                                       rreq->dev.user_buf_handle, rreq->dev.user_count,
+                                       rreq->dev.datatype, &data_sz, &rreq->status.MPI_ERROR);
+            MPIDI_CH3U_Buffer_copy(sreq->dev.user_buf, sreq->dev.user_count,
+                                   sreq->dev.datatype, &sreq->status.MPI_ERROR,
+                                   *(rreq->dev.user_buf_handle), rreq->dev.user_count,
+                                   rreq->dev.datatype, &data_sz, &rreq->status.MPI_ERROR);
+        } else {
+            /* Unexpected Send-Collocated MPI_Send/Isend - MPI_Recv/Irecv pairing */
+#endif /* matches #if defined(FINEGRAIN_MPI) */
+
 	MPIDI_CH3U_Buffer_copy(sreq->dev.user_buf, sreq->dev.user_count,
 			       sreq->dev.datatype, &sreq->status.MPI_ERROR,
 			       buf, count, datatype, &data_sz, 
 			       &rreq->status.MPI_ERROR);
+#if defined(FINEGRAIN_MPI)
+        }
+#endif
+
 	MPIR_STATUS_SET_COUNT(rreq->status, data_sz);
 	mpi_errno = MPID_Request_complete(sreq);
         if (mpi_errno != MPI_SUCCESS) {
@@ -276,12 +320,103 @@ int MPIDI_CH3_RecvFromSelf( MPID_Request *rreq, void *buf, MPI_Aint count,
 }
 
 #if defined(FINEGRAIN_MPI)
-/* FG: TODO ZEROCOPY FOLLOWING FUNCTIONS
-void MPIDI_CH3U_Buffer_allocate(
-    const void * const sbuf, int scount, MPI_Datatype sdt, int * smpi_errno,
-    void ** rbuf_handle, int rcount, MPI_Datatype rdt, MPIDI_msg_sz_t * rsz,
-    int * rmpi_errno)
+/* FG: Zerocopy */
+/* This routine handles allocation of the receive buffer for the
+   matching pairing of MPI_Send/Isend with MPIX_Zrecv/Izrecv */
 
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3U_Buffer_allocate
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+void MPIDI_CH3U_Buffer_allocate(
+    const void * const sbuf, MPI_Aint scount, MPI_Datatype sdt, int * smpi_errno,
+    void ** rbuf_handle, MPI_Aint rcount, MPI_Datatype rdt, MPIDI_msg_sz_t * rsz,
+    int * rmpi_errno)
+{
+    int sdt_contig;
+    int rdt_contig;
+    MPI_Aint sdt_true_lb, rdt_true_lb;
+    MPIDI_msg_sz_t sdata_sz;
+    MPIDI_msg_sz_t rdata_sz;
+    MPID_Datatype * sdt_ptr;
+    MPID_Datatype * rdt_ptr;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3U_BUFFER_ALLOCATE);
+
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_BUFFER_ALLOCATE);
+    *smpi_errno = MPI_SUCCESS;
+    *rmpi_errno = MPI_SUCCESS;
+
+    MPIDI_Datatype_get_info(scount, sdt, sdt_contig, sdata_sz, sdt_ptr, sdt_true_lb);
+    MPIDI_Datatype_get_info(rcount, rdt, rdt_contig, rdata_sz, rdt_ptr, rdt_true_lb);
+
+    /* --BEGIN ERROR HANDLING-- */
+    if (sdata_sz > rdata_sz)
+    {
+	MPIU_DBG_MSG_FMT(CH3_OTHER,TYPICAL,(MPIU_DBG_FDEST,
+	    "message truncated, sdata_sz=" MPIDI_MSG_SZ_FMT " rdata_sz=" MPIDI_MSG_SZ_FMT,
+			  sdata_sz, rdata_sz));
+	sdata_sz = rdata_sz;
+	*rmpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_TRUNCATE, "**truncate", "**truncate %d %d", sdata_sz, rdata_sz );
+    }
+    /* --END ERROR HANDLING-- */
+
+    if (sdata_sz == 0)
+    {
+	*rsz = 0;
+	goto fn_exit;
+    }
+
+    if (sdt_contig && rdt_contig)
+    {
+	*rbuf_handle = (void *)malloc(sdata_sz);
+        MPIU_Assert(*rbuf_handle);
+	*rsz = sdata_sz;
+    }
+    else
+    {
+	/* --BEGIN ERROR HANDLING-- */
+
+        MPIU_DBG_MSG(CH3_OTHER,TYPICAL,"Sender and receiver datatypes are not contiguous");
+        *smpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**zcopybufalloc", "**zcopybufalloc %d %d", scount, rcount);
+        *rmpi_errno = *smpi_errno;
+        *rsz = 0;
+        goto fn_exit;
+
+	/* --END ERROR HANDLING-- */
+    }
+
+  fn_exit:
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3U_BUFFER_ALLOCATE);
+}
+
+
+/* This routine handles freeing of the sender buffer for the
+   matching pairing of MPIX_Izend (coupled with MPI_Wait or MPI_Test
+   variants) with Non-Collocated receiver. */
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3U_Buffer_free
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
 void MPIDI_CH3U_Buffer_free( MPID_Request * request_ptr )
-    */
-#endif
+{
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3U_BUFFER_FREE);
+
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_BUFFER_FREE);
+
+    if ( ( MPIDI_REQUEST_TYPE_SEND == MPIDI_Request_get_type(request_ptr) ) &&
+         ( MPIDI_Request_get_self_zerocopy_flag(request_ptr) ) &&
+         ( !(Is_within_same_HWP(request_ptr->dev.match.parts.dest_rank, request_ptr->comm, NULL)) ) )  {
+
+        /* MPI_Izsend<=>MPI_Wait/Test (and variants) pairing: Freeing buf_handle */
+
+        MPIU_Assert( (request_ptr->dev.user_buf_handle) && *(request_ptr->dev.user_buf_handle) );
+        MPIU_Free(*(request_ptr->dev.user_buf_handle));
+    }
+
+  fn_exit:
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3U_BUFFER_FREE);
+}
+
+#endif /* Matches #if defined(FINEGRAIN_MPI) */
+

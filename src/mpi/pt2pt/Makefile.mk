@@ -47,7 +47,11 @@ mpi_sources +=                           \
     src/mpi/pt2pt/wait.c                 \
     src/mpi/pt2pt/waitall.c              \
     src/mpi/pt2pt/waitany.c              \
-    src/mpi/pt2pt/waitsome.c
+    src/mpi/pt2pt/waitsome.c    	 \
+    src/mpi/pt2pt/zsend.c                \
+    src/mpi/pt2pt/izsend.c               \
+    src/mpi/pt2pt/zrecv.c                \
+    src/mpi/pt2pt/izrecv.c
 
 mpi_core_sources += \
     src/mpi/pt2pt/bsendutil.c     \

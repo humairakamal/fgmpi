@@ -981,7 +981,26 @@ MPID_Request * MPIDI_CH3U_Recvq_FDP_or_AEU(MPIDI_Message_match * match,
                  * valid and we can stop searching for the request. */
                 found = TRUE;
 #if defined(FINEGRAIN_MPI)
-                /* FG: TODO Zerocopy */
+                /* FG: Zerocopy */
+                if ( (MPIDI_Request_get_self_zerocopy_flag(rreq)) &&
+                     !(Is_within_same_HWP(match->parts.rank, rreq->comm, NULL)) )
+                {
+                    int rdt_contig;
+                    MPI_Aint rdt_true_lb;
+                    MPIDI_msg_sz_t rdata_sz;
+                    MPID_Datatype * rdt_ptr;
+                    /* MPIX_Zrecv/Izrecv is receiving from non-collocated Sender-rank=%d.
+                       Allocating buffer for MPIX_Zrecv/Izrecv */
+                    MPIU_Assert ( MPIDI_Request_get_msg_type(rreq) != MPIDI_REQUEST_SELF_MSG );
+
+                    /* Allocate buffer for MPIX_Zrecv/Izrecv */
+                    MPIU_Assert(NULL == rreq->dev.user_buf);
+                    MPIDI_Datatype_get_info(rreq->dev.user_count, rreq->dev.datatype, rdt_contig, rdata_sz, rdt_ptr, rdt_true_lb);
+                    *(rreq->dev.user_buf_handle) = (void *)malloc(rdata_sz);
+                    MPIU_Assert(*(rreq->dev.user_buf_handle));
+                    rreq->dev.user_buf = *(rreq->dev.user_buf_handle);
+                }
+
                 FG_Notify_on_event(match->parts.dest_rank, UNBLOCK);
 #endif
                 goto lock_exit;

@@ -131,8 +131,8 @@ int MPIR_Testall_impl(int count, MPI_Request array_of_requests[], int *flag,
                     n_completed ++;
                     status_ptr = (array_of_statuses != MPI_STATUSES_IGNORE) ? &array_of_statuses[i] : MPI_STATUS_IGNORE;
 #if defined(FINEGRAIN_MPI)
-                    /* FG: TODO Zerocopy
-                       MPIDI_CH3U_Buffer_free(request_ptrs[i]); */
+                    /* FG: Zerocopy */
+                    MPIDI_CH3U_Buffer_free(request_ptrs[i]);
 #endif
                     rc = MPIR_Request_complete(&array_of_requests[i], request_ptrs[i], status_ptr, &active_flag);
                     if (mpi_errno == MPI_ERR_IN_STATUS && status_ptr != MPI_STATUS_IGNORE)

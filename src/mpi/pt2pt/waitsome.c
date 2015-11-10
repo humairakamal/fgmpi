@@ -217,8 +217,8 @@ int MPI_Waitsome(int incount, MPI_Request array_of_requests[],
                 {
                     status_ptr = (array_of_statuses != MPI_STATUSES_IGNORE) ? &array_of_statuses[n_active] : MPI_STATUS_IGNORE;
 #if defined(FINEGRAIN_MPI)
-                    /* FG: TODO Zerocopy
-                       MPIDI_CH3U_Buffer_free(request_ptrs[i]); */
+                    /* FG: Zerocopy */
+                    MPIDI_CH3U_Buffer_free(request_ptrs[i]);
 #endif
                     rc = MPIR_Request_complete(&array_of_requests[i], request_ptrs[i], status_ptr, &active_flag);
                     if (active_flag)
