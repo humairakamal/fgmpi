@@ -73,7 +73,7 @@ int MPID_Zrecv(void ** buf_handle, MPI_Aint count, MPI_Datatype datatype, int ra
 
             /* Allocate buffer for MPIX_Zrecv */
             MPIDI_Datatype_get_info(rreq->dev.user_count, rreq->dev.datatype, rdt_contig, rdata_sz, rdt_ptr, rdt_true_lb);
-            *(rreq->dev.user_buf_handle) = (void *)malloc(rdata_sz);
+            *(rreq->dev.user_buf_handle) = (void *)MPIU_Malloc(rdata_sz);
             MPIU_Assert(*(rreq->dev.user_buf_handle));
             rreq->dev.user_buf = *(rreq->dev.user_buf_handle);
         }
