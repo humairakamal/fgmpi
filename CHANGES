@@ -1,4 +1,35 @@
 ===============================================================================
+                               Changes in FG-MPI 2.0
+===============================================================================
+
+Some improvements in FG-MPI 2.0 over the past 1.0 version are listed below.
+
+ - FG-MPI 1.0 was originally derived from mpich2-1.0.8p1 with some
+   modules updated from mpich2-1.2.1.  It was, however, unable to take
+   advantage of improvements in later releases of MPICH. FG-MPI 2.0 is
+   branched off the main mpich repository with the ability to synchronize
+   to updates in future MPICH releases. It is currently in sync with
+   MPICH 3.2. As well, integrating FG-MPI in the latest version enhances
+   its applicability and utility both in the academia and the industry.
+
+ - FG-MPI 2.0 leverages hierarchical collectives in MPICH for
+   intra-node and inter-node communication. It adds another level to
+   the hierarchy through an intra-OS-process communicator inside the
+   middleware and extends the existing blocking collective algorithms
+   likewise.
+
+ - FG-MPI 1.0 uses all-to-all communication during MPI environment
+   initialization. This type of communication is not scalable and has
+   subsequently been fixed in later releases of MPICH. FG-MPI 2.0 takes
+   advantage of the improvements in process setup as well as the
+   streamlined build and configure system.
+
+ - The hydra process manager has also evolved since mpich2-1.2.1
+   release. FG-MPI extends mpiexec to include an -nfg flag for
+   fine-grain concurrency and leverages improvements in hydra-3.2.
+
+
+===============================================================================
                                Changes in 3.2
 ===============================================================================
 
