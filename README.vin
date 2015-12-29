@@ -3,7 +3,8 @@
 FG-MPI extends the execution model of the Message Passing Interface (MPI)
 to expose large-scale, fine-grain concurrency. FG-MPI is integrated into 
 the MPICH middleware, a widely used, production quality implementation of
-the MPI standard from the Argonne National Laboratory. 
+the MPI standard from the Argonne National Laboratory. It was forked off
+MPICH primary repository (http://git.mpich.org/mpich.git/).
 
 Website: http://www.cs.ubc.ca/~humaira/fgmpi.html
 
