@@ -8,6 +8,7 @@
 
 #include "threadlib.h"
 #include "threadlib_internal.h"
+#include "pmi.h" /* PMI_Get_size */
 #include "mpiimpl.h"
 
 

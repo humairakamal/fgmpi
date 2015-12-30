@@ -6,6 +6,7 @@
  */
 
 #include "mpiimpl.h"
+#include "mpidimpl.h"
 
 #if !defined(MPID_REQUEST_PTR_ARRAY_SIZE)
 #define MPID_REQUEST_PTR_ARRAY_SIZE 16
