@@ -8,6 +8,10 @@
 #include "mpiimpl.h"
 #include "collutil.h"
 
+#if defined(FINEGRAIN_MPI)
+int MPIU_Get_intra_osproc_rank(MPID_Comm * comm_ptr, int root);
+#endif
+
 /*
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===
 
