@@ -293,7 +293,7 @@ void  mpix_get_collocated_startrank_ ( MPI_Fint *v1, MPI_Fint *ierr ){
     *ierr = MPIX_Get_collocated_startrank ( v1 );
 }
 
-inline int PMI_Get_totprocs( int *size )
+int PMI_Get_totprocs( int *size )
 {
     if ( PMI_initialized )
 	*size = PMI_totprocs;

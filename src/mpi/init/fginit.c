@@ -294,7 +294,7 @@ int FGworldrank_to_pid(int FG_worldrank)
 }
 
 
-inline int RTWPmapFind(RTWmap* rtw_map, int lrank, int *worldrank_ptr, int *pid_ptr){ /* IN,IN,OUT,OUT */
+int RTWPmapFind(RTWmap* rtw_map, int lrank, int *worldrank_ptr, int *pid_ptr){ /* IN,IN,OUT,OUT */
     if ( lrank < 0 ) {
         MPL_internal_error_printf("Error: negative rank lookup. This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);
         MPID_Abort(NULL, MPI_SUCCESS, -1, NULL);
@@ -313,7 +313,7 @@ inline int RTWPmapFind(RTWmap* rtw_map, int lrank, int *worldrank_ptr, int *pid_
     return (MPI_SUCCESS);
 }
 
-inline int Set_PROC_NULL(int *worldrank_ptr, int *pid_ptr) /* OUT,OUT */
+int Set_PROC_NULL(int *worldrank_ptr, int *pid_ptr) /* OUT,OUT */
 {
     (*worldrank_ptr) = MPI_PROC_NULL;
     if (NULL != pid_ptr) {

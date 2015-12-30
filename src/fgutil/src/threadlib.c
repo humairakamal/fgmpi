@@ -1115,7 +1115,7 @@ inline static void sleepq_remove_thread(fgmpi_thread_t *t)
 }
 
 
-inline int sleepq_size(void)
+int sleepq_size(void)
 {
     if (NULL == sleepq )
         return (0);
