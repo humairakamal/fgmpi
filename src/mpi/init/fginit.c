@@ -28,7 +28,7 @@ extern void (*sched_start_progress_thread)(void);
 extern void (*sched_init_progress_thread)(void);
 static int FGP_inits = 0;
 static int numFGspawn = 0;
-static thread_t** Fprog_spawn_ret = NULL;
+static fgmpi_thread_t** Fprog_spawn_ret = NULL;
 FWraparg_t* FG_Wrapargs = NULL;
 
 FGP_Init_State_t FGP_init_state = FGP_PRE_INIT;
@@ -82,7 +82,7 @@ void FG_Spawn_threads(FG_WrapperProcessPtr_t WrapProcessPtr, FWraparg_t* FG_Wrap
     FG_WrapperProcessPtr_t FG_wrapperFPtr = WrapProcessPtr;
 
     numFGspawn = num_spawn;
-    MALLOC(Fprog_spawn_ret, numFGspawn, thread_t*, thread_t**);
+    MALLOC(Fprog_spawn_ret, numFGspawn, fgmpi_thread_t*, fgmpi_thread_t**);
 
     /* creating coroutines of the function pointers */
     /* IMPORTANT NOTE: DO NOT REUSE THE ARGUMENTS PASSED TO EACH thread_spawn.

@@ -68,7 +68,7 @@ int runlist_init();
 /* This is a separate struct because pthread has API for users to initizalize */
 /* pthread_attr_t structs before thread creation */
 struct _thread_attr {
-  thread_t *thread;     /* != NULL when is bound to a thread */
+  fgmpi_thread_t *thread;     /* != NULL when is bound to a thread */
 
   /* Attributes below are valid only when thread == NULL */
   int joinable:1;
@@ -80,7 +80,7 @@ struct _thread_attr {
 #define THREAD_SIG_MAX 32
 
 
-struct thread_st {
+struct fgmpi_thread_st {
   unsigned tid;   /* thread id, mainly for readability of debug output */
 #if defined(ETCORO)
     struct coroutine *coro;
@@ -129,7 +129,7 @@ struct thread_st {
   sigset_t sig_received;	/* per-thread received but unhandled signals */
   sigset_t sig_mask;		/* masked signals for this thread */
 
-  thread_t *join_thread;   /* thread waiting for the completion of the thread */
+  fgmpi_thread_t *join_thread;   /* thread waiting for the completion of the thread */
   void *ret;               /* return value, returned to user by thread_join() */
 
   long long sleep;         /* relative time for this thread to sleep after the prev one in sleep queue */
@@ -138,23 +138,23 @@ struct thread_st {
 
 
 
-extern thread_t *current;
+extern fgmpi_thread_t *current;
 extern int in_scheduler;
 
 
 /* scheduler functions */
 #define PROGRESS_THREAD_RANK -200
 extern void* FG_Scheduler_progress_loop(void* args);
-extern thread_t * progress_thread;
+extern fgmpi_thread_t * progress_thread;
 extern int runlist_size(void);
 extern int is_progress_thread_running(void);
 extern void noop(void);
 
 #define DECLARE_SCHEDULER(s)  \
   extern void s##_init(void); \
-  extern void s##_add_thread(thread_t *t); \
-  extern thread_t* s##_next_thread(void); \
-  extern void s##_block_thread(thread_t *t, void* event);   \
+  extern void s##_add_thread(fgmpi_thread_t *t); \
+  extern fgmpi_thread_t* s##_next_thread(void); \
+  extern void s##_block_thread(fgmpi_thread_t *t, void* event);   \
   extern void s##_unblock_thread(void* event);
 
 #define DECLARE_SCHEDULER_PROGRESS_THREAD(s)  \
@@ -162,10 +162,10 @@ extern void noop(void);
   extern void s##_start_progress_thread(void);
 
 #define DECLARE_SCHEDULER_ADD_INIT(s)               \
-    extern void s##_add_init_thread(thread_t *t);
+    extern void s##_add_init_thread(fgmpi_thread_t *t);
 
 #define DECLARE_SCHEDULER_NEXT_INIT(s)           \
-  extern thread_t* s##_next_init_thread(void);
+  extern fgmpi_thread_t* s##_next_init_thread(void);
 
 
 
@@ -196,7 +196,7 @@ DECLARE_SCHEDULER_PROGRESS_THREAD(sched_block_queue)
 
 
 #define strong_alias(name, aliasname) extern __typeof (name) aliasname __attribute__ ((alias (#name)));
-#define valid_thread(t) (t != NULL  &&  t != (thread_t*)-1)
+#define valid_thread(t) (t != NULL  &&  t != (fgmpi_thread_t*)-1)
 #define thread_alive(t) ((t)->state == RUNNABLE || (t)->state == SUSPENDED)
 
 /* Internal constants */
@@ -226,6 +226,6 @@ extern long long total_stack_in_use;
 /* process all pending signals.  returns 1 is any actually handled, 0 otherwise */
 /* extern inline int sig_process_pending(); */
 
-extern thread_t *scheduler_thread;
+extern fgmpi_thread_t *scheduler_thread;
 
 #endif /* THREADLIB_INTERNAL_H */
