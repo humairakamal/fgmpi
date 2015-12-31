@@ -4470,6 +4470,7 @@ int MPIR_Comm_set_attr_impl(MPID_Comm *comm_ptr, int comm_keyval, void *attribut
 
 #if defined(FINEGRAIN_MPI)
 int MPIR_Comm_set_sizevars(MPID_Comm *comm_ptr, int new_totprocs, MPID_Comm *newcomm_ptr);
+int MPIR_Comm_share_commit(MPID_Comm * comm, MPID_Comm * newcomm);
 #endif
 
 /* Pull the error status out of the tag space and put it into an errflag. */
