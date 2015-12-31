@@ -8,6 +8,10 @@
 #include "mpiimpl.h"
 #include "collutil.h"
 
+#if defined(FINEGRAIN_MPI)
+int MPIU_Get_intra_osproc_rank(MPID_Comm * comm_ptr, int root);
+#endif
+
 /*
 === BEGIN_MPI_T_CVAR_INFO_BLOCK ===
 
@@ -800,7 +804,7 @@ int MPIR_Reduce_intra (
         if (comm_ptr->node_comm != NULL &&
             MPIU_Get_intranode_rank(comm_ptr, root) == -1) {
 #if defined(FINEGRAIN_MPI)
-            void *buf = NULL;
+            const void *buf = NULL;
             if (comm_ptr->osproc_colocated_comm != NULL) {
                 /* I participated in the first intra_osproc reduce */
                 MPIU_Assert(1 == did_reduce);
@@ -854,7 +858,7 @@ int MPIR_Reduce_intra (
                        Use tmp_buf as recvbuf. */
 #if defined(FINEGRAIN_MPI)
                     /* I may have participated in the earlier intra_osproc reduce */
-                    void *buf = (comm_ptr->osproc_colocated_comm != NULL && MPIU_Get_intra_osproc_rank(comm_ptr, root) == -1) ? MPI_IN_PLACE : sendbuf;
+                    const void *buf = (comm_ptr->osproc_colocated_comm != NULL && MPIU_Get_intra_osproc_rank(comm_ptr, root) == -1) ? MPI_IN_PLACE : sendbuf;
                     if (buf == MPI_IN_PLACE) MPIU_Assert(1 == did_reduce);
                     mpi_errno = MPIR_Reduce_impl(buf, tmp_buf, count, datatype,
                                              op, MPIU_Get_internode_rank(comm_ptr, root),

@@ -196,7 +196,7 @@ extern Coproclet_shared_vars_t * world_co_shared_vars;
 #define MPIDI_Comm_get_pid_worldrank(comm_, localrank_, pid_ptr_, worldrank_ptr_) \
     do {                                                                \
         if ( MPI_PROC_NULL == localrank_ ) {                            \
-            Set_PROC_NULL(worldrank_ptr_, pid_ptr_);                    \
+            FG_set_PROC_NULL(worldrank_ptr_, pid_ptr_);                 \
         } else {                                                        \
             RTWPmapFind((comm_->co_shared_vars)->rtw_map, localrank_, worldrank_ptr_, pid_ptr_); \
         }                                                               \

@@ -27,7 +27,7 @@ int MPIR_Progress_wait_send_request(MPID_Comm *comm_ptr, int dest, MPID_Request 
     int mpi_errno = MPI_SUCCESS;
 
     if (!MPID_Request_is_complete(request_ptr)) {
-        if ( Is_within_same_HWP(dest, comm_ptr, NULL) ) {
+        if ( FG_is_within_same_HWP(dest, comm_ptr, NULL) ) {
             while(!MPID_Request_is_complete(request_ptr)) {
                 FG_Yield();
             }

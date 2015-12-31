@@ -2435,6 +2435,9 @@ int MPIR_Request_complete(MPI_Request *, MPID_Request *, MPI_Status *, int *);
 int MPIR_Request_get_error(MPID_Request *);
 /* run the progress engine until the given request is complete */
 int MPIR_Progress_wait_request(MPID_Request *req);
+#if defined(FINEGRAIN_MPI)
+int MPIR_Progress_wait_send_request(MPID_Comm *comm_ptr, int dest, MPID_Request *request_ptr);
+#endif
 
 /* The following routines perform the callouts to the user routines registered
    as part of a generalized request.  They handle any language binding issues
@@ -4501,5 +4504,9 @@ extern const char MPIR_Version_FC[];
 /* avoid conflicts in source files with old-style "char FCNAME[]" vars */
 #undef FUNCNAME
 #undef FCNAME
+
+#if defined(FINEGRAIN_MPI)
+#include "mpidimpl.h"
+#endif
 
 #endif /* MPIIMPL_INCLUDED */

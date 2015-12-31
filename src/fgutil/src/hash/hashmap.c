@@ -228,7 +228,7 @@ inline int RTWarrayInsert(int *rtw_arraymap, int key, int worldrank) /*(IN, IN, 
     return (0);
 }
 
-inline int RTWarrayBlockInsert(int *rtw_arraymap, int size, int *blockarray) /*(IN, IN, IN)*/
+int RTWarrayBlockInsert(int *rtw_arraymap, int size, int *blockarray) /*(IN, IN, IN)*/
 {
     memcpy(rtw_arraymap, blockarray, size*sizeof(int));
     return (0);
@@ -464,7 +464,7 @@ inline int CL_LookupHashFind(hshtbl *CL_hshtbl, int context_id, int LeaderWorldR
     return (0);
 }
 
-inline int CL_LookupHashInsert(hshtbl *CL_hshtbl, int context_id, int LeaderWorldRank, void* co_shared_vars, cLitemptr *stored) /* IN, IN, IN, IN, OUT */
+int CL_LookupHashInsert(hshtbl *CL_hshtbl, int context_id, int LeaderWorldRank, void* co_shared_vars, cLitemptr *stored) /* IN, IN, IN, IN, OUT */
 {
     cLitem CL_item;
     *stored = NULL;
@@ -475,7 +475,7 @@ inline int CL_LookupHashInsert(hshtbl *CL_hshtbl, int context_id, int LeaderWorl
     return (0);
 }
 
-inline int CL_DeleteHashEntry(hshtbl *CL_hshtbl, cLitemptr stored)
+int CL_DeleteHashEntry(hshtbl *CL_hshtbl, cLitemptr stored)
 {
     cLitemptr removed = NULL;
     removed = hshdelete(CL_hshtbl, stored);
@@ -668,7 +668,7 @@ inline int ptnLookupHashInsert(hshtbl *ptn_lookuphshtbl, int parent_rank, Parent
 }
 
 
-inline int hshtblFree(hshtbl **hash_dptr) /*(IN)*/
+int hshtblFree(hshtbl **hash_dptr) /*(IN)*/
 {
     hshkill(*hash_dptr);
     *hash_dptr = NULL;

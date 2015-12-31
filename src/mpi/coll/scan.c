@@ -7,6 +7,10 @@
 
 #include "mpiimpl.h"
 
+#if defined(FINEGRAIN_MPI)
+int MPIU_Get_intra_osproc_rank(MPID_Comm * comm_ptr, int root);
+#endif
+
 /* -- Begin Profiling Symbol Block for routine MPI_Scan */
 #if defined(HAVE_PRAGMA_WEAK)
 #pragma weak MPI_Scan = PMPI_Scan

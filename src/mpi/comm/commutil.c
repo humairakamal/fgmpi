@@ -1746,7 +1746,7 @@ int MPIR_Comm_populate_rtwmap(MPID_Comm *comm_ptr, int new_totprocs, MPID_Comm *
 #define FUNCNAME MPIR_Coshared_group_release
 #undef FCNAME
 #define FCNAME MPL_QUOTE(FUNCNAME)
-inline void MPIR_Coshared_group_release(MPID_Group * group_ptr)
+void MPIR_Coshared_group_release(MPID_Group * group_ptr)
 {
     if ( group_ptr->ref_acrossCommGroup_countptr ) {
         /* if !NULL, a communicator has been created using this group */

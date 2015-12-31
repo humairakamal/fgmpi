@@ -144,7 +144,7 @@ int MPIX_Zsend(void **buf_handle, int count, MPI_Datatype datatype, int dest, in
     
   fn_exit:
 
-    if ( !(Is_within_same_HWP(dest, comm_ptr, NULL)) )  {
+    if ( !(FG_is_within_same_HWP(dest, comm_ptr, NULL)) )  {
         /* Free the sender's buffer */
         MPIU_Free(*buf_handle);
         buf_handle = NULL;

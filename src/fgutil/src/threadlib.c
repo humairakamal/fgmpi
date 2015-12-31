@@ -44,8 +44,8 @@
 
 
 /* sanity check THREAD_KEY_MAX and size of key_data_count */
-/* #if THREAD_KEY_MAX >> (sizeof(thread_t.key_data_count)-1) != 1 */
-/* #error not enough space in thread_t.key_data_count */
+/* #if THREAD_KEY_MAX >> (sizeof(fgmpi_thread_t.key_data_count)-1) != 1 */
+/* #error not enough space in fgmpi_thread_t.key_data_count */
 /* #endif */
 
 
@@ -73,11 +73,11 @@ int *start_node_stacks = NULL;
 #endif
 #endif
 
-static thread_t* main_thread=NULL;
+static fgmpi_thread_t* main_thread=NULL;
 #ifndef NO_SCHEDULER_THREAD
-thread_t* scheduler_thread=NULL;
+fgmpi_thread_t* scheduler_thread=NULL;
 #endif
-thread_t* current_thread=NULL;
+fgmpi_thread_t* current_thread=NULL;
 static int current_thread_exited = 0;
 
 /* a list of all threads, used by sig_handler() */
@@ -98,11 +98,11 @@ static int num_zombie_threads = 0;
 
 /* modular scheduling functions */
 static void (*sched_init)(void);
-static void (*sched_add_thread)(thread_t *t);
-static thread_t* (*sched_next_thread)(void);
-static void (*sched_add_init_thread)(thread_t *t);
-static thread_t* (*sched_next_init_thread)(void);
-static void (*sched_block_thread)(thread_t *t, void *event);
+static void (*sched_add_thread)(fgmpi_thread_t *t);
+static fgmpi_thread_t* (*sched_next_thread)(void);
+static void (*sched_add_init_thread)(fgmpi_thread_t *t);
+static fgmpi_thread_t* (*sched_next_init_thread)(void);
+static void (*sched_block_thread)(fgmpi_thread_t *t, void *event);
 static void (*sched_unblock_thread)(void *event);
 void (*sched_init_progress_thread)(void);
 void (*sched_start_progress_thread)(void);
@@ -113,16 +113,16 @@ static int exit_func_done = 0;
 static int main_exited = 0;
 
 
-/* sleep queue, points to thread_t that's sleeping */
+/* sleep queue, points to fgmpi_thread_t that's sleeping */
 static pointer_list_t *sleepq = NULL;
 static unsigned long long last_check_time = 0;       /* when is the sleep time calculated from */
 static unsigned long long max_sleep_time=0;          /* length of the whole sleep queue, in microseconds */
 static unsigned long long first_wake_usecs=0;        /* wall clock time of the wake time of the first sleeping thread */
 
-inline static void free_thread( thread_t *t );
+inline static void free_thread( fgmpi_thread_t *t );
 inline static void sleepq_check(int sync);
-inline static void sleepq_add_thread(thread_t *t, unsigned long long timeout);
-inline static void sleepq_remove_thread(thread_t *t);
+inline static void sleepq_add_thread(fgmpi_thread_t *t, unsigned long long timeout);
+inline static void sleepq_remove_thread(fgmpi_thread_t *t);
 
 
 unsigned long long start_usec;
@@ -263,10 +263,10 @@ static void* new_thread_wrapper(void *arg)
   return NULL;
 }
 
-static thread_t* new_thread(char *name, void* (*func)(void *), void *arg, thread_attr_t attr)
+static fgmpi_thread_t* new_thread(char *name, void* (*func)(void *), void *arg, thread_attr_t attr)
 {
   static unsigned max_tid = 1;
-  thread_t *t = (thread_t *) malloc( sizeof(thread_t) );
+  fgmpi_thread_t *t = (fgmpi_thread_t *) malloc( sizeof(fgmpi_thread_t) );
   assert(t!=NULL); 
   int stack_size_kb_log2 = get_stack_size_kb_log2(func);
   /*FG: Previously was assigning stack through stack_get_chunk
@@ -281,7 +281,7 @@ static thread_t* new_thread(char *name, void* (*func)(void *), void *arg, thread
   */
   void *stack = NULL;
   int stack_size = 1 << (stack_size_kb_log2 + 10);
-  bzero(t, sizeof(thread_t));
+  bzero(t, sizeof(fgmpi_thread_t));
 
 
   t->coro = CO_CREATE((void*)new_thread_wrapper, NULL, stack, stack_size); /* stack is NULL in this call */
@@ -329,7 +329,7 @@ static thread_t* new_thread(char *name, void* (*func)(void *), void *arg, thread
 /**
  * Free the memory associated with the given thread.
  **/
-inline static void free_thread( thread_t *t )
+inline static void free_thread( fgmpi_thread_t *t )
 {
   static int iter = -1;
   iter++;
@@ -442,7 +442,7 @@ static void pick_scheduler()
  **/
 static int _thread_yield_internal(int suspended,  void *incoming_event, unsigned long long timeout)
 {
- /* now we use a per-thread errno stored in thread_t */
+ /* now we use a per-thread errno stored in fgmpi_thread_t */
   int savederrno;
   int rv = OK;
   schedQueue_itemptr event = (schedQueue_itemptr) incoming_event;
@@ -523,7 +523,7 @@ void* fatalerror(char *fmt, ...)
 
 int runlist_init()
 {
-  /* now we use a per-thread errno stored in thread_t */
+  /* now we use a per-thread errno stored in fgmpi_thread_t */
   int savederrno;
   int rv = OK;
 
@@ -591,9 +591,9 @@ static void thread_init()
   sched_init();
 
   /* create the main thread */
-  main_thread = (thread_t *) malloc(sizeof(thread_t));
+  main_thread = (fgmpi_thread_t *) malloc(sizeof(fgmpi_thread_t));
   assert(main_thread);
-  bzero(main_thread, sizeof(thread_t));
+  bzero(main_thread, sizeof(fgmpi_thread_t));
   main_thread->name = "main_thread";
   main_thread->coro = CO_MAIN;
   main_thread->initial_arg = NULL;
@@ -604,9 +604,9 @@ static void thread_init()
 
   /* create the scheduler thread */
 #ifndef NO_SCHEDULER_THREAD
-  scheduler_thread = (thread_t*) malloc( sizeof(thread_t) );
+  scheduler_thread = (fgmpi_thread_t*) malloc( sizeof(fgmpi_thread_t) );
   assert(scheduler_thread);
-  bzero(scheduler_thread, sizeof(thread_t));
+  bzero(scheduler_thread, sizeof(fgmpi_thread_t));
   scheduler_thread->name = "scheduler";
   scheduler_thread->coro = CO_CREATE((void*)do_scheduler, 0, 0, SCHEDULER_STACK_SIZE);
   if(scheduler_thread->coro == NULL){
@@ -647,13 +647,13 @@ static void thread_init()
 }
 
 
-inline thread_t *thread_spawn_with_attr(char *name, void* (*func)(void *),
+inline fgmpi_thread_t *thread_spawn_with_attr(char *name, void* (*func)(void *),
                                  void *arg, thread_attr_t attr)
 {
   return new_thread(name, func, arg, attr);
 }
 
-inline thread_t *thread_spawn(char *name, void* (*func)(void *), void *arg)
+inline fgmpi_thread_t *thread_spawn(char *name, void* (*func)(void *), void *arg)
 {
   return new_thread(name, func, arg, NULL);
 }
@@ -667,7 +667,7 @@ void thread_yield()
 void thread_yield_on_event(scheduler_event yld_event)
 {
     scheduler_event this_event = yld_event;
-    this_event.sched_unit = (thread_t *) current_thread;
+    this_event.sched_unit = (fgmpi_thread_t *) current_thread;
     _thread_yield_internal( FALSE, &this_event, 0 );
 }
 
@@ -683,7 +683,7 @@ void thread_notify_on_event(scheduler_event notification){
 
 void thread_exit(void *ret)
 {
-  thread_t *t = current_thread;
+  fgmpi_thread_t *t = current_thread;
 
   sanity_check_threadcounts();
   tdebug("current=%s\n", current_thread?current_thread->name : "NULL");
@@ -731,7 +731,7 @@ void thread_exit(void *ret)
 #endif
 }
 
-int thread_join(thread_t *t, void **ret)
+int thread_join(fgmpi_thread_t *t, void **ret)
 {
   if (t == NULL)
     return_errno(FALSE, EINVAL);
@@ -771,7 +771,7 @@ int thread_suspend_self(unsigned long long timeout)
 
 /* only resume the thread internally */
 /* don't touch the timeout flag and the sleep queue */
-static void _thread_resume(thread_t *t)
+static void _thread_resume(fgmpi_thread_t *t)
 {
   tdebug("t=%p\n",t);
   if (t->state != SUSPENDED)
@@ -786,7 +786,7 @@ static void _thread_resume(thread_t *t)
   sched_add_thread(t);
 }
 
-void thread_resume(thread_t *t)
+void thread_resume(fgmpi_thread_t *t)
 {
   /* clear timer */
   if (t->sleep != -1)
@@ -796,7 +796,7 @@ void thread_resume(thread_t *t)
   _thread_resume(t);
 }
 
-void thread_set_daemon(thread_t *t)
+void thread_set_daemon(fgmpi_thread_t *t)
 {
   if( t->daemon )
     return;
@@ -805,7 +805,7 @@ void thread_set_daemon(thread_t *t)
   num_daemon_threads++;
 }
 
-inline char* thread_name(thread_t *t)
+inline char* thread_name(fgmpi_thread_t *t)
 {
   return t->name;
 }
@@ -819,7 +819,7 @@ void thread_exit_program(int exitcode)
 
 
 /* Thread attribute handling */
-thread_attr_t thread_attr_of(thread_t *t) {
+thread_attr_t thread_attr_of(fgmpi_thread_t *t) {
   thread_attr_t attr = (thread_attr_t)malloc(sizeof(struct _thread_attr));
   attr->thread = t;
   return attr;
@@ -911,7 +911,7 @@ int *__errno_location (void)
 }
 */
 
-unsigned thread_tid(thread_t *t)
+unsigned fgmpi_thread_tid(fgmpi_thread_t *t)
 {
   return t ? t->tid : 0xffffffff;
 }
@@ -930,7 +930,7 @@ do { \
   unsigned long long _total = 0; \
   e = ll_view_head(sleepq);\
   while (e) {\
-    thread_t *tt = (thread_t *)pl_get_pointer(e);\
+    fgmpi_thread_t *tt = (fgmpi_thread_t *)pl_get_pointer(e);\
     assert( tt->sleep >= 0 );\
     _total += tt->sleep;\
     e = ll_view_next(sleepq, e);\
@@ -949,7 +949,7 @@ int print_sleep_queue(void)
   e = ll_view_head(sleepq);
 
   while (e) {
-    thread_t *tt = (thread_t *)pl_get_pointer(e);
+    fgmpi_thread_t *tt = (fgmpi_thread_t *)pl_get_pointer(e);
     _total += tt->sleep;
     Output(" %s:  %lld   (%lld)\n", tt->name ? tt->name : "null", tt->sleep, _total );
     e = ll_view_next(sleepq, e);
@@ -987,7 +987,7 @@ static void sleepq_check(int sync)
     max_sleep_time -= interval;
 
   while (interval > 0 && (e = ll_view_head(sleepq))) {
-    thread_t *t = (thread_t *)pl_get_pointer(e);
+    fgmpi_thread_t *t = (fgmpi_thread_t *)pl_get_pointer(e);
 
     if (t->sleep > interval) {
       t->sleep -= interval;
@@ -1016,7 +1016,7 @@ static void sleepq_check(int sync)
 
 /* set a timer on a thread that will wake the thread up after timeout */
 /* microseconds.  this is used to implement thread_suspend_self(timeout) */
-static void sleepq_add_thread(thread_t *t, unsigned long long timeout)
+static void sleepq_add_thread(fgmpi_thread_t *t, unsigned long long timeout)
 {
   linked_list_entry_t *e;
   long long total_time;
@@ -1044,7 +1044,7 @@ static void sleepq_add_thread(thread_t *t, unsigned long long timeout)
   e = ll_view_tail(sleepq);
   total_time = max_sleep_time;
   while (e) {
-    thread_t *tt = (thread_t *)pl_get_pointer(e);
+    fgmpi_thread_t *tt = (fgmpi_thread_t *)pl_get_pointer(e);
     assert(tt->sleep >= 0);
     total_time -= tt->sleep;
 
@@ -1076,7 +1076,7 @@ static void sleepq_add_thread(thread_t *t, unsigned long long timeout)
 }
 
 /* remove the timer associated with the thread */
-inline static void sleepq_remove_thread(thread_t *t)
+inline static void sleepq_remove_thread(fgmpi_thread_t *t)
 {
   linked_list_entry_t *e;
 
@@ -1086,13 +1086,13 @@ inline static void sleepq_remove_thread(thread_t *t)
   /* let's find the thread in the queue */
   e = ll_view_head(sleepq);
   while (e) {
-    thread_t *tt = (thread_t *)pl_get_pointer(e);
+    fgmpi_thread_t *tt = (fgmpi_thread_t *)pl_get_pointer(e);
     if (tt == t) {
       linked_list_entry_t *nexte = ll_view_next(sleepq, e);
       if (nexte) {
 	/* e is not the last thread in the queue */
 	/* we need to lengthen the time the next thread will sleep */
-	thread_t *nextt = (thread_t *)pl_get_pointer(nexte);
+	fgmpi_thread_t *nextt = (fgmpi_thread_t *)pl_get_pointer(nexte);
 	nextt->sleep += t->sleep;
       } else {
 	/* e is the last thread, so we need to adjust max_sleep_time */
@@ -1115,7 +1115,7 @@ inline static void sleepq_remove_thread(thread_t *t)
 }
 
 
-inline int sleepq_size(void)
+int sleepq_size(void)
 {
     if (NULL == sleepq )
         return (0);

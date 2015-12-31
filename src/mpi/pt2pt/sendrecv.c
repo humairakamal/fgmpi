@@ -178,8 +178,8 @@ int MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     {
 	MPID_Progress_state progress_state;
 #if defined(FINEGRAIN_MPI)
-        int sreq_is_colocated =  Is_within_same_HWP(dest, comm_ptr, NULL);
-        int rreq_is_colocated =  (source != MPI_ANY_SOURCE) ? Is_within_same_HWP(source, comm_ptr, NULL) : 0;
+        int sreq_is_colocated =  FG_is_within_same_HWP(dest, comm_ptr, NULL);
+        int rreq_is_colocated =  (source != MPI_ANY_SOURCE) ? FG_is_within_same_HWP(source, comm_ptr, NULL) : 0;
         int num_of_colocated_yields = 0;
 #endif
 

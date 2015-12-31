@@ -146,7 +146,7 @@ int MPIX_Zrecv(void ** buf_handle, int count, MPI_Datatype datatype, int source,
     if (!MPID_Request_is_complete(request_ptr))
     {
         int num_of_colocated_yields = 0;
-        int is_colocated = (source != MPI_ANY_SOURCE) ? Is_within_same_HWP(source, comm_ptr, NULL) : 0;
+        int is_colocated = (source != MPI_ANY_SOURCE) ? FG_is_within_same_HWP(source, comm_ptr, NULL) : 0;
         MPID_Progress_state progress_state;
 
         MPID_Progress_start(&progress_state);

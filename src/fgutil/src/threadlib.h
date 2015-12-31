@@ -12,8 +12,8 @@
 #include <signal.h>
 #include "hashmap.h"
 
-struct thread_st;
-typedef struct thread_st thread_t;
+struct fgmpi_thread_st;
+typedef struct fgmpi_thread_st fgmpi_thread_t;
 
 typedef enum {
   UNLOCKED = 0,
@@ -21,7 +21,7 @@ typedef enum {
 } lock_state_t;
 
 typedef struct latch_st {
-  thread_t *state;
+  fgmpi_thread_t *state;
 } latch_t;
 
 /* Queue used for mutex implementation */
@@ -37,7 +37,7 @@ typedef struct {
   int count;   /* for recursive locking */
   char *name;
   queue_t wait_queue;
-  thread_t *owner;   /* for sanity checking in thread_mutex_unlock() */
+  fgmpi_thread_t *owner;   /* for sanity checking in thread_mutex_unlock() */
 } mutex_t;
 
 /* the read-write lock structure */
@@ -84,8 +84,8 @@ void thread_notify_on_event(scheduler_event notification);
 void thread_exit(void *ret);
 void thread_exit_program(int exitcode);
 void thread_yield();
-thread_t *thread_spawn(char *name, void* (*func)(void *), void *arg);
-thread_t *thread_spawn_with_attr(char *name, void* (*func)(void *),
+fgmpi_thread_t *thread_spawn(char *name, void* (*func)(void *), void *arg);
+fgmpi_thread_t *thread_spawn_with_attr(char *name, void* (*func)(void *),
 			    void *arg, thread_attr_t attr);  /* added for pthread layer */
 /* suspend the thread, optionally for a limited period of time (timeout) */
 /* timeout == 0 -> suspend infinitely unless resumed by another thread */
@@ -94,18 +94,18 @@ thread_t *thread_spawn_with_attr(char *name, void* (*func)(void *),
 int thread_suspend_self(unsigned long long timeout);
 
 /* resume is made idempotent - resuming an already runnable thread does nothing */
-void thread_resume(thread_t* t);
-inline char* thread_name(thread_t *t);
-int thread_join(thread_t *t, void **val);
-void thread_set_daemon(thread_t *t);
+void thread_resume(fgmpi_thread_t* t);
+inline char* thread_name(fgmpi_thread_t *t);
+int thread_join(fgmpi_thread_t *t, void **val);
+void thread_set_daemon(fgmpi_thread_t *t);
 
-extern thread_t *current_thread;
-static inline thread_t* thread_self() { return current_thread; }
+extern fgmpi_thread_t *current_thread;
+static inline fgmpi_thread_t* thread_self() { return current_thread; }
 
 /* Key-based thread specific storage */
 typedef int thread_key_t;
 #define THREAD_DESTRUCTOR_ITERATIONS 4
-#define THREAD_KEY_MAX 256  /* NOTE: change the size of thread_t.data_count if you change this! */
+#define THREAD_KEY_MAX 256  /* NOTE: change the size of fgmpi_thread_t.data_count if you change this! */
 int thread_key_create(thread_key_t *key, void (*destructor)(void *));
 int thread_key_delete(thread_key_t key);
 int thread_key_setdata(thread_key_t key, const void *value);
@@ -138,16 +138,16 @@ int thread_cond_signal(cond_t *c);
 int thread_cond_broadcast(cond_t *c);
 
 /* attribute */
-thread_attr_t thread_attr_of(thread_t *t);
+thread_attr_t thread_attr_of(fgmpi_thread_t *t);
 thread_attr_t thread_attr_new();
 int thread_attr_init(thread_attr_t attr);
 int thread_attr_set(thread_attr_t attr, int field, ...);
 int thread_attr_get(thread_attr_t attr, int field, ...);
 int thread_attr_destroy(thread_attr_t attr);
 
-unsigned thread_tid(thread_t *t);
+unsigned fgmpi_thread_tid(fgmpi_thread_t *t);
 
-int thread_kill(thread_t* t, int sig);
+int thread_kill(fgmpi_thread_t* t, int sig);
 int thread_kill_all(int sig);
 int thread_sigwait(const sigset_t *set, int *sig);
 
@@ -185,7 +185,7 @@ extern void set_io_polling_func( void (*func)(long long) );
 /* FIXME: if there is a single kernel thread, it is an error if the latch is already locked */
 /* FIXME: need a spinlock, test&set, futex, etc. for multiple kernel threads */
 #define LATCH_UNLOCKED NULL
-#define LATCH_UNKNOWN ((thread_t*)-1)
+#define LATCH_UNKNOWN ((fgmpi_thread_t*)-1)
 #if OPTIMIZE < 2
 #define thread_latch(latch) \
 do {\
