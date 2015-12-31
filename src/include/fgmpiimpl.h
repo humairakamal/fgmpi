@@ -193,6 +193,10 @@ extern hshtbl *cidLookup_hshtbl;          /* cid lookup hashtable that will be u
                                              the new CID = <LID,LBI> algorithm. */
 extern Coproclet_shared_vars_t * world_co_shared_vars;
 
+int RTWPmapFind(RTWmap* rtw_map, int lrank, int *worldrank_ptr, int *pid_ptr);
+
+void MPIR_Coshared_group_release(MPID_Group * group_ptr);
+
 #define MPIDI_Comm_get_pid_worldrank(comm_, localrank_, pid_ptr_, worldrank_ptr_) \
     do {                                                                \
         if ( MPI_PROC_NULL == localrank_ ) {                            \
