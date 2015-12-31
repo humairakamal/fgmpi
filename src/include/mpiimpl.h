@@ -4504,4 +4504,8 @@ extern const char MPIR_Version_FC[];
 #undef FUNCNAME
 #undef FCNAME
 
+#if defined(FINEGRAIN_MPI)
+#include "mpidimpl.h"
+#endif
+
 #endif /* MPIIMPL_INCLUDED */

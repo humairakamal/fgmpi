@@ -6,7 +6,6 @@
  */
 
 #include "mpiimpl.h"
-#include "mpidimpl.h"
 
 #if !defined(MPID_REQUEST_PTR_ARRAY_SIZE)
 /* use a larger default size of 64 in order to enhance SQMR performance */

@@ -6,7 +6,6 @@
  */
 
 #include "mpiimpl.h"
-#include "mpidimpl.h"
 
 /* -- Begin Profiling Symbol Block for routine MPI_Wait */
 #if defined(HAVE_PRAGMA_WEAK)
