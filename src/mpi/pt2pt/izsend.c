@@ -15,7 +15,7 @@
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPIX_Izsend as PMPIX_Izsend
 #elif defined(HAVE_WEAK_ATTRIBUTE)
-int MPIX_Izsend(void **buf_handle, int count, MPI_Datatype datatype, int dest, int tag,
+int MPIX_Izsend(const void **buf_handle, int count, MPI_Datatype datatype, int dest, int tag,
 	      MPI_Comm comm, MPI_Request *request) __attribute__((weak,alias("PMPIX_Izsend")));
 #endif
 /* -- End Profiling Symbol Block */
@@ -58,7 +58,7 @@ Output Parameters:
 .N MPI_ERR_EXHAUSTED
 
 @*/
-int MPIX_Izsend(void **buf_handle, int count, MPI_Datatype datatype, int dest, int tag,
+int MPIX_Izsend(const void **buf_handle, int count, MPI_Datatype datatype, int dest, int tag,
 	      MPI_Comm comm, MPI_Request *request)
 {
     int mpi_errno = MPI_SUCCESS;

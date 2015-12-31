@@ -3482,6 +3482,12 @@ int MPID_Zsend(const void ** buf_handle, MPI_Aint count, MPI_Datatype datatype, 
 int MPID_Izsend(const void ** buf_handle, MPI_Aint count, MPI_Datatype datatype, int rank,
 	       int tag, MPID_Comm * comm, int context_offset,
                MPID_Request ** request);
+int MPID_Zrecv(void ** buf_handle, MPI_Aint count, MPI_Datatype datatype, int rank, int tag,
+	      MPID_Comm * comm, int context_offset,
+	      MPI_Status * status, MPID_Request ** request);
+int MPID_Izrecv(void ** buf_handle,  MPI_Aint count, MPI_Datatype datatype, int rank, int tag,
+	       MPID_Comm * comm, int context_offset,
+               MPID_Request ** request);
 #endif
 
 /*@

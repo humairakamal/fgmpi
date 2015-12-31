@@ -2214,9 +2214,9 @@ int PMPIX_Comm_agree(MPI_Comm comm, int *flag);
 
 @HAVE_ROMIO@
 
-
-int MPIX_Zsend(void **, int, MPI_Datatype, int, int, MPI_Comm);
-int MPIX_Izsend(void **, int, MPI_Datatype, int, int, MPI_Comm, MPI_Request *);
+/* No FINEGRAIN preprocessor guard here? */
+int MPIX_Zsend(const void **, int, MPI_Datatype, int, int, MPI_Comm);
+int MPIX_Izsend(const void **, int, MPI_Datatype, int, int, MPI_Comm, MPI_Request *);
 int MPIX_Zrecv(void **, int, MPI_Datatype, int, int, MPI_Comm, MPI_Status *);
 int MPIX_Izrecv(void **, int, MPI_Datatype, int, int, MPI_Comm, MPI_Request *);
 

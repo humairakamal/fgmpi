@@ -16,7 +16,7 @@
 #elif defined(HAVE_PRAGMA_CRI_DUP)
 #pragma _CRI duplicate MPIX_Zsend as PMPIX_Zsend
 #elif defined(HAVE_WEAK_ATTRIBUTE)
-int MPIX_Zsend(void **buf_handle, int count, MPI_Datatype datatype, int dest, int tag,
+int MPIX_Zsend(const void **buf_handle, int count, MPI_Datatype datatype, int dest, int tag,
 	     MPI_Comm comm) __attribute__((weak,alias("PMPIX_Zsend")));
 #endif
 /* -- End Profiling Symbol Block */
@@ -58,7 +58,7 @@ process.
 
 .seealso: MPI_Izsend
 @*/
-int MPIX_Zsend(void **buf_handle, int count, MPI_Datatype datatype, int dest, int tag,
+int MPIX_Zsend(const void **buf_handle, int count, MPI_Datatype datatype, int dest, int tag,
 	     MPI_Comm comm)
 {
     static const char FCNAME[] = "MPIX_Zsend";
