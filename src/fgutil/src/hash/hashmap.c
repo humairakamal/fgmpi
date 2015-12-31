@@ -507,9 +507,9 @@ static int cidLookupCmp(void *litem, void *ritem)
     cidLookupHashItemptr c_lptr = (cidLookupHashItemptr) litem,
         c_rptr = (cidLookupHashItemptr)ritem;
 
-   if     ((c_lptr->context_id == c_rptr->context_id)) return 0;
-   else if (c_lptr->context_id > c_rptr->context_id)   return 1;
-   else                                                return -1;
+   if      (c_lptr->context_id == c_rptr->context_id) return 0;
+   else if (c_lptr->context_id > c_rptr->context_id)  return 1;
+   else                                               return -1;
 } /* cmp */
 
 
@@ -597,9 +597,9 @@ static int ptnLookupCmp(void *litem, void *ritem)
     ptnLookupHashItemptr p_lptr = (ptnLookupHashItemptr) litem,
         p_rptr = (ptnLookupHashItemptr)ritem;
 
-   if     ((p_lptr->parent_comm_rank == p_rptr->parent_comm_rank)) return  0;
-   else if (p_lptr->parent_comm_rank > p_rptr->parent_comm_rank)   return  1;
-   else                                                            return -1;
+   if      (p_lptr->parent_comm_rank == p_rptr->parent_comm_rank) return  0;
+   else if (p_lptr->parent_comm_rank > p_rptr->parent_comm_rank)  return  1;
+   else                                                           return -1;
 } /* cmp */
 
 
