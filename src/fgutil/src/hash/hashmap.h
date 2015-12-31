@@ -18,20 +18,20 @@ typedef struct ranktoworld {
 } ranktoworlditem, * ranktoworlditemptr;
 
 
-extern inline hshtbl * RTWhashCreate(int mapsize);
-extern inline int RTWhashFind(hshtbl *rtw_hshtbl, int key, int *worldrank_ptr); /*(IN, IN, OUT)*/
-extern inline int RTWhashInsert(hshtbl *rtw_hshtbl, int key, int worldrank); /*(IN, IN, IN)*/
-extern inline int RTWhashBlockInsert(hshtbl *rtw_hshtbl, int size, int *blockarray); /*(IN, IN, IN)*/
-extern inline hshtbl * RTWhashDuplicate(hshtbl *orig, int size);
-extern inline int RTWhashFindLeader(hshtbl *RTWhshtbl, int numentries_hsh);
+extern hshtbl * RTWhashCreate(int mapsize);
+extern int RTWhashFind(hshtbl *rtw_hshtbl, int key, int *worldrank_ptr); /*(IN, IN, OUT)*/
+extern int RTWhashInsert(hshtbl *rtw_hshtbl, int key, int worldrank); /*(IN, IN, IN)*/
+extern int RTWhashBlockInsert(hshtbl *rtw_hshtbl, int size, int *blockarray); /*(IN, IN, IN)*/
+extern hshtbl * RTWhashDuplicate(hshtbl *orig, int size);
+extern int RTWhashFindLeader(hshtbl *RTWhshtbl, int numentries_hsh);
 
-extern inline int* RTWarrayWorldCreate(int mapsize);
-extern inline int* RTWarrayCreate(int mapsize);
-extern inline int RTWarrayFind(int *rtw_arraymap, int key, int *worldrank_ptr); /*(IN, IN, OUT)*/
-extern inline int RTWarrayInsert(int *rtw_arraymap, int key, int worldrank); /*(IN, IN, IN)*/
+extern int* RTWarrayWorldCreate(int mapsize);
+extern int* RTWarrayCreate(int mapsize);
+extern int RTWarrayFind(int *rtw_arraymap, int key, int *worldrank_ptr); /*(IN, IN, OUT)*/
+extern int RTWarrayInsert(int *rtw_arraymap, int key, int worldrank); /*(IN, IN, IN)*/
 extern int RTWarrayBlockInsert(int *rtw_arraymap, int size, int *blockarray); /*(IN, IN, IN)*/
-extern inline int RTWarrayFindLeader(int *rtw_arraymap, int numentries_map);
-extern inline void RTWarrayKill(int *rtw_arraymap);
+extern int RTWarrayFindLeader(int *rtw_arraymap, int numentries_map);
+extern void RTWarrayKill(int *rtw_arraymap);
 
 
 
@@ -72,10 +72,10 @@ typedef struct scheduler_event_queue {
     void *sched_unit;
 } schedQueue_item, *schedQueue_itemptr, scheduler_event;
 
-extern inline hshtbl * SchedulerHashCreate(void);
-extern inline int SchedulerHashFind(hshtbl *sched_hshtbl, int key, schedQueue_itemptr *stored); /*(IN, IN, OUT)*/
-extern inline  int SchedulerHashInsert(hshtbl *sched_hshtbl, int key, MPI_event_kind_t mpi_state, Scheduler_action_kind_t action, void* sched_unit); /*(IN, IN, IN, IN, IN)*/
-extern inline int SchedulerHashRemove(hshtbl *sched_hshtbl, int key, schedQueue_itemptr *stored); /*(IN, IN, OUT)*/
+extern hshtbl * SchedulerHashCreate(void);
+extern int SchedulerHashFind(hshtbl *sched_hshtbl, int key, schedQueue_itemptr *stored); /*(IN, IN, OUT)*/
+extern int SchedulerHashInsert(hshtbl *sched_hshtbl, int key, MPI_event_kind_t mpi_state, Scheduler_action_kind_t action, void* sched_unit); /*(IN, IN, IN, IN, IN)*/
+extern int SchedulerHashRemove(hshtbl *sched_hshtbl, int key, schedQueue_itemptr *stored); /*(IN, IN, OUT)*/
 
 
 
@@ -97,8 +97,8 @@ typedef struct contextidLeader{
 } cLitem, *cLitemptr;
 
 
-extern inline hshtbl * CL_LookupHashCreate(void);
-extern inline int CL_LookupHashFind(hshtbl *CL_hshtbl, int context_id, int LeaderWorldRank, cLitemptr *stored); /* IN, IN, IN, OUT */
+extern hshtbl * CL_LookupHashCreate(void);
+extern int CL_LookupHashFind(hshtbl *CL_hshtbl, int context_id, int LeaderWorldRank, cLitemptr *stored); /* IN, IN, IN, OUT */
 extern int CL_LookupHashInsert(hshtbl *CL_hshtbl, int context_id, int LeaderWorldRank, void* coproclet_shared_vars, cLitemptr *stored); /* IN, IN, IN, IN, OUT */
 
 
@@ -111,9 +111,9 @@ typedef struct contextidLookupHash{
 } cidLookupHashItem, *cidLookupHashItemptr;
 
 
-extern inline hshtbl * CidLookupHashCreate(void);
-extern inline int CidLookupHashFind(hshtbl *cid_lookuphshtbl, int cid, cidLookupHashItemptr *stored); /*(IN, IN, OUT)*/
-extern inline int CidLookupHashInsert(hshtbl *cid_lookuphshtbl, int cid, void* coproclet_shared_vars, cidLookupHashItemptr *stored); /* IN, IN, IN, OUT */
+extern hshtbl * CidLookupHashCreate(void);
+extern int CidLookupHashFind(hshtbl *cid_lookuphshtbl, int cid, cidLookupHashItemptr *stored); /*(IN, IN, OUT)*/
+extern int CidLookupHashInsert(hshtbl *cid_lookuphshtbl, int cid, void* coproclet_shared_vars, cidLookupHashItemptr *stored); /* IN, IN, IN, OUT */
 
 /*======================================*/
 /* structs for nested communicators */
@@ -270,9 +270,9 @@ typedef hshtbl ptn_comm_tables_hash_t;
 #endif
 
 
-extern inline hshtbl * ptnLookupHashCreate(void);
-extern inline int ptnLookupHashFind(hshtbl *ptn_lookuphshtbl, int parent_rank, ptnLookupHashItemptr *stored); /*(IN, IN, OUT)*/
-extern inline int ptnLookupHashInsert(hshtbl *ptn_lookuphshtbl, int parent_rank, Parent_to_Nested_comm_tables_t parent_to_nested, ptnLookupHashItemptr *stored); /* IN, IN, IN, OUT */
+extern hshtbl * ptnLookupHashCreate(void);
+extern int ptnLookupHashFind(hshtbl *ptn_lookuphshtbl, int parent_rank, ptnLookupHashItemptr *stored); /*(IN, IN, OUT)*/
+extern int ptnLookupHashInsert(hshtbl *ptn_lookuphshtbl, int parent_rank, Parent_to_Nested_comm_tables_t parent_to_nested, ptnLookupHashItemptr *stored); /* IN, IN, IN, OUT */
 
 
 #endif /* HASHMAP_H */

@@ -4507,6 +4507,7 @@ extern const char MPIR_Version_FC[];
 
 #if defined(FINEGRAIN_MPI)
 #include "mpidimpl.h"
+#include "fgmpiutil.h"
 #endif
 
 #endif /* MPIIMPL_INCLUDED */

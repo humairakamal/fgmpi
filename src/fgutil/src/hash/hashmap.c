@@ -59,7 +59,7 @@ static void ranktoworldundupe(void *item)
 } /* undupe */
 
 
-inline hshtbl * RTWhashCreate(int mapsize)
+hshtbl * RTWhashCreate(int mapsize)
 {
     hshtbl   *h;
     h = hshinit(ranktoworldhash,             /* hash function */
@@ -72,7 +72,7 @@ inline hshtbl * RTWhashCreate(int mapsize)
 
 }
 
-inline int RTWhashFind(hshtbl *rtw_hshtbl, int key, int *worldrank_ptr) /*(IN, IN, OUT)*/
+int RTWhashFind(hshtbl *rtw_hshtbl, int key, int *worldrank_ptr) /*(IN, IN, OUT)*/
 {
     ranktoworlditem find_item;
     ranktoworlditemptr stored = NULL;
@@ -86,7 +86,7 @@ inline int RTWhashFind(hshtbl *rtw_hshtbl, int key, int *worldrank_ptr) /*(IN, I
     return (0);
 }
 
-inline int RTWhashInsert(hshtbl *rtw_hshtbl, int key, int worldrank) /*(IN, IN, IN)*/
+int RTWhashInsert(hshtbl *rtw_hshtbl, int key, int worldrank) /*(IN, IN, IN)*/
 {
     ranktoworlditem rtw_item;
     ranktoworlditemptr inserted = NULL;
@@ -99,7 +99,7 @@ inline int RTWhashInsert(hshtbl *rtw_hshtbl, int key, int worldrank) /*(IN, IN, 
     return (0);
 }
 
-inline int RTWhashBlockInsert(hshtbl *rtw_hshtbl, int size, int *blockarray) /*(IN, IN, IN)*/
+int RTWhashBlockInsert(hshtbl *rtw_hshtbl, int size, int *blockarray) /*(IN, IN, IN)*/
 {
     ranktoworlditem rtw_item;
     ranktoworlditemptr inserted = NULL;
@@ -124,7 +124,7 @@ static inline void print_rtwItem(ranktoworlditemptr p)
 }
 
 
-inline hshtbl * RTWhashDuplicate(hshtbl *orig_RTWhshtbl, int numentries_hsh){
+hshtbl * RTWhashDuplicate(hshtbl *orig_RTWhshtbl, int numentries_hsh){
     int i;
     hshtbl * duphshtbl = RTWhashCreate(numentries_hsh);
     ranktoworlditem find_item;
@@ -149,7 +149,7 @@ inline hshtbl * RTWhashDuplicate(hshtbl *orig_RTWhshtbl, int numentries_hsh){
 }
 
 
-inline int RTWhashFindLeader(hshtbl *RTWhshtbl, int numentries_hsh){
+int RTWhashFindLeader(hshtbl *RTWhshtbl, int numentries_hsh){
     int i;
     int leaderWorldRank = -1;
     ranktoworlditem find_item;
@@ -190,7 +190,7 @@ static void showstate(hshtbl *m)
 
 /*****************RTW Array Map*************************/
 
-inline int* RTWarrayWorldCreate(int mapsize)
+int* RTWarrayWorldCreate(int mapsize)
 {
     int *arraymap;
     if( !(arraymap = (int *) malloc(sizeof(int)) ) ) /* Ignoring the mapsize for MPI_WORLD_COMM array map */
@@ -202,7 +202,7 @@ inline int* RTWarrayWorldCreate(int mapsize)
     return arraymap;
 
 }
-inline int* RTWarrayCreate(int mapsize)
+int* RTWarrayCreate(int mapsize)
 {
     int *arraymap;
     if( !(arraymap = (int *) malloc((mapsize+1) * sizeof(int))) )
@@ -215,14 +215,14 @@ inline int* RTWarrayCreate(int mapsize)
 }
 
 
-inline int RTWarrayFind(int *rtw_arraymap, int key, int *worldrank_ptr) /*(IN, IN, OUT)*/
+int RTWarrayFind(int *rtw_arraymap, int key, int *worldrank_ptr) /*(IN, IN, OUT)*/
 {
     *worldrank_ptr = rtw_arraymap[key];
     assert((*worldrank_ptr)>=0);
     return (0);
 }
 
-inline int RTWarrayInsert(int *rtw_arraymap, int key, int worldrank) /*(IN, IN, IN)*/
+int RTWarrayInsert(int *rtw_arraymap, int key, int worldrank) /*(IN, IN, IN)*/
 {
     rtw_arraymap[key] = worldrank;
     return (0);
@@ -235,7 +235,7 @@ int RTWarrayBlockInsert(int *rtw_arraymap, int size, int *blockarray) /*(IN, IN,
 }
 
 
-inline int RTWarrayFindLeader(int *rtw_arraymap, int numentries_map) {
+int RTWarrayFindLeader(int *rtw_arraymap, int numentries_map) {
     int i = 0;
     int leaderWorldRank = -1;
     int stored_worldrank;
@@ -250,7 +250,7 @@ inline int RTWarrayFindLeader(int *rtw_arraymap, int numentries_map) {
     return (leaderWorldRank);
 }
 
-inline void RTWarrayKill(int *rtw_arraymap){
+void RTWarrayKill(int *rtw_arraymap){
     if(rtw_arraymap){
         free(rtw_arraymap);
         rtw_arraymap = NULL;
@@ -309,7 +309,7 @@ static void SchedulerQueueItem_undupe(void *item)
 } /* undupe */
 
 
-inline hshtbl * SchedulerHashCreate(void)
+hshtbl * SchedulerHashCreate(void)
 {
     hshtbl   *h;
     h = hshinit(SchedulerQueueItem_hash,             /* hash function */
@@ -328,7 +328,7 @@ static void print_SchedulerHashItem(schedQueue_itemptr p)
 
 }
 
-inline int SchedulerHashFind(hshtbl* sched_hshtbl, int key, schedQueue_itemptr* storedptrptr) /*(IN, IN, OUT)*/
+int SchedulerHashFind(hshtbl* sched_hshtbl, int key, schedQueue_itemptr* storedptrptr) /*(IN, IN, OUT)*/
 {
     schedQueue_item SQitem;
     *storedptrptr = NULL;
@@ -341,7 +341,7 @@ inline int SchedulerHashFind(hshtbl* sched_hshtbl, int key, schedQueue_itemptr* 
     }
 }
 
-inline int SchedulerHashInsert(hshtbl *sched_hshtbl, int key, MPI_event_kind_t mpi_state, Scheduler_action_kind_t action, void* sched_unit) /*(IN, IN, IN, IN, IN)*/
+int SchedulerHashInsert(hshtbl *sched_hshtbl, int key, MPI_event_kind_t mpi_state, Scheduler_action_kind_t action, void* sched_unit) /*(IN, IN, IN, IN, IN)*/
 {
     schedQueue_item SQitem;
     schedQueue_itemptr stored = NULL;
@@ -357,14 +357,14 @@ inline int SchedulerHashInsert(hshtbl *sched_hshtbl, int key, MPI_event_kind_t m
     return (0);
 }
 
-static inline void* SchedulerHashDelete(hshtbl *sched_hshtbl, schedQueue_itemptr stored) /*(IN, IN)*/
+static void* SchedulerHashDelete(hshtbl *sched_hshtbl, schedQueue_itemptr stored) /*(IN, IN)*/
 {
     schedQueue_itemptr removed = NULL;
     removed = (schedQueue_itemptr) hshdelete(sched_hshtbl, stored);
     return (removed);
 }
 
-inline int SchedulerHashRemove(hshtbl *sched_hshtbl, int key, schedQueue_itemptr *stored) /*(IN, IN, OUT). IMPORTANT: De-allocating the removed item in sched_block_queue_unblock_thread() */
+int SchedulerHashRemove(hshtbl *sched_hshtbl, int key, schedQueue_itemptr *stored) /*(IN, IN, OUT). IMPORTANT: De-allocating the removed item in sched_block_queue_unblock_thread() */
 {
     int found = 0;
     *stored = NULL;
@@ -435,7 +435,7 @@ static void contextidLeaderundupe(void *item)
 } /* undupe */
 
 
-inline hshtbl * CL_LookupHashCreate(void)
+hshtbl * CL_LookupHashCreate(void)
 {
     hshtbl   *h;
     h = hshinit(contextidLeaderhash,             /* hash function */
@@ -454,7 +454,7 @@ static void print_cLItem(cLitemptr p)
 
 }
 
-inline int CL_LookupHashFind(hshtbl *CL_hshtbl, int context_id, int LeaderWorldRank, cLitemptr *stored) /* IN, IN, IN, OUT */
+int CL_LookupHashFind(hshtbl *CL_hshtbl, int context_id, int LeaderWorldRank, cLitemptr *stored) /* IN, IN, IN, OUT */
 {
     cLitem CL_item;
     *stored = NULL;
@@ -535,7 +535,7 @@ static void cidLookupUndupe(void *item)
 } /* undupe */
 
 
-inline hshtbl * CidLookupHashCreate(void)
+hshtbl * CidLookupHashCreate(void)
 {
     hshtbl   *h;
     h = hshinit(cidLookupHash,             /* hash function */
@@ -553,7 +553,7 @@ static void print_cidLookupHashItem(cidLookupHashItemptr p)
     printf("context-id=%d, coproclet_shared_vars=%p\n", p->context_id, p->coproclet_shared_vars);
 }
 
-inline int CidLookupHashFind(hshtbl *cid_lookuphshtbl, int cid, cidLookupHashItemptr *stored) /*(IN, IN, OUT)*/
+int CidLookupHashFind(hshtbl *cid_lookuphshtbl, int cid, cidLookupHashItemptr *stored) /*(IN, IN, OUT)*/
 {
      cidLookupHashItem c_item;
      *stored = NULL;
@@ -562,7 +562,7 @@ inline int CidLookupHashFind(hshtbl *cid_lookuphshtbl, int cid, cidLookupHashIte
      return(0);
 }
 
-inline int CidLookupHashInsert(hshtbl *cid_lookuphshtbl, int cid, void* co_shared_vars, cidLookupHashItemptr *stored) /* IN, IN, IN, OUT */
+int CidLookupHashInsert(hshtbl *cid_lookuphshtbl, int cid, void* co_shared_vars, cidLookupHashItemptr *stored) /* IN, IN, IN, OUT */
 {
     cidLookupHashItem c_item;
     *stored = NULL;
@@ -625,7 +625,7 @@ static void ptnLookupUndupe(void *item)
 } /* undupe */
 
 
-inline hshtbl * ptnLookupHashCreate(void)
+hshtbl * ptnLookupHashCreate(void)
 {
     hshtbl   *h;
     h = hshinit(ptnLookupHash,             /* hash function */
@@ -644,7 +644,7 @@ static void print_ptnLookupHashItem(ptnLookupHashItemptr p)
 }
 
 
-inline int ptnLookupHashFind(hshtbl *ptn_lookuphshtbl, int parent_rank, ptnLookupHashItemptr *stored) /*(IN, IN, OUT)*/
+int ptnLookupHashFind(hshtbl *ptn_lookuphshtbl, int parent_rank, ptnLookupHashItemptr *stored) /*(IN, IN, OUT)*/
 {
     ptnLookupHashItem p_item;
     *stored = NULL;
@@ -653,7 +653,7 @@ inline int ptnLookupHashFind(hshtbl *ptn_lookuphshtbl, int parent_rank, ptnLooku
     return(0);
 }
 
-inline int ptnLookupHashInsert(hshtbl *ptn_lookuphshtbl, int parent_rank, Parent_to_Nested_comm_tables_t parent_to_nested, ptnLookupHashItemptr *stored) /* IN, IN, IN, OUT */
+int ptnLookupHashInsert(hshtbl *ptn_lookuphshtbl, int parent_rank, Parent_to_Nested_comm_tables_t parent_to_nested, ptnLookupHashItemptr *stored) /* IN, IN, IN, OUT */
 {
     ptnLookupHashItem p_item;
     *stored = NULL;
