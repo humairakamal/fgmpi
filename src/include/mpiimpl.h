@@ -4468,6 +4468,10 @@ int MPIR_Waitall_impl(int count, MPI_Request array_of_requests[],
 int MPIR_Comm_set_attr_impl(MPID_Comm *comm_ptr, int comm_keyval, void *attribute_val, 
                             MPIR_AttrType attrType);
 
+#if defined(FINEGRAIN_MPI)
+int MPIR_Comm_set_sizevars(MPID_Comm *comm_ptr, int new_totprocs, MPID_Comm *newcomm_ptr);
+#endif
+
 /* Pull the error status out of the tag space and put it into an errflag. */
 #undef FUNCNAME
 #define FUNCNAME MPIR_process_status

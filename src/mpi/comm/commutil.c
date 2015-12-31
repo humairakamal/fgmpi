@@ -1423,7 +1423,6 @@ int MPIR_Comm_register_hint(const char *hint_key, MPIR_Comm_hint_fn_t fn, void *
 
 
 #if defined(FINEGRAIN_MPI)
-int MPIR_Comm_set_sizevars(MPID_Comm *comm_ptr, int new_totprocs, MPID_Comm *newcomm_ptr);
 int MPIR_Comm_populate_rtwmap(MPID_Comm *comm_ptr, int new_totprocs, MPID_Comm *newcomm_ptr);
 
 /* Share comm's rtw map and pt_hash and also
