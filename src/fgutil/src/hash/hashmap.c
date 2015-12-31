@@ -672,5 +672,6 @@ int hshtblFree(hshtbl **hash_dptr) /*(IN)*/
 {
     hshkill(*hash_dptr);
     *hash_dptr = NULL;
+    return(0);
 }
 
