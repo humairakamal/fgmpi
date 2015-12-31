@@ -29,7 +29,7 @@ extern inline int* RTWarrayWorldCreate(int mapsize);
 extern inline int* RTWarrayCreate(int mapsize);
 extern inline int RTWarrayFind(int *rtw_arraymap, int key, int *worldrank_ptr); /*(IN, IN, OUT)*/
 extern inline int RTWarrayInsert(int *rtw_arraymap, int key, int worldrank); /*(IN, IN, IN)*/
-extern inline int RTWarrayBlockInsert(int *rtw_arraymap, int size, int *blockarray); /*(IN, IN, IN)*/
+extern int RTWarrayBlockInsert(int *rtw_arraymap, int size, int *blockarray); /*(IN, IN, IN)*/
 extern inline int RTWarrayFindLeader(int *rtw_arraymap, int numentries_map);
 extern inline void RTWarrayKill(int *rtw_arraymap);
 
@@ -99,7 +99,7 @@ typedef struct contextidLeader{
 
 extern inline hshtbl * CL_LookupHashCreate(void);
 extern inline int CL_LookupHashFind(hshtbl *CL_hshtbl, int context_id, int LeaderWorldRank, cLitemptr *stored); /* IN, IN, IN, OUT */
-extern inline int CL_LookupHashInsert(hshtbl *CL_hshtbl, int context_id, int LeaderWorldRank, void* coproclet_shared_vars, cLitemptr *stored); /* IN, IN, IN, IN, OUT */
+extern int CL_LookupHashInsert(hshtbl *CL_hshtbl, int context_id, int LeaderWorldRank, void* coproclet_shared_vars, cLitemptr *stored); /* IN, IN, IN, IN, OUT */
 
 
 typedef struct contextidLookupHash{

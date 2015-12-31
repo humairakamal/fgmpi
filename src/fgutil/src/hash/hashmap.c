@@ -228,7 +228,7 @@ inline int RTWarrayInsert(int *rtw_arraymap, int key, int worldrank) /*(IN, IN, 
     return (0);
 }
 
-inline int RTWarrayBlockInsert(int *rtw_arraymap, int size, int *blockarray) /*(IN, IN, IN)*/
+int RTWarrayBlockInsert(int *rtw_arraymap, int size, int *blockarray) /*(IN, IN, IN)*/
 {
     memcpy(rtw_arraymap, blockarray, size*sizeof(int));
     return (0);
@@ -464,7 +464,7 @@ inline int CL_LookupHashFind(hshtbl *CL_hshtbl, int context_id, int LeaderWorldR
     return (0);
 }
 
-inline int CL_LookupHashInsert(hshtbl *CL_hshtbl, int context_id, int LeaderWorldRank, void* co_shared_vars, cLitemptr *stored) /* IN, IN, IN, IN, OUT */
+int CL_LookupHashInsert(hshtbl *CL_hshtbl, int context_id, int LeaderWorldRank, void* co_shared_vars, cLitemptr *stored) /* IN, IN, IN, IN, OUT */
 {
     cLitem CL_item;
     *stored = NULL;
