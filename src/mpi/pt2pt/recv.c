@@ -149,7 +149,7 @@ int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
     {
 #if defined(FINEGRAIN_MPI)
         int num_of_colocated_yields = 0;
-        int is_colocated = (source != MPI_ANY_SOURCE) ? Is_within_same_HWP(source, comm_ptr, NULL) : 0;
+        int is_colocated = (source != MPI_ANY_SOURCE) ? FG_is_within_same_HWP(source, comm_ptr, NULL) : 0;
 #endif
         MPID_Progress_state progress_state;
 

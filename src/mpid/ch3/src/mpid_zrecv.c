@@ -61,7 +61,7 @@ int MPID_Zrecv(void ** buf_handle, MPI_Aint count, MPI_Datatype datatype, int ra
     MPIDI_Request_set_self_zerocopy_flag(rreq, TRUE);
 
     if (found) {
-        if ( !(Is_within_same_HWP(rreq->dev.match.parts.rank, comm, NULL)) )
+        if ( !(FG_is_within_same_HWP(rreq->dev.match.parts.rank, comm, NULL)) )
         {
             int rdt_contig;
             MPI_Aint rdt_true_lb;

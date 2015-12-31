@@ -235,7 +235,7 @@ inline void FG_notify_on_event(int worldrank, int action, const char fcname[], i
 #define EQUAL 0
 #define GREATER 1
 
-static int is_Within(int rank, int start_fgrank, int numfgps)
+static int FG_is_within(int rank, int start_fgrank, int numfgps)
 {
     if( (rank >=start_fgrank) && (rank < (start_fgrank+numfgps)) ) /* found it */
         return EQUAL;
@@ -244,7 +244,7 @@ static int is_Within(int rank, int start_fgrank, int numfgps)
     else if(rank < start_fgrank)
         return LESS;
     else {
-        MPL_internal_error_printf("Error: In is_Within(). This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);
+        MPL_internal_error_printf("Error: In FG_is_within(). This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);
         MPID_Abort(NULL, MPI_SUCCESS, -1, NULL);
         MPL_exit(-1); /* If for some reason MPID_Abort returns, exit here. */
     }
@@ -253,7 +253,7 @@ static int is_Within(int rank, int start_fgrank, int numfgps)
 
 /* For binary search the fg_startrank in pid_to_fgps array must sorted.
  */
-int _FGworldrank_to_pid(const int fgwrank, int *pid_ptr)
+static int FGI_worldrank_to_pid(const int fgwrank, int *pid_ptr)
 {
     int low, high, mid;
     int pid_size;
@@ -265,9 +265,9 @@ int _FGworldrank_to_pid(const int fgwrank, int *pid_ptr)
     while (low <= high)
     {
         mid = (low + high) / 2;
-        if (LESS == is_Within(fgwrank, pid_to_fgps[mid].fg_startrank, pid_to_fgps[mid].numfgps))
+        if (LESS == FG_is_within(fgwrank, pid_to_fgps[mid].fg_startrank, pid_to_fgps[mid].numfgps))
             high = mid - 1;
-        else if (GREATER == is_Within(fgwrank, pid_to_fgps[mid].fg_startrank, pid_to_fgps[mid].numfgps))
+        else if (GREATER == FG_is_within(fgwrank, pid_to_fgps[mid].fg_startrank, pid_to_fgps[mid].numfgps))
             low = mid + 1;
         else
         {
@@ -281,10 +281,10 @@ int _FGworldrank_to_pid(const int fgwrank, int *pid_ptr)
 }
 
 /* Takes a FGworldrank as parameter returns its HWP rank (pid) for  MPI_COMM_WORLD only. */
-int FGworldrank_to_pid(int FG_worldrank)
+int FG_worldrank_to_pid(int FG_worldrank)
 {
     int pid, reterr;
-    reterr = _FGworldrank_to_pid(FG_worldrank, &pid);
+    reterr = FGI_worldrank_to_pid(FG_worldrank, &pid);
     if(MPI_SUCCESS != reterr)
     {
         MPL_internal_error_printf("Error: No pid found for worldrank=%d. This part of code should not be reached in file %s at line %d\n", FG_worldrank, __FILE__, __LINE__);
@@ -309,12 +309,12 @@ int RTWPmapFind(RTWmap* rtw_map, int lrank, int *worldrank_ptr, int *pid_ptr){ /
         MPIU_Assert(ret == MPI_SUCCESS);
     }
     if (NULL != pid_ptr){
-        *pid_ptr = FGworldrank_to_pid(*worldrank_ptr);
+        *pid_ptr = FG_worldrank_to_pid(*worldrank_ptr);
     }
     return (MPI_SUCCESS);
 }
 
-int Set_PROC_NULL(int *worldrank_ptr, int *pid_ptr) /* OUT,OUT */
+int FG_set_PROC_NULL(int *worldrank_ptr, int *pid_ptr) /* OUT,OUT */
 {
     (*worldrank_ptr) = MPI_PROC_NULL;
     if (NULL != pid_ptr) {
@@ -326,7 +326,7 @@ int Set_PROC_NULL(int *worldrank_ptr, int *pid_ptr) /* OUT,OUT */
 
 /* Returns 1 if FGrank and comm->fgrank have same pid in the
    communicator comm. Otherwise, returns 0. */
-int Is_within_same_HWP(int reqfgrank, MPID_Comm *comm, int *reqrankpid)
+int FG_is_within_same_HWP(int reqfgrank, MPID_Comm *comm, int *reqrankpid)
 {
     int reqpid=-1, worldrank = -1, commfgrankpid=-2; /* Unequal initializers */
     MPIU_Assert( NULL != comm );

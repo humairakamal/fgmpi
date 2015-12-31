@@ -406,7 +406,7 @@ void MPIDI_CH3U_Buffer_free( MPID_Request * request_ptr )
 
     if ( ( MPIDI_REQUEST_TYPE_SEND == MPIDI_Request_get_type(request_ptr) ) &&
          ( MPIDI_Request_get_self_zerocopy_flag(request_ptr) ) &&
-         ( !(Is_within_same_HWP(request_ptr->dev.match.parts.dest_rank, request_ptr->comm, NULL)) ) )  {
+         ( !(FG_is_within_same_HWP(request_ptr->dev.match.parts.dest_rank, request_ptr->comm, NULL)) ) )  {
 
         /* MPI_Izsend<=>MPI_Wait/Test (and variants) pairing: Freeing buf_handle */
 

@@ -983,7 +983,7 @@ MPID_Request * MPIDI_CH3U_Recvq_FDP_or_AEU(MPIDI_Message_match * match,
 #if defined(FINEGRAIN_MPI)
                 /* FG: Zerocopy */
                 if ( (MPIDI_Request_get_self_zerocopy_flag(rreq)) &&
-                     !(Is_within_same_HWP(match->parts.rank, rreq->comm, NULL)) )
+                     !(FG_is_within_same_HWP(match->parts.rank, rreq->comm, NULL)) )
                 {
                     int rdt_contig;
                     MPI_Aint rdt_true_lb;
