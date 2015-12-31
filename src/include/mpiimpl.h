@@ -3475,6 +3475,14 @@ int MPID_Win_flush_local(int rank, MPID_Win *win);
 int MPID_Win_flush_local_all(MPID_Win *win);
 int MPID_Win_sync(MPID_Win *win);
 
+#if defined(FINEGRAIN_MPI)
+int MPID_Zsend(const void ** buf_handle, MPI_Aint count, MPI_Datatype datatype, int rank,
+	      int tag, MPID_Comm * comm, int context_offset,
+	      MPID_Request ** request);
+int MPID_Izsend(const void ** buf_handle, MPI_Aint count, MPI_Datatype datatype, int rank,
+	       int tag, MPID_Comm * comm, int context_offset,
+               MPID_Request ** request);
+#endif
 
 /*@
   MPID_Progress_start - Begin a block of operations that check the completion
@@ -4497,6 +4505,7 @@ static inline void MPIR_Process_status(MPI_Status *status, MPIR_Errflag_t *errfl
         }
     }
 }
+
 
 extern const char MPIR_Version_string[];
 extern const char MPIR_Version_date[];
