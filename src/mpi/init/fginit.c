@@ -11,6 +11,8 @@
 #include "pmi.h" /* PMI_Get_size */
 #include "mpiimpl.h"
 
+/* fgmpi_sleepq_size defined in src/fgutil/src/threadlib.c */
+int fgmpi_sleepq_size(void);
 
 FGP_tuple_t *pid_to_fgps;          /* FG: pid_to_fgps is a 1-many mapping from the HWP pid
                                       to the FG worldranks in MPI_COMM_WORLD. */
@@ -191,7 +193,7 @@ inline void* FG_MPIU_Malloc(size_t a, const char fcname[], int lineno){
 inline void FG_yield(const char fcname[], int lineno){
     int numfgps;
     MPIX_Get_collocated_size(&numfgps);
-    if( (numfgps > 1) && ((runlist_size() > 0) || (sleepq_size() > 0)) )
+    if( (numfgps > 1) && ((runlist_size() > 0) || (fgmpi_sleepq_size() > 0)) )
     { /* FG: -nfg X, where X is numfgps*/
         thread_yield();
     }
@@ -218,7 +220,7 @@ void mpix_usleep_(unsigned long long utime)
 inline void FG_yield_on_event(scheduler_event yld_event, const char fcname[], int lineno){
     int numfgps;
     MPIX_Get_collocated_size(&numfgps);
-    if( (numfgps > 1) && ((runlist_size() > 0) || (sleepq_size() > 0)) )
+    if( (numfgps > 1) && ((runlist_size() > 0) || (fgmpi_sleepq_size() > 0)) )
     { /* FG: -nfg X, where X is numfgps*/
         thread_yield_on_event(yld_event);
     }
@@ -247,6 +249,7 @@ static int FG_is_within(int rank, int start_fgrank, int numfgps)
         MPL_internal_error_printf("Error: In FG_is_within(). This part of code should not be reached in file %s at line %d\n", __FILE__, __LINE__);
         MPID_Abort(NULL, MPI_SUCCESS, -1, NULL);
         MPL_exit(-1); /* If for some reason MPID_Abort returns, exit here. */
+        return 911; /* silence compiler warning - use C11 _Noreturn some day */
     }
 }
 

@@ -120,9 +120,9 @@ static unsigned long long max_sleep_time=0;          /* length of the whole slee
 static unsigned long long first_wake_usecs=0;        /* wall clock time of the wake time of the first sleeping thread */
 
 inline static void free_thread( fgmpi_thread_t *t );
-inline static void sleepq_check(int sync);
-inline static void sleepq_add_thread(fgmpi_thread_t *t, unsigned long long timeout);
-inline static void sleepq_remove_thread(fgmpi_thread_t *t);
+inline static void fgmpi_sleepq_check(int sync);
+inline static void fgmpi_sleepq_add_thread(fgmpi_thread_t *t, unsigned long long timeout);
+inline static void fgmpi_sleepq_remove_thread(fgmpi_thread_t *t);
 
 
 unsigned long long start_usec;
@@ -156,7 +156,7 @@ static void* do_scheduler(void *arg)
     sanity_check_threadcounts();
 
     /* wake up threads that have timeouts */
-    sleepq_check(0);
+    fgmpi_sleepq_check(0);
     sanity_check_threadcounts();
 
     /* break out if there are only daemon threads */
@@ -466,7 +466,7 @@ static int _thread_yield_internal(int suspended,  void *incoming_event, unsigned
       sched_block_thread( current_thread, incoming_event);
   }
   else if( timeout ) { /* add to the sleep list */
-    sleepq_add_thread( current_thread, timeout);
+    fgmpi_sleepq_add_thread( current_thread, timeout);
   }
 
 
@@ -790,7 +790,7 @@ void thread_resume(fgmpi_thread_t *t)
 {
   /* clear timer */
   if (t->sleep != -1)
-    sleepq_remove_thread(t);
+    fgmpi_sleepq_remove_thread(t);
 
   /* make the thread runnable */
   _thread_resume(t);
@@ -917,11 +917,11 @@ unsigned fgmpi_thread_tid(fgmpi_thread_t *t)
 }
 
 #if 1
-#define sleepq_sanity_check() \
+#define fgmpi_sleepq_sanity_check() \
 	assert ((max_sleep_time > 0 && sleepq->num_entries > 0) \
 		|| (max_sleep_time == 0 && sleepq->num_entries == 0) )
 #else
-#define sleepq_sanity_check() \
+#define fgmpi_sleepq_sanity_check() \
 do { \
   assert ((max_sleep_time > 0 && sleepq->num_entries > 0) \
 	| (max_sleep_time == 0 && sleepq->num_entries == 0) ); \
@@ -959,7 +959,7 @@ int print_sleep_queue(void)
 
 /* check sleep queue to wake up all timed-out threads */
 /* sync == TRUE -> synchronize last_check_time */
-static void sleepq_check(int sync)
+static void fgmpi_sleepq_check(int sync)
 {
   unsigned long long now;
   long long interval;
@@ -970,7 +970,7 @@ static void sleepq_check(int sync)
     return;
   }
 
-  sleepq_sanity_check();
+  fgmpi_sleepq_sanity_check();
 
   now = current_usecs();
   if( now > last_check_time )
@@ -1010,20 +1010,20 @@ static void sleepq_check(int sync)
      first_wake_usecs = 0;
   }
 
-  sleepq_sanity_check();
+  fgmpi_sleepq_sanity_check();
 }
 
 
 /* set a timer on a thread that will wake the thread up after timeout */
 /* microseconds.  this is used to implement thread_suspend_self(timeout) */
-static void sleepq_add_thread(fgmpi_thread_t *t, unsigned long long timeout)
+static void fgmpi_sleepq_add_thread(fgmpi_thread_t *t, unsigned long long timeout)
 {
   linked_list_entry_t *e;
   long long total_time;
-  sleepq_check(1); /* make sure: last_check_time == now */
+  fgmpi_sleepq_check(1); /* make sure: last_check_time == now */
 
   assert(t->sleep == -1);
-  sleepq_sanity_check();
+  fgmpi_sleepq_sanity_check();
 
   if (timeout >= max_sleep_time) {
     /* set first_wake_usecs if this is the first item */
@@ -1035,7 +1035,7 @@ static void sleepq_add_thread(fgmpi_thread_t *t, unsigned long long timeout)
     t->sleep = timeout - max_sleep_time;
     assert( t->sleep >= 0 );
     max_sleep_time = timeout;
-    sleepq_sanity_check();
+    fgmpi_sleepq_sanity_check();
     return;
   }
 
@@ -1070,18 +1070,18 @@ static void sleepq_add_thread(fgmpi_thread_t *t, unsigned long long timeout)
   }
 
   assert (e != NULL);   /* we're sure to find such an e */
-  sleepq_sanity_check();
+  fgmpi_sleepq_sanity_check();
 
   return;
 }
 
 /* remove the timer associated with the thread */
-inline static void sleepq_remove_thread(fgmpi_thread_t *t)
+inline static void fgmpi_sleepq_remove_thread(fgmpi_thread_t *t)
 {
   linked_list_entry_t *e;
 
   assert(t->sleep >= 0);  /* the thread must be in the sleep queue */
-  sleepq_sanity_check();
+  fgmpi_sleepq_sanity_check();
 
   /* let's find the thread in the queue */
   e = ll_view_head(sleepq);
@@ -1111,11 +1111,11 @@ inline static void sleepq_remove_thread(fgmpi_thread_t *t)
 
   assert( t->sleep == -1);
   assert (e != NULL);   /* we must find t in sleep queue */
-  sleepq_sanity_check();
+  fgmpi_sleepq_sanity_check();
 }
 
 
-int sleepq_size(void)
+int fgmpi_sleepq_size(void)
 {
     if (NULL == sleepq )
         return (0);
