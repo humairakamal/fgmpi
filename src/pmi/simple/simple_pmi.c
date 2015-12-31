@@ -156,7 +156,7 @@ int PMI_Init( int *spawned )
 	PMI_keylen_max  = 256;
 	PMI_vallen_max  = 256;
 	
-	return( 0 );
+	return PMI_SUCCESS;
     }
 
     /* If size, rank, and debug are not set from a communication port,
@@ -248,7 +248,7 @@ int PMI_Init( int *spawned )
     if ( ! PMI_initialized )
 	PMI_initialized = NORMAL_INIT_WITH_PM;
 
-    return( 0 );
+    return PMI_SUCCESS;
 }
 
 int PMI_Initialized( int *initialized )
@@ -267,7 +267,7 @@ int PMI_Get_size( int *size )
 	*size = PMI_size;
     else
 	*size = 1;
-    return( 0 );
+    return PMI_SUCCESS;
 }
 
 int PMI_Get_rank( int *rank )
@@ -276,7 +276,7 @@ int PMI_Get_rank( int *rank )
 	*rank = PMI_rank;
     else
 	*rank = 0;
-    return( 0 );
+    return PMI_SUCCESS;
 }
 
 #if defined(FINEGRAIN_MPI)
@@ -286,7 +286,7 @@ inline int MPIX_Get_collocated_startrank( int *rank )
 	*rank = PMI_fg_startrank;
     else
 	*rank = 0;
-    return( 0 );
+    return PMI_SUCCESS;
 }
 
 void  mpix_get_collocated_startrank_ ( MPI_Fint *v1, MPI_Fint *ierr ){
@@ -299,7 +299,7 @@ int PMI_Get_totprocs( int *size )
 	*size = PMI_totprocs;
     else
 	*size = 1;
-    return( 0 );
+    return PMI_SUCCESS;
 }
 
 inline int MPIX_Get_collocated_size( int *size )
@@ -308,7 +308,7 @@ inline int MPIX_Get_collocated_size( int *size )
 	*size = PMI_numFGPs;
     else
 	*size = 1;
-    return( 0 );
+    return PMI_SUCCESS;
 }
 
 void  mpix_get_collocated_size_ ( MPI_Fint *v1, MPI_Fint *ierr ){
@@ -321,7 +321,7 @@ inline int MPIX_Get_n_size( int *size )
 	*size = PMI_size;
     else
 	*size = 1;
-    return( 0 );
+    return PMI_SUCCESS;
 }
 
 void  mpix_get_n_size_ ( MPI_Fint *v1, MPI_Fint *ierr ){
@@ -492,7 +492,7 @@ int PMI_KVS_Put( const char kvsname[], const char key[], const char value[] )
 int PMI_KVS_Commit( const char kvsname[] ATTRIBUTE((unused)))
 {
     /* no-op in this implementation */
-    return( 0 );
+    return PMI_SUCCESS;
 }
 
 /*FIXME: need to return an error if the value returned is truncated
@@ -520,7 +520,7 @@ int PMI_KVS_Get( const char kvsname[], const char key[], char value[],
 	rc = atoi( buf );
 	if ( rc == 0 ) {
 	    PMIU_getval( "value", value, length );
-	    return( 0 );
+	    return PMI_SUCCESS;
 	}
 	else {
 	    return( -1 );
@@ -809,7 +809,7 @@ int PMI_Spawn_multiple(int count,
         }
     }
 
-    return( 0 );
+    return PMI_SUCCESS;
 }
 
 /***************** Internal routines not part of PMI interface ***************/
