@@ -474,6 +474,7 @@ int MPIX_Get_collocated_size(int * size);
 int MPIX_Get_n_size(int * size);
 void MPIX_Yield(void);
 void MPIX_Usleep(unsigned long long utime);
+int PMI_Get_totprocs( int *size );
 #endif
 
 
