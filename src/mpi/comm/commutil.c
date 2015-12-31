@@ -925,6 +925,74 @@ int MPIR_Comm_is_node_consecutive(MPID_Comm * comm)
     return 1;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPIR_Comm_copy_share
+#undef FCNAME
+#define FCNAME MPL_QUOTE(FUNCNAME)
+int MPIR_Comm_copy_share(MPID_Comm *comm_ptr, MPID_Comm *newcomm_ptr)
+{
+    int i, mpi_errno = MPI_SUCCESS;
+    int new_totprocs = newcomm_ptr->totprocs;
+    cLitemptr stored = NULL;
+
+    MPID_MPI_STATE_DECL(MPID_STATE_MPIR_COMM_COPY_SHARE);
+
+    MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_COMM_COPY_SHARE);
+
+    MPIU_Assert(newcomm_ptr->leader_worldrank >= 0);
+    CL_LookupHashFind(contextLeader_hshtbl, newcomm_ptr->context_id, newcomm_ptr->leader_worldrank, &stored);
+    if (stored) {
+        MPIR_Comm_add_coshared_all_ref(stored->coproclet_shared_vars);
+        newcomm_ptr->co_shared_vars = ((Coproclet_shared_vars_t *)(stored->coproclet_shared_vars));
+    }
+    else {
+        newcomm_ptr->co_shared_vars = (Coproclet_shared_vars_t *)MPIU_Calloc(1, sizeof(Coproclet_shared_vars_t));
+        MPIR_ERR_CHKANDJUMP(!(newcomm_ptr->co_shared_vars), mpi_errno, MPI_ERR_OTHER, "**nomem");
+        if (new_totprocs == comm_ptr->totprocs)
+        {
+            newcomm_ptr->co_shared_vars->rtw_map = comm_ptr->co_shared_vars->rtw_map;
+        } else {
+            mpi_errno = MPIR_Comm_populate_rtwmap(comm_ptr, new_totprocs, newcomm_ptr);
+            if (mpi_errno)
+                MPIR_ERR_POP(mpi_errno);
+        }
+
+        newcomm_ptr->co_shared_vars->co_barrier_vars =  (struct coproclet_barrier_vars *)MPIU_Malloc(sizeof(struct coproclet_barrier_vars));
+        MPIR_ERR_CHKANDJUMP(!(newcomm_ptr->co_shared_vars->co_barrier_vars), mpi_errno, MPI_ERR_OTHER, "**nomem");
+        newcomm_ptr->co_shared_vars->co_barrier_vars->coproclet_signal = 0;
+        newcomm_ptr->co_shared_vars->co_barrier_vars->coproclet_counter = 0;
+        newcomm_ptr->co_shared_vars->co_barrier_vars->leader_signal = 0;
+
+        newcomm_ptr->co_shared_vars->ptn_hash = comm_ptr->co_shared_vars->ptn_hash;
+        newcomm_ptr->co_shared_vars->nested_uniform_vars.local_size = comm_ptr->co_shared_vars->nested_uniform_vars.local_size;
+        newcomm_ptr->co_shared_vars->nested_uniform_vars.external_size = comm_ptr->co_shared_vars->nested_uniform_vars.external_size;
+        newcomm_ptr->co_shared_vars->nested_uniform_vars.fg_local_size = comm_ptr->co_shared_vars->nested_uniform_vars.fg_local_size;
+
+
+        if (new_totprocs == comm_ptr->totprocs)
+        {
+            stored = NULL;
+            CL_LookupHashFind(contextLeader_hshtbl, comm_ptr->context_id, comm_ptr->leader_worldrank, &stored); /* FG: TODO Can get the ref_acrossComm_countptr directly instead of CL_LookupHashFind */
+            MPIU_Assert(stored != NULL);
+            newcomm_ptr->co_shared_vars->ref_acrossComm_countptr = ((Coproclet_shared_vars_t *)(stored->coproclet_shared_vars))->ref_acrossComm_countptr;
+            MPIR_Comm_add_coshared_acrossComm_ref(newcomm_ptr->co_shared_vars);
+            MPIR_Comm_init_coshared_withinComm_ref(newcomm_ptr->co_shared_vars);
+        } else {
+            MPIR_Comm_init_coshared_all_ref(newcomm_ptr->co_shared_vars);
+        }
+
+        stored = NULL;
+        CL_LookupHashInsert(contextLeader_hshtbl, newcomm_ptr->context_id, newcomm_ptr->leader_worldrank, newcomm_ptr->co_shared_vars, &stored);
+        MPIR_ERR_CHKANDJUMP(!stored, mpi_errno, MPI_ERR_OTHER, "**hshinsertfail" );
+    }
+
+ fn_exit:
+    MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_COMM_COPY_SHARE);
+    return(mpi_errno);
+ fn_fail:
+    goto fn_exit;
+}
+
 /*
  * Copy a communicator, including creating a new context and copying the
  * virtual connection tables and clearing the various fields.
@@ -1630,74 +1698,6 @@ int MPIR_Comm_share_commit(MPID_Comm * comm, MPID_Comm * newcomm)
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_COMM_SHARE_COMMIT);
     return mpi_errno;
   fn_fail:
-    goto fn_exit;
-}
-
-#undef FUNCNAME
-#define FUNCNAME MPIR_Comm_copy_share
-#undef FCNAME
-#define FCNAME MPL_QUOTE(FUNCNAME)
-int MPIR_Comm_copy_share(MPID_Comm *comm_ptr, MPID_Comm *newcomm_ptr)
-{
-    int i, mpi_errno = MPI_SUCCESS;
-    int new_totprocs = newcomm_ptr->totprocs;
-    cLitemptr stored = NULL;
-
-    MPID_MPI_STATE_DECL(MPID_STATE_MPIR_COMM_COPY_SHARE);
-
-    MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_COMM_COPY_SHARE);
-
-    MPIU_Assert(newcomm_ptr->leader_worldrank >= 0);
-    CL_LookupHashFind(contextLeader_hshtbl, newcomm_ptr->context_id, newcomm_ptr->leader_worldrank, &stored);
-    if (stored) {
-        MPIR_Comm_add_coshared_all_ref(stored->coproclet_shared_vars);
-        newcomm_ptr->co_shared_vars = ((Coproclet_shared_vars_t *)(stored->coproclet_shared_vars));
-    }
-    else {
-        newcomm_ptr->co_shared_vars = (Coproclet_shared_vars_t *)MPIU_Calloc(1, sizeof(Coproclet_shared_vars_t));
-        MPIR_ERR_CHKANDJUMP(!(newcomm_ptr->co_shared_vars), mpi_errno, MPI_ERR_OTHER, "**nomem");
-        if (new_totprocs == comm_ptr->totprocs)
-        {
-            newcomm_ptr->co_shared_vars->rtw_map = comm_ptr->co_shared_vars->rtw_map;
-        } else {
-            mpi_errno = MPIR_Comm_populate_rtwmap(comm_ptr, new_totprocs, newcomm_ptr);
-            if (mpi_errno)
-                MPIR_ERR_POP(mpi_errno);
-        }
-
-        newcomm_ptr->co_shared_vars->co_barrier_vars =  (struct coproclet_barrier_vars *)MPIU_Malloc(sizeof(struct coproclet_barrier_vars));
-        MPIR_ERR_CHKANDJUMP(!(newcomm_ptr->co_shared_vars->co_barrier_vars), mpi_errno, MPI_ERR_OTHER, "**nomem");
-        newcomm_ptr->co_shared_vars->co_barrier_vars->coproclet_signal = 0;
-        newcomm_ptr->co_shared_vars->co_barrier_vars->coproclet_counter = 0;
-        newcomm_ptr->co_shared_vars->co_barrier_vars->leader_signal = 0;
-
-        newcomm_ptr->co_shared_vars->ptn_hash = comm_ptr->co_shared_vars->ptn_hash;
-        newcomm_ptr->co_shared_vars->nested_uniform_vars.local_size = comm_ptr->co_shared_vars->nested_uniform_vars.local_size;
-        newcomm_ptr->co_shared_vars->nested_uniform_vars.external_size = comm_ptr->co_shared_vars->nested_uniform_vars.external_size;
-        newcomm_ptr->co_shared_vars->nested_uniform_vars.fg_local_size = comm_ptr->co_shared_vars->nested_uniform_vars.fg_local_size;
-
-
-        if (new_totprocs == comm_ptr->totprocs)
-        {
-            stored = NULL;
-            CL_LookupHashFind(contextLeader_hshtbl, comm_ptr->context_id, comm_ptr->leader_worldrank, &stored); /* FG: TODO Can get the ref_acrossComm_countptr directly instead of CL_LookupHashFind */
-            MPIU_Assert(stored != NULL);
-            newcomm_ptr->co_shared_vars->ref_acrossComm_countptr = ((Coproclet_shared_vars_t *)(stored->coproclet_shared_vars))->ref_acrossComm_countptr;
-            MPIR_Comm_add_coshared_acrossComm_ref(newcomm_ptr->co_shared_vars);
-            MPIR_Comm_init_coshared_withinComm_ref(newcomm_ptr->co_shared_vars);
-        } else {
-            MPIR_Comm_init_coshared_all_ref(newcomm_ptr->co_shared_vars);
-        }
-
-        stored = NULL;
-        CL_LookupHashInsert(contextLeader_hshtbl, newcomm_ptr->context_id, newcomm_ptr->leader_worldrank, newcomm_ptr->co_shared_vars, &stored);
-        MPIR_ERR_CHKANDJUMP(!stored, mpi_errno, MPI_ERR_OTHER, "**hshinsertfail" );
-    }
-
- fn_exit:
-    MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_COMM_COPY_SHARE);
-    return(mpi_errno);
- fn_fail:
     goto fn_exit;
 }
 
