@@ -539,6 +539,11 @@ int MPIR_Comm_map_free(MPID_Comm * comm)
     goto fn_exit;
 }
 
+#if defined(FINEGRAIN_MPI)
+/* defined in src/util/procmap/local_proc.c */
+int MPIR_Comm_populate_rtwmap(MPID_Comm *comm_ptr, int new_totprocs, MPID_Comm *newcomm_ptr);
+#endif
+
 /* Provides a hook for the top level functions to perform some manipulation on a
    communicator just before it is given to the application level.
 
@@ -924,6 +929,10 @@ int MPIR_Comm_is_node_consecutive(MPID_Comm * comm)
 
     return 1;
 }
+
+#if defined(FINEGRAIN_MPI)
+int MPIR_Comm_populate_rtwmap(MPID_Comm *comm_ptr, int new_totprocs, MPID_Comm *newcomm_ptr);
+#endif
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Comm_copy_share
@@ -1491,7 +1500,6 @@ int MPIR_Comm_register_hint(const char *hint_key, MPIR_Comm_hint_fn_t fn, void *
 
 
 #if defined(FINEGRAIN_MPI)
-int MPIR_Comm_populate_rtwmap(MPID_Comm *comm_ptr, int new_totprocs, MPID_Comm *newcomm_ptr);
 
 /* Share comm's rtw map and pt_hash and also
    rtw map of nested communicators with newcomm */
