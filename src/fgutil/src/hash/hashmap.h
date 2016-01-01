@@ -275,5 +275,6 @@ extern hshtbl * ptnLookupHashCreate(void);
 extern int ptnLookupHashFind(hshtbl *ptn_lookuphshtbl, int parent_rank, ptnLookupHashItemptr *stored); /*(IN, IN, OUT)*/
 extern int ptnLookupHashInsert(hshtbl *ptn_lookuphshtbl, int parent_rank, Parent_to_Nested_comm_tables_t parent_to_nested, ptnLookupHashItemptr *stored); /* IN, IN, IN, OUT */
 
+void hshtblFree(hshtbl **hash_dptr);
 
 #endif /* HASHMAP_H */

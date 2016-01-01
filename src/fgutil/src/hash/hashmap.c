@@ -668,7 +668,7 @@ int ptnLookupHashInsert(hshtbl *ptn_lookuphshtbl, int parent_rank, Parent_to_Nes
 }
 
 
-int hshtblFree(hshtbl **hash_dptr) /*(IN)*/
+void hshtblFree(hshtbl **hash_dptr) /*(IN)*/
 {
     hshkill(*hash_dptr);
     *hash_dptr = NULL;
