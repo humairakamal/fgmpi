@@ -131,7 +131,7 @@ extern const char *__progname;
 
 void assert_failed(char *file, unsigned int line, const char *func, char *expr)
 {
-  /* debug_sighandler(-1);	/* print all kinds of info *\/ */
+  /* debug_sighandler(-1); */ /* print all kinds of info */
   fatal("%s%s%s:%u: %s:  Assertion `%s' failed.\n",
         __progname ? __progname : "",
         __progname ? ": " : "",

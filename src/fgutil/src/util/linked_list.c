@@ -391,11 +391,11 @@ linked_list_entry_t* ll_view_prev(linked_list_t *ll, linked_list_entry_t* e)
 
 
 
-/* ////////////////////////////////////////////////////////////////////// */
-/*
-/* Simplified wrappers, for the common case of a linked list of pointers */
-/*
-/* ////////////////////////////////////////////////////////////////////// */
+/* ///////////////////////////////////////////////////////////////////// *
+ *                                                                       *
+ * Simplified wrappers, for the common case of a linked list of pointers *
+ *                                                                       *
+ * ///////////////////////////////////////////////////////////////////// */
 
 typedef struct _pointer_list_entry {
   linked_list_entry_t e;
