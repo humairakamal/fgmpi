@@ -203,6 +203,7 @@ int MPI_Init( int *argc, char ***argv )
     eager_nelem = -1;
     eager_in_use = 0;
     next_gcn = NULL;
+    all_schedules.head = NULL;
 #endif
 
 

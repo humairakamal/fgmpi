@@ -639,7 +639,6 @@ int MPIDI_CH3I_Progress (MPID_Progress_state *progress_state, int is_blocking)
             if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         }
 
-#if !defined(FINEGRAIN_MPI)  /* FG: TODO Temporary bypass (Non-blocking collectives among others) */
         for (i = 0; i < MAX_PROGRESS_HOOKS; i++) {
             if (progress_hooks[i].active == TRUE) {
                 MPIU_Assert(progress_hooks[i].func_ptr != NULL);
@@ -649,7 +648,6 @@ int MPIDI_CH3I_Progress (MPID_Progress_state *progress_state, int is_blocking)
                     MPIDI_CH3_Progress_signal_completion();
             }
         }
-#endif
 
         /* in the case of progress_wait, bail out if anything completed (CC-1) */
         if (is_blocking) {
