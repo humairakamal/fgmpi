@@ -540,7 +540,6 @@ int MPIR_Comm_map_free(MPID_Comm * comm)
 }
 
 #if defined(FINEGRAIN_MPI)
-/* defined in src/util/procmap/local_proc.c */
 int MPIU_Nested_maps_for_communicators(MPID_Comm *comm);
 int MPIR_Comm_populate_rtwmap(MPID_Comm *comm_ptr, int new_totprocs, MPID_Comm *newcomm_ptr);
 #endif
@@ -931,9 +930,6 @@ int MPIR_Comm_is_node_consecutive(MPID_Comm * comm)
     return 1;
 }
 
-#if defined(FINEGRAIN_MPI)
-int MPIR_Comm_populate_rtwmap(MPID_Comm *comm_ptr, int new_totprocs, MPID_Comm *newcomm_ptr);
-#endif
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Comm_copy_share
