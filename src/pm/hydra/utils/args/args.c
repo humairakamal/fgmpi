@@ -202,6 +202,22 @@ HYD_status HYDU_set_str(char *arg, char **var, const char *val)
     goto fn_exit;
 }
 
+#if defined(FINEGRAIN_MPI)
+HYD_status HYDU_set_int_test(char *arg, int *var, int val, int test)
+{
+    HYD_status status = HYD_SUCCESS;
+
+    HYDU_ERR_CHKANDJUMP(status, *var != test, HYD_INTERNAL_ERROR, "duplicate setting: %s\n", arg);
+
+    *var = val;
+
+ fn_exit:
+    return status;
+
+ fn_fail:
+    goto fn_exit;
+}
+#else
 HYD_status HYDU_set_int(char *arg, int *var, int val)
 {
     HYD_status status = HYD_SUCCESS;
@@ -216,6 +232,7 @@ HYD_status HYDU_set_int(char *arg, int *var, int val)
   fn_fail:
     goto fn_exit;
 }
+#endif
 
 char *HYDU_getcwd(void)
 {
