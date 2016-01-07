@@ -2178,46 +2178,7 @@ typedef struct MPICH_PerProcess_t {
 #endif /* HAVE_CXX_BINDING */
 } MPICH_PerProcess_t;
 
-#if defined(FINEGRAIN_MPI)
-#define MPIR_Process ((struct StateWrapper*)(CO_CURRENT->statevars))->MPIR_ProcessFG
-
-#define context_mask (((struct StateWrapper*)(CO_CURRENT->statevars))->context_maskFG)
-#define initialize_context_mask (((struct StateWrapper*)(CO_CURRENT->statevars))->initialize_context_maskFG)
-#define mask_in_use (((struct StateWrapper*)(CO_CURRENT->statevars))->mask_in_useFG)
-#define eager_nelem (((struct StateWrapper*)(CO_CURRENT->statevars))->eager_nelemFG)
-#define eager_in_use (((struct StateWrapper*)(CO_CURRENT->statevars))->eager_in_useFG)
-#define next_gcn (((struct StateWrapper*)(CO_CURRENT->statevars))->next_gcnFG)
-
-extern int FGP_finalizations;
-
-struct StateWrapper {
-    int init_initialized; /* FG: To make sure that an FGP does not
-                             call MPI_Init more than once. */
-    int is_spawner;
-    MPICH_PerProcess_t MPIR_ProcessFG;
-    /*
-     fstack, fstack_sp and fstack_max_priority are static-global
-     variables in finalize.c and are not referred to outside that file.*/
-    int finalize_initialized;
-    OPAQUE fstackFG;
-    int fstack_spFG;
-    int fstack_max_priorityFG;
-
-    MPID_Comm MPID_Comm_builtinFG[MPID_COMM_N_BUILTIN];
-
-    int fgrank;
-
-    unsigned int *context_maskFG;
-    int initialize_context_maskFG;
-    volatile int mask_in_useFG;
-    volatile int eager_nelemFG;
-    volatile int eager_in_useFG;
-    struct gcn_state *next_gcnFG;
-};
-extern struct MPIDI_VCRT * vcrt_world; /* virtual connecton reference table for MPI_COMM_WORLD */
-
-
-#else
+#if !defined(FINEGRAIN_MPI)
 extern MPICH_PerProcess_t MPIR_Process;
 #endif
 
@@ -4529,6 +4490,50 @@ extern const char MPIR_Version_FC[];
 #if defined(FINEGRAIN_MPI)
 #include "mpidimpl.h"
 #include "fgmpiutil.h"
+#include "mpid_sched.h"
+
+#define MPIR_Process ((struct StateWrapper*)(CO_CURRENT->statevars))->MPIR_ProcessFG
+
+#define context_mask (((struct StateWrapper*)(CO_CURRENT->statevars))->context_maskFG)
+#define initialize_context_mask (((struct StateWrapper*)(CO_CURRENT->statevars))->initialize_context_maskFG)
+#define mask_in_use (((struct StateWrapper*)(CO_CURRENT->statevars))->mask_in_useFG)
+#define eager_nelem (((struct StateWrapper*)(CO_CURRENT->statevars))->eager_nelemFG)
+#define eager_in_use (((struct StateWrapper*)(CO_CURRENT->statevars))->eager_in_useFG)
+#define next_gcn (((struct StateWrapper*)(CO_CURRENT->statevars))->next_gcnFG)
+
+#define all_schedules (((struct StateWrapper*)(CO_CURRENT->statevars))->all_schedulesFG)
+
+extern int FGP_finalizations;
+
+struct StateWrapper {
+    int init_initialized; /* FG: To make sure that an FGP does not
+                             call MPI_Init more than once. */
+    int is_spawner;
+    MPICH_PerProcess_t MPIR_ProcessFG;
+    /*
+     fstack, fstack_sp and fstack_max_priority are static-global
+     variables in finalize.c and are not referred to outside that file.*/
+    int finalize_initialized;
+    OPAQUE fstackFG;
+    int fstack_spFG;
+    int fstack_max_priorityFG;
+
+    MPID_Comm MPID_Comm_builtinFG[MPID_COMM_N_BUILTIN];
+
+    int fgrank;
+
+    unsigned int *context_maskFG;
+    int initialize_context_maskFG;
+    volatile int mask_in_useFG;
+    volatile int eager_nelemFG;
+    volatile int eager_in_useFG;
+    struct gcn_state *next_gcnFG;
+
+    struct MPIDU_Sched_state all_schedulesFG;
+
+};
+extern struct MPIDI_VCRT * vcrt_world; /* virtual connecton reference table for MPI_COMM_WORLD */
+
 #endif
 
 #endif /* MPIIMPL_INCLUDED */

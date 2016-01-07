@@ -119,6 +119,13 @@ struct MPIDU_Sched {
     struct MPIDU_Sched *prev; /* linked-list next pointer */
 };
 
+#if defined(FINEGRAIN_MPI)
+struct MPIDU_Sched_state {
+    struct MPIDU_Sched *head;
+    /* no need for a tail with utlist */
+};
+#endif
+
 /* prototypes */
 int MPIDU_Sched_progress(int *made_progress);
 int MPIDU_Sched_are_pending(void);

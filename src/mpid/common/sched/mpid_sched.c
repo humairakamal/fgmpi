@@ -46,6 +46,9 @@
 void MPIDU_Sched_dump(struct MPIDU_Sched *s);
 void MPIDU_Sched_dump_fh(struct MPIDU_Sched *s, FILE *fh);
 
+#if defined(FINEGRAIN_MPI)
+int all_schedules_global = 0;
+#else
 struct MPIDU_Sched_state {
     struct MPIDU_Sched *head;
     /* no need for a tail with utlist */
@@ -53,8 +56,10 @@ struct MPIDU_Sched_state {
 
 /* holds on to all incomplete schedules on which progress should be made */
 struct MPIDU_Sched_state all_schedules = {NULL};
+#endif
 
 static int nbc_progress_hook_id = 0;
+
 
 /* returns TRUE if any schedules are currently pending completion by the
  * progress engine, FALSE otherwise */
@@ -64,7 +69,11 @@ static int nbc_progress_hook_id = 0;
 #define FCNAME MPL_QUOTE(FUNCNAME)
 int MPIDU_Sched_are_pending(void)
 {
+#if defined(FINEGRAIN_MPI)
+    return (all_schedules_global != 0);
+#else
     return (all_schedules.head != NULL);
+#endif
 }
 
 #undef FUNCNAME
@@ -411,7 +420,11 @@ int MPID_Sched_start(MPID_Sched_t *sp, MPID_Comm *comm, int tag, MPID_Request **
 
     /* finally, enqueue in the list of all pending schedules so that the
      * progress engine can make progress on it */
+#if defined(FINEGRAIN_MPI)
+    if (0 == all_schedules_global) {
+#else
     if (all_schedules.head == NULL) {
+#endif
         mpi_errno = MPID_Progress_register_hook(MPIDU_Sched_progress,
                                                 &nbc_progress_hook_id);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
@@ -419,6 +432,10 @@ int MPID_Sched_start(MPID_Sched_t *sp, MPID_Comm *comm, int tag, MPID_Request **
         MPID_Progress_activate_hook(nbc_progress_hook_id);
     }
     MPL_DL_APPEND(all_schedules.head, s);
+#if defined(FINEGRAIN_MPI)
+    all_schedules_global++;
+#endif
+
 
     MPIU_DBG_MSG_P(COMM, TYPICAL, "started schedule s=%p\n", s);
     MPIDU_Sched_dump(s);
@@ -902,6 +919,9 @@ static int MPIDU_Sched_progress_state(struct MPIDU_Sched_state *state, int *made
 
             /* dequeue this schedule from the state, it's complete */
             MPL_DL_DELETE(state->head, s);
+#if defined(FINEGRAIN_MPI)
+            all_schedules_global--;
+#endif
 
             /* TODO refactor into a sched_complete routine? */
             switch (s->req->errflag) {
@@ -946,7 +966,11 @@ int MPIDU_Sched_progress(int *made_progress)
     int mpi_errno;
 
     mpi_errno = MPIDU_Sched_progress_state(&all_schedules, made_progress);
+#if defined(FINEGRAIN_MPI)
+    if (!mpi_errno && 0 == all_schedules_global) {
+#else
     if (!mpi_errno && all_schedules.head == NULL) {
+#endif
         MPID_Progress_deactivate_hook(nbc_progress_hook_id);
         MPID_Progress_deregister_hook(nbc_progress_hook_id);
     }
