@@ -562,7 +562,7 @@ static HYD_status exec_nfg_fn(char *arg, char ***argv)
     HYD_status status = HYD_SUCCESS;
 
     for (exec = HYD_pmcd_pmip.exec_list; exec->next; exec = exec->next);
-    status = HYDU_set_int(arg, &exec->nfg, atoi(**argv));
+    status = HYDU_set_int_test(arg, &exec->nfg, atoi(**argv), 1);
 
     (*argv)++;
 

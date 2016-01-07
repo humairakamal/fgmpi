@@ -797,7 +797,7 @@ static HYD_status nfg_fn(char *arg, char ***argv)
     status = get_current_exec(&exec);
     HYDU_ERR_POP(status, "get_current_exec returned error\n");
 
-    status = HYDU_set_int(arg, &exec->nfg, atoi(**argv));
+    status = HYDU_set_int_test(arg, &exec->nfg, atoi(**argv), 1);
     HYDU_ERR_POP(status, "error getting executable nfg value\n");
 
   fn_exit:

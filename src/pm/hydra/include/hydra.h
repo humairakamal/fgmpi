@@ -697,6 +697,9 @@ char *HYDU_int_to_str_pad(int x, int maxlen);
 #define HYDU_herror HYDU_int_to_str
 #endif /* HAVE_HERROR */
 
+#if defined(FINEGRAIN_MPI)
+#define HYDU_set_int(_argp, _varp, _val) HYDU_set_int_test(_argp, _varp, _val, -1)
+#endif
 int HYDU_strlist_lastidx(char **strlist);
 char **HYDU_str_to_strlist(char *str);
 

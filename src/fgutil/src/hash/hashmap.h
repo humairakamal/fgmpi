@@ -17,7 +17,7 @@ typedef struct ranktoworld {
     int worldrank; /* rank of FGP in the MPI_COMM_WORLD */
 } ranktoworlditem, * ranktoworlditemptr;
 
-extern int hshtblFree(hshtbl **hash_dptr);
+void hshtblFree(hshtbl **hash_dptr);
 
 extern hshtbl * RTWhashCreate(int mapsize);
 extern int RTWhashFind(hshtbl *rtw_hshtbl, int key, int *worldrank_ptr); /*(IN, IN, OUT)*/
@@ -274,7 +274,5 @@ typedef hshtbl ptn_comm_tables_hash_t;
 extern hshtbl * ptnLookupHashCreate(void);
 extern int ptnLookupHashFind(hshtbl *ptn_lookuphshtbl, int parent_rank, ptnLookupHashItemptr *stored); /*(IN, IN, OUT)*/
 extern int ptnLookupHashInsert(hshtbl *ptn_lookuphshtbl, int parent_rank, Parent_to_Nested_comm_tables_t parent_to_nested, ptnLookupHashItemptr *stored); /* IN, IN, IN, OUT */
-
-void hshtblFree(hshtbl **hash_dptr);
 
 #endif /* HASHMAP_H */
