@@ -246,13 +246,13 @@ int MPIU_Nested_maps_for_communicators(MPID_Comm *comm)
     if (mpi_errno) MPIR_ERR_POP (mpi_errno);
     MPIU_Assert(max_node_id >= 0);
     MPIU_CHKLMEM_MALLOC (nodes, int *, sizeof(int) * (max_node_id + 1), mpi_errno, "nodes");
-    MPIU_CHKLMEM_MALLOC (osprocs, int *, sizeof(int) * (comm->local_size + 1), mpi_errno, "osprocs");
+    MPIU_CHKLMEM_MALLOC (osprocs, int *, sizeof(int) * (comm->num_osprocs + 1), mpi_errno, "osprocs");
     /* nodes[] maps a process's node_id to internode_comm_root for its node */
     for (i = 0; i < (max_node_id + 1); ++i) {
         nodes[i] = -1;
     }
     /* osprocs[] maps a process's process_id to intranode_comm_local_rank for its os-process */
-    for (i = 0; i < (comm->local_size + 1); ++i) {
+    for (i = 0; i < (comm->num_osprocs + 1); ++i) {
         osprocs[i] = -1;
     }
 
@@ -268,7 +268,7 @@ int MPIU_Nested_maps_for_communicators(MPID_Comm *comm)
     MPIU_Assert(my_node_id >= 0);
     MPIU_Assert(my_node_id <= max_node_id);
 
-    for (i = 0; i < comm->totprocs; ++i)
+    for (i = 0; i < comm->local_size; ++i)
     {
         Parent_to_Nested_comm_tables_t parent_to_nested_entry;
         parentcomm_rank = i;
@@ -334,7 +334,7 @@ int MPIU_Nested_maps_for_communicators(MPID_Comm *comm)
     comm->co_shared_vars->ptn_hash = parent_to_nested_hash_p;
 
     /*
-      for (i = 0; i < comm->totprocs; ++i)
+      for (i = 0; i < comm->local_size; ++i)
       {
           Parent_to_Nested_comm_tables_coshared_hash_t *ptn_tables_hash_entry_stored = NULL;
           PTN_HASH_LOOKUP( parent_to_nested_hash_p, i, ptn_tables_hash_entry_stored );
@@ -403,11 +403,7 @@ int MPIU_Get_internode_rank(MPID_Comm *comm_ptr, int r)
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm_valid_ptr( comm_ptr, mpi_errno, TRUE );
     MPIU_Assert(mpi_errno == MPI_SUCCESS);
-#if defined(FINEGRAIN_MPI)
-    MPIU_Assert(r < comm_ptr->totprocs);
-#else
     MPIU_Assert(r < comm_ptr->remote_size);
-#endif
     MPIU_Assert(comm_ptr->comm_kind == MPID_INTRACOMM);
 
 #if defined(FINEGRAIN_MPI)
@@ -443,11 +439,7 @@ int MPIU_Get_intranode_rank(MPID_Comm *comm_ptr, int r)
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm_valid_ptr( comm_ptr, mpi_errno, TRUE );
     MPIU_Assert(mpi_errno == MPI_SUCCESS);
-#if defined(FINEGRAIN_MPI)
-    MPIU_Assert(r < comm_ptr->totprocs);
-#else
     MPIU_Assert(r < comm_ptr->remote_size);
-#endif
     MPIU_Assert(comm_ptr->comm_kind == MPID_INTRACOMM);
 
 #if defined(FINEGRAIN_MPI)
@@ -488,11 +480,7 @@ int MPIU_Get_intra_osproc_rank(MPID_Comm *comm_ptr, int r)
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm_valid_ptr( comm_ptr, mpi_errno, TRUE );
     MPIU_Assert(mpi_errno == MPI_SUCCESS);
-#if defined(FINEGRAIN_MPI)
-    MPIU_Assert(r < comm_ptr->totprocs);
-#else
     MPIU_Assert(r < comm_ptr->remote_size);
-#endif
     MPIU_Assert(comm_ptr->comm_kind == MPID_INTRACOMM);
 
     Parent_to_Nested_comm_tables_coshared_hash_t *ptn_tables_hash_entry_stored = NULL;

@@ -301,22 +301,24 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 
 #if defined(FINEGRAIN_MPI)
     comm->p_rank      = pg_rank; /* FG: _p_rank_ */
+    comm->num_osprocs = pg_size;
 #else
     comm->rank        = pg_rank;
-#endif
     comm->remote_size = pg_size;
     comm->local_size  = pg_size;
+#endif
 
 #if defined(FINEGRAIN_MPI)
     comm->rank = my_fgrank;
-    PMI_Get_totprocs(&(comm->totprocs));
+    PMI_Get_totprocs(&(comm->remote_size));
+    PMI_Get_totprocs(&(comm->local_size));
     comm->co_shared_vars = world_co_shared_vars;
     comm->leader_worldrank = 0;
 #endif
 
 #if defined(FINEGRAIN_MPI)
     if(FGP_WITHIN_INIT == FGP_init_state) {
-        mpi_errno = MPIDI_VCRT_Create(comm->remote_size, &vcrt_world);/* FG: TODO Double-check ref_count */
+        mpi_errno = MPIDI_VCRT_Create(comm->num_osprocs, &vcrt_world);/* FG: TODO Double-check ref_count */
         if (mpi_errno != MPI_SUCCESS)
         {
             MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**dev|vcrt_create",
@@ -360,21 +362,18 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
      * Initialize the MPI_COMM_SELF object
      */
     comm = MPIR_Process.comm_self;
-#if defined(FINEGRAIN_MPI)
-    comm->p_rank      = 0;
-#else
     comm->rank        = 0;
-#endif
     comm->remote_size = 1;
     comm->local_size  = 1;
+
 #if defined(FINEGRAIN_MPI)
-    comm->rank = 0;
-    comm->totprocs = 1;
+    comm->p_rank      = 0;
+    comm->num_osprocs = 1;
     comm->co_shared_vars = world_co_shared_vars; /* FG: TODO FIX MPI_COMM_SELF */
     comm->leader_worldrank = 0; /* FG: TODO FIX MPI_COMM_SELF should be my_fgrank */
 #endif
     
-    mpi_errno = MPIDI_VCRT_Create(comm->remote_size, &comm->dev.vcrt);
+    mpi_errno = MPIDI_VCRT_Create(comm->num_osprocs, &comm->dev.vcrt);
     if (mpi_errno != MPI_SUCCESS)
     {
 	MPIR_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**dev|vcrt_create", 
@@ -398,14 +397,17 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 
 #if defined(FINEGRAIN_MPI)
     comm->p_rank      = pg_rank;
+    comm->num_osprocs = pg_size;
 #else
     comm->rank        = pg_rank;
-#endif
     comm->remote_size = pg_size;
     comm->local_size  = pg_size;
+#endif
+
 #if defined(FINEGRAIN_MPI)
     comm->rank = my_fgrank;
-    PMI_Get_totprocs(&(comm->totprocs));
+    PMI_Get_totprocs(&(comm->remote_size));
+    PMI_Get_totprocs(&(comm->local_size));
     comm->co_shared_vars = world_co_shared_vars;
     comm->leader_worldrank = 0;
 #endif

@@ -333,7 +333,7 @@ int FG_is_within_same_HWP(int reqfgrank, MPID_Comm *comm, int *reqrankpid)
 {
     int reqpid=-1, worldrank = -1, commfgrankpid=-2; /* Unequal initializers */
     MPIU_Assert( NULL != comm );
-    MPIU_Assert( (reqfgrank > MPI_ANY_SOURCE) && (reqfgrank < comm->totprocs) );
+    MPIU_Assert( (reqfgrank > MPI_ANY_SOURCE) && (reqfgrank < comm->local_size) );
     MPIDI_Comm_get_pid_worldrank(comm, reqfgrank, &reqpid, &worldrank);
     if(NULL != reqrankpid){
         *reqrankpid = reqpid;

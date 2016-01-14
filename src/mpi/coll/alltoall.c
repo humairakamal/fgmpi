@@ -153,11 +153,7 @@ int MPIR_Alltoall_intra(
 
     if (recvcount == 0) return MPI_SUCCESS;
 
-#if defined(FINEGRAIN_MPI)
-    comm_size = comm_ptr->totprocs;
-#else
     comm_size = comm_ptr->local_size;
-#endif
     rank = comm_ptr->rank;
 
     /* Get extent of send and recv types */

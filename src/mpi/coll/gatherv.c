@@ -104,11 +104,7 @@ int MPIR_Gatherv (
     if (((comm_ptr->comm_kind == MPID_INTRACOMM) && (root == rank)) ||
         ((comm_ptr->comm_kind == MPID_INTERCOMM) && (root == MPI_ROOT))) {
         if (comm_ptr->comm_kind == MPID_INTRACOMM)
-#if defined(FINEGRAIN_MPI)
-            comm_size = comm_ptr->totprocs;
-#else
             comm_size = comm_ptr->local_size;
-#endif
         else
             comm_size = comm_ptr->remote_size;
 
@@ -166,11 +162,7 @@ int MPIR_Gatherv (
             /* we want local size in both the intracomm and intercomm cases
                because the size of the root's group (group A in the standard) is
                irrelevant here. */
-#if defined(FINEGRAIN_MPI)
-            comm_size = comm_ptr->totprocs;
-#else
             comm_size = comm_ptr->local_size;
-#endif
 
             min_procs = MPIR_CVAR_GATHERV_INTER_SSEND_MIN_PROCS;
             if (min_procs == -1)
@@ -346,11 +338,8 @@ int MPI_Gatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
 
                 rank = comm_ptr->rank;
                 if (rank == root) {
-#if defined(FINEGRAIN_MPI)
-                    comm_size = comm_ptr->totprocs;
-#else
                     comm_size = comm_ptr->local_size;
-#endif
+
                     for (i=0; i<comm_size; i++) {
                         MPIR_ERRTEST_COUNT(recvcounts[i], mpi_errno);
                         MPIR_ERRTEST_DATATYPE(recvtype, "recvtype", mpi_errno);

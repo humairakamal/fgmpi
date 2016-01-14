@@ -81,7 +81,7 @@ static int barrier_smp_intra(MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag)
     /* do  barrier on osproc_colocated_comm */
     if (comm_ptr->osproc_colocated_comm != NULL)
     {
-        colocated_size = comm_ptr->osproc_colocated_comm->totprocs;
+        colocated_size = comm_ptr->osproc_colocated_comm->local_size;
         MPIU_Assert( (comm_ptr->osproc_colocated_comm->co_shared_vars != NULL) && (comm_ptr->osproc_colocated_comm->co_shared_vars->co_barrier_vars != NULL) );
         MPIU_Assert(colocated_size > 1 );
         colocated_sense = comm_ptr->osproc_colocated_comm->co_shared_vars->co_barrier_vars->coproclet_signal;
@@ -200,11 +200,8 @@ int MPIR_Barrier_intra( MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag )
        time */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
 
-#if defined(FINEGRAIN_MPI)
-    size = comm_ptr->totprocs;
-#else
     size = comm_ptr->local_size;
-#endif
+
     /* Trivial barriers return immediately */
     if (size == 1) goto fn_exit;
 

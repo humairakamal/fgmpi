@@ -171,7 +171,7 @@ static int barrier(MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag)
     MPIU_Assert(comm_ptr->hierarchy_kind == MPID_HIERARCHY_NODE);
     
     /* Trivial barriers return immediately */
-    if (comm_ptr->local_size == 1)
+    if (comm_ptr->num_osprocs == 1) /* FG: Double-check */
         return MPI_SUCCESS;
 
     /* Only one collective operation per communicator can be active at any
@@ -207,7 +207,7 @@ static int barrier(MPID_Comm *comm_ptr, MPIR_Errflag_t *errflag)
     OPA_read_barrier();
 
     prev = OPA_fetch_and_incr_int(&barrier_vars->cnt);
-    if (prev == comm_ptr->local_size - 1)
+    if (prev == comm_ptr->num_osprocs - 1) /* FG: Double-check*/
     {
         OPA_store_int(&barrier_vars->cnt, 0);
         OPA_write_barrier();

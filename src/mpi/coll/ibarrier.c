@@ -60,11 +60,7 @@ int MPIR_Ibarrier_intra(MPID_Comm *comm_ptr, MPID_Sched_t s)
 
     MPIU_Assert(comm_ptr->comm_kind == MPID_INTRACOMM);
 
-#if defined(FINEGRAIN_MPI)
-    size = comm_ptr->totprocs;
-#else
     size = comm_ptr->local_size;
-#endif
     rank = comm_ptr->rank;
 
     /* Trivial barriers return immediately */
@@ -193,11 +189,7 @@ int MPIR_Ibarrier_impl(MPID_Comm *comm_ptr, MPI_Request *request)
         /* --END USEREXTENSION-- */
     }
 
-#if defined(FINEGRAIN_MPI)
-    if (comm_ptr->totprocs != 1 || comm_ptr->comm_kind == MPID_INTERCOMM) {
-#else
     if (comm_ptr->local_size != 1 || comm_ptr->comm_kind == MPID_INTERCOMM) {
-#endif
         mpi_errno = MPID_Sched_next_tag(comm_ptr, &tag);
         if (mpi_errno) MPIR_ERR_POP(mpi_errno);
         mpi_errno = MPID_Sched_create(&s);

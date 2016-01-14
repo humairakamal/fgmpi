@@ -291,7 +291,7 @@ int MPIX_Comm_translate_ranks(MPI_Comm comm1, int n, int *ranks1,
 	    MPIR_ERRTEST_ARGNEG(n,"n",mpi_errno);
 	    if (comm_ptr1) {
 		/* Check that the rank entries are valid */
-		int size1 = comm_ptr1->totprocs;
+		int size1 = comm_ptr1->local_size;
 		for (i=0; i<n; i++) {
 		    if ( (ranks1[i] < 0 && ranks1[i] != MPI_PROC_NULL) ||
                          ranks1[i] >= size1) {
@@ -326,7 +326,7 @@ int MPIX_Comm_translate_ranks(MPI_Comm comm1, int n, int *ranks1,
             continue;
         }
         MPIDI_Comm_get_pid_worldrank(comm_ptr1, ranks1[i], NULL, &worldrank1);
-        for (j=0; j<(comm_ptr2->totprocs); j++) {
+        for (j=0; j<(comm_ptr2->local_size); j++) {
             MPIDI_Comm_get_pid_worldrank(comm_ptr2, j, NULL, &worldrank2);
             if (worldrank2 == worldrank1){
                 ranks2[i] = j;

@@ -48,8 +48,8 @@ int MPIR_Comm_group_impl(MPID_Comm *comm_ptr, MPID_Group **group_ptr)
         (*group_ptr)->is_local_dense_monotonic = TRUE;
 #if defined(FINEGRAIN_MPI)
         (*group_ptr)->rtw_grp_map = comm_ptr->co_shared_vars->rtw_map;
-        (*group_ptr)->fgsize = comm_ptr->totprocs;
         (*group_ptr)->p_rank = comm_ptr->p_rank;
+        (*group_ptr)->num_osprocs = comm_ptr->num_osprocs;
 #else
 	for (i=0; i<n; i++) {
 	    (void) MPID_Comm_get_lpid( comm_ptr, i, &lpid, FALSE );

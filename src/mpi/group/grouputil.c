@@ -35,8 +35,8 @@ int MPIR_Group_init(void)
 #if defined(FINEGRAIN_MPI)
     MPID_Group_builtin[0].ref_acrossCommGroup_countptr = NULL;
     MPID_Group_builtin[0].rtw_grp_map = NULL;
-    MPID_Group_builtin[0].fgsize = 0;
     MPID_Group_builtin[0].p_rank = MPI_UNDEFINED;
+    MPID_Group_builtin[0].num_osprocs = 0;
 #endif
 
     /* TODO hook for device here? */
@@ -93,8 +93,8 @@ int MPIR_Group_create( int nproc, MPID_Group **new_group_ptr )
 #else
     MPIR_Comm_init_coshared_group_ref(*new_group_ptr); /* initializing to NULL */
     (*new_group_ptr)->rtw_grp_map = NULL;
-    (*new_group_ptr)->fgsize = -1;
     (*new_group_ptr)->p_rank = -1;
+    (*new_group_ptr)->num_osprocs = -1;
 #endif
 
     (*new_group_ptr)->size = nproc;
@@ -261,6 +261,7 @@ int MPIR_Group_check_valid_ranks( MPID_Group *group_ptr, const int ranks[], int 
     for (i=0; i<group_ptr->size; i++) {
 	group_ptr->lrank_to_lpid[i].flag = 0;
     }
+#endif
     for (i=0; i<n; i++) {
 	if (ranks[i] < 0 ||
 	    ranks[i] >= group_ptr->size) {
@@ -269,6 +270,7 @@ int MPIR_Group_check_valid_ranks( MPID_Group *group_ptr, const int ranks[], int 
 				      i, ranks[i], group_ptr->size-1 );
 	    break;
 	}
+#if !defined(FINEGRAIN_MPI)
 	if (group_ptr->lrank_to_lpid[ranks[i]].flag) {
 	    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_RANK,
 			      "**rankdup", "**rankdup %d %d %d",
@@ -277,18 +279,8 @@ int MPIR_Group_check_valid_ranks( MPID_Group *group_ptr, const int ranks[], int 
 	    break;
 	}
 	group_ptr->lrank_to_lpid[ranks[i]].flag = i+1;
-    }
-#else
-    for (i=0; i<n; i++) {
-	if (ranks[i] < 0 ||
-	    ranks[i] >= group_ptr->fgsize) {
-	    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_RANK,
-				      "**rankarray", "**rankarray %d %d %d",
-				      i, ranks[i], group_ptr->fgsize-1 );
-	    break;
-	}
-    }
 #endif
+    }
 
     return mpi_errno;
 }

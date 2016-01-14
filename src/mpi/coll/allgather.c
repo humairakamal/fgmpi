@@ -140,11 +140,7 @@ int MPIR_Allgather_intra (
     if (((sendcount == 0) && (sendbuf != MPI_IN_PLACE)) || (recvcount == 0))
         return MPI_SUCCESS;
 
-#if defined(FINEGRAIN_MPI)
-    comm_size = comm_ptr->totprocs;
-#else
     comm_size = comm_ptr->local_size;
-#endif
     rank = comm_ptr->rank;
 
     MPID_Datatype_get_extent_macro( recvtype, recvtype_extent );

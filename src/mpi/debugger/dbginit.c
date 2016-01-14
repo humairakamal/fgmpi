@@ -190,7 +190,11 @@ void MPIR_WaitForDebugger( void )
 {
 #ifdef MPIU_PROCTABLE_NEEDED
     int rank = MPIR_Process.comm_world->rank;
+#if defined(FINEGRAIN_MPI)
+    int size = MPIR_Process.comm_world->num_osprocs;
+#else
     int size = MPIR_Process.comm_world->local_size;
+#endif
     int i, maxsize;
 
     /* FIXME: In MPICH, the executables may not have the information

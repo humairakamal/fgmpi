@@ -1035,8 +1035,8 @@ typedef struct MPID_Group {
                                         rtw map. In that case, it is the responsibility of the MPI_Comm_free()
                                         routine to properly release the shared rtw map */
     RTWmap *rtw_grp_map;    /* local fine-grain ranks (relative to this group) to world_rank mapping. */
-    int          fgsize;    /* Size of a group representing the number of FGPs in it. */
     int          p_rank;    /* HWP rank/pid of this process relative to this group _p_rank_ */
+    int          num_osprocs;
 #endif
 
     /* We may want some additional data for the RMA syncrhonization calls */
@@ -1207,7 +1207,7 @@ typedef struct MPID_Comm {
     int           rank;          /* Value of MPI_Comm_rank */
 #if defined(FINEGRAIN_MPI)
     int           p_rank;        /* This is now value of HWP rank _p_rank_*/
-    int           totprocs;      /* Total number of processes including all the FGPs. Value of MPI_Comm_size */
+    int           num_osprocs;   /* Number of OS-processes */
     struct Coproclet_shared_vars * co_shared_vars; /* This encapsulates pointers to rtw_map and co_barrier_vars among others */
     int           leader_worldrank;
 #endif
@@ -4317,11 +4317,7 @@ int MPIU_Get_intranode_rank(MPID_Comm *comm_ptr, int r);
 /* Trivial accessor macros */
 
 #define MPIR_Comm_rank(comm_ptr) ((comm_ptr)->rank)
-#if defined(FINEGRAIN_MPI)
-#define MPIR_Comm_size(comm_ptr) ((comm_ptr)->totprocs)
-#else
 #define MPIR_Comm_size(comm_ptr) ((comm_ptr)->local_size)
-#endif
 #define MPIR_Type_extent_impl(datatype, extent_ptr) MPID_Datatype_get_extent_macro(datatype, *(extent_ptr))
 #define MPIR_Type_size_impl(datatype, size) MPID_Datatype_get_size_macro(datatype, *(size))
 #define MPIR_Test_cancelled_impl(status, flag) *(flag) = MPIR_STATUS_GET_CANCEL_BIT(*(status))

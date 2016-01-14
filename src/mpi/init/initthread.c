@@ -528,7 +528,7 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
     /* FIXME: Define these in the interface.  Does Timer init belong here? */
     MPIU_dbg_init(MPIR_Process.comm_world->rank);
     MPIU_Timer_init(MPIR_Process.comm_world->rank,
-		    MPIR_Process.comm_world->local_size);
+		    MPIR_Process.comm_world->num_osprocs);
 #ifdef USE_MEMORY_TRACING
     MPIU_trinit( MPIR_Process.comm_world->rank );
     /* Indicate that we are near the end of the init step; memory 

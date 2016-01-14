@@ -101,11 +101,7 @@ static int MPIR_Reduce_binomial (
 
     if (count == 0) return MPI_SUCCESS;
 
-#if defined(FINEGRAIN_MPI)
-    comm_size = comm_ptr->totprocs;
-#else
     comm_size = comm_ptr->local_size;
-#endif
     rank = comm_ptr->rank;
 
     /* Create a temporary buffer */
@@ -312,11 +308,7 @@ static int MPIR_Reduce_redscat_gather (
     MPIU_CHKLMEM_DECL(4);
     MPID_THREADPRIV_DECL;
 
-#if defined(FINEGRAIN_MPI)
-    comm_size = comm_ptr->totprocs;
-#else
     comm_size = comm_ptr->local_size;
-#endif
     rank = comm_ptr->rank;
 
     /* set op_errno to 0. stored in perthread structure */
@@ -995,11 +987,7 @@ int MPIR_Reduce_intra (
     }
     }
 
-#if defined(FINEGRAIN_MPI)
-    comm_size = comm_ptr->totprocs;
-#else
     comm_size = comm_ptr->local_size;
-#endif
     MPID_Datatype_get_size_macro(datatype, type_size);
 
     /* find nearest power-of-two less than or equal to comm_size */

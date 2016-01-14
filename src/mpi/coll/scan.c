@@ -98,11 +98,7 @@ static int MPIR_Scan_generic (
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
 
-#if defined(FINEGRAIN_MPI)
-    comm_size = comm_ptr->totprocs;
-#else
     comm_size = comm_ptr->local_size;
-#endif
     rank = comm_ptr->rank;
 
     MPID_THREADPRIV_GET;
@@ -323,7 +319,7 @@ int MPIR_Scan(
              (0 == comm_ptr->osproc_colocated_comm->rank) )
         {
             mpi_errno = MPIC_Recv(colocatedfulldata, count, datatype,
-                                  comm_ptr->osproc_colocated_comm->totprocs - 1, MPIR_SCAN_TAG,
+                                  comm_ptr->osproc_colocated_comm->local_size - 1, MPIR_SCAN_TAG,
                                   comm_ptr->osproc_colocated_comm, &status, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -333,7 +329,7 @@ int MPIR_Scan(
             }
         }
         else if (comm_ptr->osproc_colocated_comm != NULL &&
-                 MPIU_Get_intra_osproc_rank(comm_ptr, rank) == comm_ptr->osproc_colocated_comm->totprocs - 1)
+                 MPIU_Get_intra_osproc_rank(comm_ptr, rank) == comm_ptr->osproc_colocated_comm->local_size - 1)
         {
             mpi_errno = MPIC_Send(recvbuf, count, datatype,
                                   0, MPIR_SCAN_TAG, comm_ptr->osproc_colocated_comm, errflag);
@@ -364,7 +360,7 @@ int MPIR_Scan(
             MPIR_ERR_ADD(mpi_errno_ret, mpi_errno);
         }
 
-        if (MPIU_Get_intranode_rank(comm_ptr, rank) != comm_ptr->node_comm->totprocs-1)
+        if (MPIU_Get_intranode_rank(comm_ptr, rank) != comm_ptr->node_comm->local_size-1)
         {
             mpi_errno = MPIC_Send(localfulldata, count, datatype,
                                   MPIU_Get_intranode_rank(comm_ptr, rank) + 1,
@@ -427,7 +423,7 @@ int MPIR_Scan(
         if (comm_ptr->node_roots_comm != NULL && comm_ptr->node_comm != NULL)
         {
             mpi_errno = MPIC_Recv(localfulldata, count, datatype,
-                                  comm_ptr->node_comm->totprocs - 1, MPIR_SCAN_TAG,
+                                  comm_ptr->node_comm->local_size - 1, MPIR_SCAN_TAG,
                                   comm_ptr->node_comm, &status, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -438,7 +434,7 @@ int MPIR_Scan(
         }
         else if (comm_ptr->node_roots_comm == NULL &&
                  comm_ptr->node_comm != NULL &&
-                 MPIU_Get_intranode_rank(comm_ptr, rank) == comm_ptr->node_comm->totprocs - 1)
+                 MPIU_Get_intranode_rank(comm_ptr, rank) == comm_ptr->node_comm->local_size - 1)
         {
             mpi_errno = MPIC_Send(localfulldata, count, datatype,
                                   0, MPIR_SCAN_TAG, comm_ptr->node_comm, errflag);
@@ -469,7 +465,7 @@ int MPIR_Scan(
         }
 
         if (MPIU_Get_internode_rank(comm_ptr, rank) !=
-            comm_ptr->node_roots_comm->totprocs-1)
+            comm_ptr->node_roots_comm->local_size-1)
         {
             mpi_errno = MPIC_Send(prefulldata, count, datatype,
                                      MPIU_Get_internode_rank(comm_ptr, rank) + 1,

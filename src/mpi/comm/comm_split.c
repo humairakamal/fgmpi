@@ -145,11 +145,7 @@ int MPIR_Comm_split_impl(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **ne
 #endif
 
     rank        = comm_ptr->rank;
-#if defined(FINEGRAIN_MPI)
-    size        = comm_ptr->totprocs;
-#else
     size        = comm_ptr->local_size;
-#endif
     remote_size = comm_ptr->remote_size;
 	
     /* Step 1: Find out what color and keys all of the processes have */
@@ -295,9 +291,7 @@ int MPIR_Comm_split_impl(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **ne
 	if (mpi_errno) goto fn_fail;
 
 	(*newcomm_ptr)->recvcontext_id = new_context_id;
-#if !defined(FINEGRAIN_MPI)
 	(*newcomm_ptr)->local_size	    = new_size;
-#endif
 	(*newcomm_ptr)->comm_kind	    = comm_ptr->comm_kind;
 	/* Other fields depend on whether this is an intercomm or intracomm */
 
@@ -376,9 +370,8 @@ int MPIR_Comm_split_impl(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **ne
 #if defined(FINEGRAIN_MPI)
             MPIR_Comm_set_sizevars(comm_ptr, new_size, (*newcomm_ptr));
             (*newcomm_ptr)->leader_worldrank = leader_wid;
-#else
-	    (*newcomm_ptr)->remote_size    = new_size;
 #endif
+	    (*newcomm_ptr)->remote_size    = new_size;
 
             MPIR_Comm_map_irregular(*newcomm_ptr, comm_ptr, NULL,
                                     new_size, MPIR_COMM_MAP_DIR_L2L,

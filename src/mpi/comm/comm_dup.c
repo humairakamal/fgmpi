@@ -53,11 +53,7 @@ int MPIR_Comm_dup_impl(MPID_Comm *comm_ptr, MPID_Comm **newcomm_ptr)
     /* We must use the local size, because this is compared to the
        rank of the process in the communicator.  For intercomms,
        this must be the local size */
-#if defined(FINEGRAIN_MPI)
-    mpi_errno = MPIR_Comm_copy( comm_ptr, comm_ptr->totprocs, newcomm_ptr );
-#else
     mpi_errno = MPIR_Comm_copy( comm_ptr, comm_ptr->local_size, newcomm_ptr );
-#endif
     if (mpi_errno) MPIR_ERR_POP(mpi_errno);
 
     (*newcomm_ptr)->attributes = new_attributes;

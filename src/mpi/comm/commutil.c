@@ -78,7 +78,7 @@ int MPIR_Comm_init(MPID_Comm * comm_p)
 
 #if defined(FINEGRAIN_MPI)
     comm_p->p_rank = -1;
-    comm_p->totprocs = -1;
+    comm_p->num_osprocs = -1;
     comm_p->co_shared_vars = NULL;
     comm_p->osproc_colocated_comm = NULL;
     comm_p->leader_worldrank = -1;
@@ -665,13 +665,11 @@ int MPIR_Comm_commit(MPID_Comm * comm)
 
         /* if the node_roots_comm and comm would be the same size, then creating
          * the second communicator is useless and wasteful. */
+        if (num_external == comm->remote_size) {
 #if defined(FINEGRAIN_MPI)
-        if (num_external == comm->totprocs) {
             FREE_HASH(comm->co_shared_vars->nested_uniform_vars.internode_rtw_hash, Nested_comm_rtwmap_hash_t);
             FREE_HASH(comm->co_shared_vars->nested_uniform_vars.intranode_rtw_hash, Nested_comm_rtwmap_hash_t);
             FREE_HASH(comm->co_shared_vars->nested_uniform_vars.intra_osproc_rtw_hash, Nested_comm_rtwmap_hash_t);
-#else
-        if (num_external == comm->remote_size) {
 #endif
             MPIU_Assert(num_local == 1);
             goto fn_exit;
@@ -698,6 +696,9 @@ int MPIR_Comm_commit(MPID_Comm * comm)
             comm->node_comm->local_comm = NULL;
 
             MPIU_DBG_MSG_D(CH3_OTHER, VERBOSE, "Create node_comm=%p\n", comm->node_comm);
+            comm->node_comm->local_size = num_local;
+            comm->node_comm->remote_size = num_local;
+
 #if defined(FINEGRAIN_MPI)
             MPIR_Comm_set_sizevars(comm, num_local, comm->node_comm);
             comm->node_comm->co_shared_vars = (Coproclet_shared_vars_t *)MPIU_Calloc(1, sizeof(Coproclet_shared_vars_t));
@@ -715,11 +716,9 @@ int MPIR_Comm_commit(MPID_Comm * comm)
 
             comm->node_comm->co_shared_vars->co_barrier_vars = NULL; /* co_barrier_vars are relevant for colocated comm only */
             comm->node_comm->co_shared_vars->ptn_hash = NULL;
-#else
+#endif
 
-            comm->node_comm->local_size = num_local;
-            comm->node_comm->remote_size = num_local;
-
+#if !defined(FINEGRAIN_MPI)
             MPIR_Comm_map_irregular(comm->node_comm, comm, local_procs,
                                     num_local, MPIR_COMM_MAP_DIR_L2L, NULL);
 #endif
@@ -763,6 +762,9 @@ int MPIR_Comm_commit(MPID_Comm * comm)
             comm->node_roots_comm->comm_kind = MPID_INTRACOMM;
             comm->node_roots_comm->hierarchy_kind = MPID_HIERARCHY_NODE_ROOTS;
             comm->node_roots_comm->local_comm = NULL;
+            comm->node_roots_comm->local_size = num_external;
+            comm->node_roots_comm->remote_size = num_external;
+
 #if defined(FINEGRAIN_MPI)
             MPIR_Comm_set_sizevars(comm, num_external, comm->node_roots_comm);
             comm->node_roots_comm->co_shared_vars = (Coproclet_shared_vars_t *)MPIU_Calloc(1, sizeof(Coproclet_shared_vars_t));
@@ -781,10 +783,9 @@ int MPIR_Comm_commit(MPID_Comm * comm)
 
             comm->node_roots_comm->co_shared_vars->co_barrier_vars = NULL; /* co_barrier_vars are relevant for colocated comm only */
             comm->node_roots_comm->co_shared_vars->ptn_hash = NULL;
-#else
-            comm->node_roots_comm->local_size = num_external;
-            comm->node_roots_comm->remote_size = num_external;
+#endif
 
+#if !defined(FINEGRAIN_MPI)
             MPIR_Comm_map_irregular(comm->node_roots_comm, comm,
                                     external_procs, num_external, MPIR_COMM_MAP_DIR_L2L, NULL);
 #endif
@@ -906,7 +907,7 @@ int MPIR_Comm_is_node_consecutive(MPID_Comm * comm)
         return 0;
 
 #if defined(FINEGRAIN_MPI)
-    for (; i < comm->totprocs; i++)
+    for (; i < comm->local_size; i++)
     {
         Parent_to_Nested_comm_tables_coshared_hash_t *ptn_tables_hash_entry_stored = NULL;
         MPIU_Assert(comm->co_shared_vars != NULL);
@@ -938,7 +939,7 @@ int MPIR_Comm_is_node_consecutive(MPID_Comm * comm)
 int MPIR_Comm_copy_share(MPID_Comm *comm_ptr, MPID_Comm *newcomm_ptr)
 {
     int i, mpi_errno = MPI_SUCCESS;
-    int new_totprocs = newcomm_ptr->totprocs;
+    int new_totprocs = newcomm_ptr->local_size;
     cLitemptr stored = NULL;
 
     MPID_MPI_STATE_DECL(MPID_STATE_MPIR_COMM_COPY_SHARE);
@@ -954,7 +955,7 @@ int MPIR_Comm_copy_share(MPID_Comm *comm_ptr, MPID_Comm *newcomm_ptr)
     else {
         newcomm_ptr->co_shared_vars = (Coproclet_shared_vars_t *)MPIU_Calloc(1, sizeof(Coproclet_shared_vars_t));
         MPIR_ERR_CHKANDJUMP(!(newcomm_ptr->co_shared_vars), mpi_errno, MPI_ERR_OTHER, "**nomem");
-        if (new_totprocs == comm_ptr->totprocs)
+        if (new_totprocs == comm_ptr->local_size)
         {
             newcomm_ptr->co_shared_vars->rtw_map = comm_ptr->co_shared_vars->rtw_map;
         } else {
@@ -975,7 +976,7 @@ int MPIR_Comm_copy_share(MPID_Comm *comm_ptr, MPID_Comm *newcomm_ptr)
         newcomm_ptr->co_shared_vars->nested_uniform_vars.fg_local_size = comm_ptr->co_shared_vars->nested_uniform_vars.fg_local_size;
 
 
-        if (new_totprocs == comm_ptr->totprocs)
+        if (new_totprocs == comm_ptr->local_size)
         {
             stored = NULL;
             CL_LookupHashFind(contextLeader_hshtbl, comm_ptr->context_id, comm_ptr->leader_worldrank, &stored); /* FG: TODO Can get the ref_acrossComm_countptr directly instead of CL_LookupHashFind */
@@ -1106,18 +1107,17 @@ int MPIR_Comm_copy(MPID_Comm * comm_ptr, int size, MPID_Comm ** outcomm_ptr)
         newcomm_ptr->is_low_group = comm_ptr->is_low_group;
     }
     else {
+        newcomm_ptr->local_size = size;
+        newcomm_ptr->remote_size = size;
 #if defined(FINEGRAIN_MPI)
         MPIR_Comm_set_sizevars(comm_ptr, size, newcomm_ptr);
         newcomm_ptr->leader_worldrank = -1;
-        if (newcomm_ptr->totprocs == comm_ptr->totprocs) {
+        if (newcomm_ptr->local_size == comm_ptr->local_size) {
             newcomm_ptr->leader_worldrank = comm_ptr->leader_worldrank;
         } else {
-            newcomm_ptr->leader_worldrank = RTWmapFindLeader(comm_ptr->co_shared_vars->rtw_map, newcomm_ptr->totprocs);
+            newcomm_ptr->leader_worldrank = RTWmapFindLeader(comm_ptr->co_shared_vars->rtw_map, newcomm_ptr->local_size);
         }
         MPIU_Assert(newcomm_ptr->leader_worldrank >= 0);
-#else
-        newcomm_ptr->local_size = size;
-        newcomm_ptr->remote_size = size;
 #endif
     }
 
@@ -1136,7 +1136,7 @@ int MPIR_Comm_copy(MPID_Comm * comm_ptr, int size, MPID_Comm ** outcomm_ptr)
     if (mpi_errno)
         MPIR_ERR_POP(mpi_errno);
 
-    if (newcomm_ptr->totprocs == comm_ptr->totprocs) {
+    if (newcomm_ptr->local_size == comm_ptr->local_size) {
         mpi_errno = MPIR_Comm_share_commit(comm_ptr, newcomm_ptr);
     }
     else {
@@ -1557,7 +1557,7 @@ int MPIR_Comm_share_commit(MPID_Comm * comm, MPID_Comm * newcomm)
 
         /* if the node_roots_comm and comm would be the same size, then creating
          * the second communicator is useless and wasteful. */
-        if (num_external == comm->totprocs) {
+        if (num_external == comm->local_size) {
             MPIU_Assert(num_local == 1);
             goto fn_exit;
         }
@@ -1713,9 +1713,9 @@ int MPIR_Comm_share_commit(MPID_Comm * comm, MPID_Comm * newcomm)
 int MPIR_Comm_set_sizevars(MPID_Comm *comm_ptr, int new_totprocs, MPID_Comm *newcomm_ptr)
 {
     newcomm_ptr->p_rank = comm_ptr->p_rank;
-    newcomm_ptr->totprocs  = new_totprocs;
-    newcomm_ptr->local_size  = comm_ptr->local_size;
-    newcomm_ptr->remote_size = comm_ptr->local_size;
+    newcomm_ptr->num_osprocs  = comm_ptr->num_osprocs;
+    newcomm_ptr->local_size  = new_totprocs;
+    newcomm_ptr->remote_size = new_totprocs;
     newcomm_ptr->dev.vcrt    = vcrt_world;
     return (MPI_SUCCESS);
 }

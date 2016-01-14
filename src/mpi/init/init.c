@@ -249,7 +249,7 @@ int MPI_Init( int *argc, char ***argv )
 #endif
     if (MPIR_CVAR_ASYNC_PROGRESS) {
         if (provided == MPI_THREAD_MULTIPLE) {
-            mpi_errno = MPIR_Init_async_thread(); /* FG: Temporary bypass inside */
+            mpi_errno = MPIR_Init_async_thread(); /* FG:RMA-todo? Temporary bypass inside */
             if (mpi_errno) goto fn_fail;
 
             MPIR_async_thread_initialized = 1;

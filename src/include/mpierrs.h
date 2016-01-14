@@ -71,32 +71,6 @@ cvars:
         goto fn_fail;                                                   \
     }
 
-#if defined(FINEGRAIN_MPI)
-#define MPIR_ERRTEST_RANK(comm_ptr,rank,err)                            \
-    if ((rank) < 0 || (rank) >= (comm_ptr)->totprocs) {              \
-        err = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, \
-                                    MPI_ERR_RANK, "**rank", "**rank %d %d", rank, \
-                                    (comm_ptr)->totprocs );          \
-        goto fn_fail;                                                   \
-    }
-
-#define MPIR_ERRTEST_SEND_RANK(comm_ptr,rank,err)                       \
-    if ((rank) < MPI_PROC_NULL || (rank) >= (comm_ptr)->totprocs) {  \
-        err = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, \
-                                    MPI_ERR_RANK, "**rank", "**rank %d %d", rank, \
-                                    (comm_ptr)->totprocs );          \
-        goto fn_fail;                                                   \
-    }
-
-#define MPIR_ERRTEST_RECV_RANK(comm_ptr,rank,err)                       \
-    if ((rank) < MPI_ANY_SOURCE || (rank) >= (comm_ptr)->totprocs) { \
-        err = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, \
-                                    MPI_ERR_RANK, "**rank", "**rank %d %d", rank, \
-                                    (comm_ptr)->totprocs );          \
-        goto fn_fail;                                                   \
-    }
-
-#else
 
 #define MPIR_ERRTEST_RANK(comm_ptr,rank,err)                            \
     if ((rank) < 0 || (rank) >= (comm_ptr)->remote_size) {              \
@@ -121,7 +95,6 @@ cvars:
                                     (comm_ptr)->remote_size );          \
         goto fn_fail;                                                   \
     }
-#endif
 
 #define MPIR_ERRTEST_COUNT(count,err)                           \
     if ((count) < 0) {                                          \
@@ -202,21 +175,12 @@ cvars:
 
 /* An intracommunicator must have a root between 0 and local_size-1. */
 /* intercomm can be between MPI_PROC_NULL (or MPI_ROOT) and remote_size-1 */
-#if defined(FINEGRAIN_MPI)
-#define MPIR_ERRTEST_INTRA_ROOT(comm_ptr,root,err)                      \
-    if ((root) < 0 || (root) >= (comm_ptr)->totprocs) {               \
-        err = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, \
-                                    MPI_ERR_ROOT, "**root", "**root %d", root ); \
-        goto fn_fail;                                                   \
-    }
-#else
 #define MPIR_ERRTEST_INTRA_ROOT(comm_ptr,root,err)                      \
     if ((root) < 0 || (root) >= (comm_ptr)->local_size) {               \
         err = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, \
                                     MPI_ERR_ROOT, "**root", "**root %d", root ); \
         goto fn_fail;                                                   \
     }
-#endif
 
 /* We use -2 (MPI_PROC_NULL and MPI_ROOT are negative) for the
    intercomm test */

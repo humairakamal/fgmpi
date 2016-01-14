@@ -243,8 +243,8 @@ int MPIR_Comm_create_intra(MPID_Comm *comm_ptr, MPID_Group *group_ptr,
         (*newcomm_ptr)->remote_size    = (*newcomm_ptr)->local_size = n;
 
 #if defined(FINEGRAIN_MPI)
-        MPIR_Comm_set_sizevars(comm_ptr, group_ptr->fgsize, (*newcomm_ptr));
-        int leader_wid = RTWmapFindLeader(group_ptr->rtw_grp_map, (*newcomm_ptr)->totprocs);
+        MPIR_Comm_set_sizevars(comm_ptr, n, (*newcomm_ptr));
+        int leader_wid = RTWmapFindLeader(group_ptr->rtw_grp_map, (*newcomm_ptr)->local_size);
         (*newcomm_ptr)->leader_worldrank = leader_wid;
         cLitemptr stored = NULL;
         CL_LookupHashFind(contextLeader_hshtbl, (*newcomm_ptr)->context_id, leader_wid, &stored);

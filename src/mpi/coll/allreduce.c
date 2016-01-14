@@ -367,11 +367,7 @@ int MPIR_Allreduce_intra (
     {
         /* homogeneous */
 
-#if defined(FINEGRAIN_MPI)
-        comm_size = comm_ptr->totprocs;
-#else
         comm_size = comm_ptr->local_size;
-#endif
         rank = comm_ptr->rank;
 
         is_commutative = MPIR_Op_is_commutative(op);
