@@ -70,7 +70,11 @@ int MPI_Initialized( int *flag )
     /* ... body of routine ...  */
 
 #if defined(FINEGRAIN_MPI)
-    *flag = (FGP_init_state == FGP_ALL_POST_INIT);
+    *flag = (FGP_init_state == FGP_ALL_POST_INIT
+             || (FGP_init_state == FGP_POST_INIT
+                 && 0 != CO_CURRENT->statevars))
+            && (IS_SPAWNER!=1);
+    
 #else
     *flag = (OPA_load_int(&MPIR_Process.mpich_state) >= MPICH_POST_INIT);
 #endif
