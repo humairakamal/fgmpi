@@ -167,14 +167,13 @@ int MPI_Init( int *argc, char ***argv )
         {
             if (OPA_load_int(&MPIR_Process.mpich_state) != MPICH_PRE_INIT) {
 #if defined(FINEGRAIN_MPI)
-                if(1 == IS_SPAWNER){
-                    MPIU_Assert( (FGP_POST_INIT == FGP_init_state) ||
-                                 (FGP_ALL_POST_INIT == FGP_init_state) );
+                if((1 == IS_SPAWNER) && (FGP_ALL_POST_INIT == FGP_init_state)) {
                     IS_SPAWNER = 2; /* IS_SPAWNER equal to 2 means this is the
                                        expected (silent) MPI_Init()and
                                        it has now been seen. */
                     return (mpi_errno);
-                } else if ((2 == IS_SPAWNER) || (0 == IS_SPAWNER)){
+                } else if ( ((2 == IS_SPAWNER) || (0 == IS_SPAWNER)) ||
+                            ((1 == IS_SPAWNER) && (FGP_POST_INIT == FGP_init_state)) ){
                     MPL_internal_error_printf("WARNING! Application rank=%d is calling MPI_Init() again after initialization!\n", my_fgrank);
                     mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER,
 						  "**inittwice", NULL );

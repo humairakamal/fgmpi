@@ -102,7 +102,6 @@ void FG_Spawn_threads(FG_WrapperProcessPtr_t WrapProcessPtr, FWraparg_t* FG_Wrap
             runlist_init();
         }
     FGP_inits++; /* This is Main co */
-    FGP_init_state = FGP_ALL_POST_INIT;
 
     sched_init_progress_thread();
 
@@ -170,6 +169,7 @@ int FGmpiexec( int *argc, char ***argv, LookupMapPtr_t lookupFuncPtr )
         FG_Spawn_threads(WrapProcessPtr, FG_Wrapargs, numspawn, argc, argv);
     }
 
+    FGP_init_state = FGP_ALL_POST_INIT;
     (*FG_MPI_Main_processPtr)(*argc, *argv);
 
  fn_exit:
